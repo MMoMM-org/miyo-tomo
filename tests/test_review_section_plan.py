@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.7
+# version: 0.1.8
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -614,6 +614,8 @@ FORBIDDEN = {   # the order (T5.4): review_actions -> review_new_note -> review_
     "review_kado_conflict": {"review_actions", "review_delivery", "review_section_plan", "review_state"},
     "review_target_read": {"review_instructions_args", "review_kado_conflict"},
     "review_instructions_args": {"review_actions", "review_delivery", "review_target_read", "review_kado_conflict"},
+    # the shared heading walk (T6.2): review_section_plan -> review_mapping, never back
+    "review_mapping": {"review_section_plan", "review_hashi_text", "review_section_set", "review_actions"},
 }
 
 

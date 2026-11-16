@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.5.3
+# version: 0.5.4
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -20,7 +20,8 @@ The delivery's sections as a set — every row planned, a new note's routing, th
 sub-parts, the splice and the composed actions — are ``review_section_set``'s (T5.4).
 
 The note is read as Hashi reads it (``review_hashi_text``: ``split_lines``, ``fenced_mask``,
-``hashi_headings``, ``JS_WS``); markers are unfenced lines equal to the marker after JavaScript's
+``hashi_headings``, ``JS_WS``) and keyed by ``review_mapping.walk_headings``, the walk the template analysis
+keys by; markers are unfenced lines equal to the marker after JavaScript's
 ``trimEnd``. Imports ``review_hashi_text``, never ``review_actions`` or ``review_section_set``. No Kado,
 no clock, no file I/O.
 
@@ -33,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from lib import review_hashi_text as rht
+from lib import review_mapping
 from lib.review_mapping import HeadingKey, TemplateHeading, landing_off_limits, row_key
 
 INSERT, REPLACE, SKIP, REVIEW = "insert", "replace", "skip", "review"
@@ -126,21 +128,9 @@ class _Note:
     def read(cls, text: str) -> "_Note":
         lines = rht.split_lines(text)[0]
         heads = rht.hashi_headings(lines)
-        keyed: List[TemplateHeading] = []
-        stack: List[Tuple[Optional[HeadingKey], int]] = []
-        seen: Dict[Tuple[str, int, Optional[str]], int] = {}
-        for index, level, text_ in heads:
-            while stack and stack[-1][1] >= level:
-                stack.pop()
-            parent = stack[-1][0].heading if stack and stack[-1][0] else None
-            if level == 1:                         # never a row: occurrence 0, and no ancestor of anyone
-                keyed.append(TemplateHeading(HeadingKey(rht.bare(text_), 1, None, 0), index + 1))
-                stack.append((None, 1))
-                continue
-            seen[(rht.bare(text_), level, parent)] = n = seen.get((rht.bare(text_), level, parent), 0) + 1
-            key = HeadingKey(rht.bare(text_), level, parent, n)
-            keyed.append(TemplateHeading(key, index + 1, tuple(k for k, _ in stack if k)))
-            stack.append((key, level))
+        keyed = [TemplateHeading(key, index + 1, ancestors) if key is not None
+                 else TemplateHeading(HeadingKey(rht.bare(text_), 1, None, 0), index + 1)   # never a row: occurrence 0
+                 for index, _, text_, key, ancestors in review_mapping.walk_headings(heads, rht.bare)]
         return cls(lines, rht.fenced_mask(lines), heads, keyed)
 
     def line(self, n: int) -> int:

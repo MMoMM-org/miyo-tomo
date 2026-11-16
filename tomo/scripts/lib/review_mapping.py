@@ -1,5 +1,5 @@
 # review_mapping.py — which template headings /review may offer as sections, and why the others are left out.
-# version: 0.2.0
+# version: 0.3.0
 """Template analysis for ``/review`` sections (spec 046, T1.2; PRD F2-AC3, F2-AC5, F2-AC11).
 
 ``analyse_template(text, off_limits)`` returns one ``TemplateHeading`` per heading of level
@@ -7,7 +7,8 @@
 (text, level, parent)), the 1-based template ``line``, ``state`` (offered | left-out), the
 ``reason`` of a left-out (first rule wins, in ``REASONS`` order) and the ``flags`` of an
 offered one (mixed, container, under-own). ``heading_tree(text)`` gives the same headings
-unclassified, for any note. ``landing_off_limits(heading, off_limits)`` is the one landing
+unclassified, for any note. ``walk_headings(found, name)`` is the one walk that keys a heading
+list — ``review_section_plan`` reads a note's headings through it too. ``landing_off_limits(heading, off_limits)`` is the one landing
 check: the row that covers the heading, or None. ``assign_ids`` gives rows their ``s<n>``
 id, ``dropped`` names earlier rows a new template lacks. ``outline(text)`` is the
 template's headings after the structural rules (key, line, ancestors, body kind, reason)
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, NamedTuple, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Sequence, Set, Tuple
 
 from lib.review_md import AUTOMATIC_FENCES, EMBED_LINE_RE, FIELD_RE, INLINE_QUERY_RE, fence_state, headings
 from lib.template_syntax import TEMPLATER_RE, leading_block, templater_inner_line_indexes, templater_spans
@@ -103,29 +104,43 @@ def _spanned_lines(text: str, offset: int) -> Set[int]:
     return out
 
 
+Walked = Tuple[int, int, str, Optional[HeadingKey], Tuple[HeadingKey, ...]]
+
+
+def walk_headings(found: Sequence[Tuple[int, int, str]], name: Callable[[str], str] = str) -> Iterator[Walked]:
+    """Per ``(index, level, text)`` in order: ``(index, level, text, key, ancestors)``. ``key`` is the identity —
+    ``name(text)``, level, the parent's name, occurrence among identical (name, level, parent) from 1 — and None
+    for a level-1 heading, which ends every open branch and is no ancestor of anyone."""
+    stack: List[Tuple[Optional[HeadingKey], int]] = []
+    seen: Dict[Tuple[str, int, Optional[str]], int] = {}
+    for index, level, text_ in found:
+        while stack and stack[-1][1] >= level:
+            stack.pop()
+        if level == 1:
+            stack.append((None, 1))
+            yield index, level, text_, None, ()
+            continue
+        parent = stack[-1][0].heading if stack and stack[-1][0] else None
+        named = name(text_)
+        seen[(named, level, parent)] = occurrence = seen.get((named, level, parent), 0) + 1
+        key = HeadingKey(named, level, parent, occurrence)
+        yield index, level, text_, key, tuple(k for k, _ in stack if k)
+        stack.append((key, level))
+
+
 def _tree(text: str) -> Tuple[List[TemplateHeading], List[str], Set[int], List[Tuple[int, str]]]:
     lines, offset = _body_lines(text)
     inner = {i - offset for i in templater_inner_line_indexes(text)}
     found = [h for h in headings(lines)[0] if h[0] not in inner]
     spanned = _spanned_lines(text, offset)
     heads: List[TemplateHeading] = []
-    stack: List[Tuple[Optional[HeadingKey], int]] = []
     top: List[Tuple[int, str]] = []
-    seen: Dict[Tuple[str, int, Optional[str]], int] = {}
-    for n, (index, level, text_) in enumerate(found):
-        while stack and stack[-1][1] >= level:
-            stack.pop()
-        parent = stack[-1][0].heading if stack and stack[-1][0] else None
-        if level == 1:
-            stack.append((None, 1))
+    for n, (index, _, text_, key, ancestors) in enumerate(walk_headings(found)):
+        if key is None:
             top.append((index + offset + 1, text_))
             continue
-        seen[(text_, level, parent)] = occurrence = seen.get((text_, level, parent), 0) + 1
-        key = HeadingKey(text_, level, parent, occurrence)
         end = found[n + 1][0] if n + 1 < len(found) else len(lines)
-        heads.append(TemplateHeading(key, index + offset + 1, tuple(k for k, _ in stack if k),
-                                     _body_kind(lines, index + 1, end, spanned)))
-        stack.append((key, level))
+        heads.append(TemplateHeading(key, index + offset + 1, ancestors, _body_kind(lines, index + 1, end, spanned)))
     return heads, lines, spanned, top
 
 

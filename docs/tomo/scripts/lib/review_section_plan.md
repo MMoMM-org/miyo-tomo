@@ -194,3 +194,13 @@ module until T5.4; they moved to `lib/review_section_set.py` with the
 composition of the set's actions, so this module keeps room for the
 per-section rules (docs/tomo/scripts/lib/review_section_set.md, "WHY a
 Module of Its Own"). Their WHY sections moved with them.
+
+## WHY `_Note.read` Keys Headings Through `review_mapping.walk_headings` (spec 046 T6.2)
+
+A row names its heading by the identity the template analysis gave it;
+the planner must compute the same identity on the note, or a heading that
+is there reads as `missing`. The planner had its own copy of the walk;
+since T6.2 it calls `review_mapping.walk_headings` with Hashi's heading
+list and `rht.bare` as the name, so the two cannot drift. Rationale and
+the golden that pins both results: docs/tomo/scripts/lib/review_mapping.md,
+"WHY the Heading Walk Is Shared With the Note Planner".

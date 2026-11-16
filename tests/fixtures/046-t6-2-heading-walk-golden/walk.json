@@ -1,0 +1,5492 @@
+{
+ "note:closing-hashes": {
+  "note": [
+   [
+    [
+     "Notes",
+     2,
+     null,
+     1
+    ],
+    1,
+    []
+   ],
+   [
+    [
+     "Sub",
+     3,
+     "Notes",
+     1
+    ],
+    3,
+    [
+     [
+      "Notes",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Deep",
+     4,
+     "Sub",
+     1
+    ],
+    4,
+    [
+     [
+      "Notes",
+      2,
+      null,
+      1
+     ],
+     [
+      "Sub",
+      3,
+      "Notes",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes",
+     2,
+     null,
+     2
+    ],
+    5,
+    []
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Notes",
+     2,
+     null,
+     1
+    ],
+    1,
+    [],
+    "own"
+   ],
+   [
+    [
+     "Sub",
+     3,
+     "Notes",
+     1
+    ],
+    3,
+    [
+     [
+      "Notes",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Deep",
+     4,
+     "Sub",
+     1
+    ],
+    4,
+    [
+     [
+      "Notes",
+      2,
+      null,
+      1
+     ],
+     [
+      "Sub",
+      3,
+      "Notes",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes",
+     2,
+     null,
+     2
+    ],
+    5,
+    [],
+    "empty"
+   ]
+  ],
+  "top": []
+ },
+ "note:crlf": {
+  "note": [
+   [
+    [
+     "C",
+     2,
+     null,
+     1
+    ],
+    3,
+    []
+   ]
+  ],
+  "template": [
+   [
+    [
+     "A",
+     2,
+     null,
+     1
+    ],
+    1,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "B",
+     3,
+     "A",
+     1
+    ],
+    2,
+    [
+     [
+      "A",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "C",
+     2,
+     null,
+     1
+    ],
+    3,
+    [],
+    "empty"
+   ]
+  ],
+  "top": []
+ },
+ "note:empty": {
+  "note": [],
+  "template": [],
+  "top": []
+ },
+ "note:fenced": {
+  "note": [
+   [
+    [
+     "A",
+     2,
+     null,
+     1
+    ],
+    1,
+    []
+   ],
+   [
+    [
+     "B",
+     3,
+     "A",
+     1
+    ],
+    5,
+    [
+     [
+      "A",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "C",
+     2,
+     null,
+     1
+    ],
+    9,
+    []
+   ]
+  ],
+  "template": [
+   [
+    [
+     "A",
+     2,
+     null,
+     1
+    ],
+    1,
+    [],
+    "own"
+   ],
+   [
+    [
+     "B",
+     3,
+     "A",
+     1
+    ],
+    5,
+    [
+     [
+      "A",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "C",
+     2,
+     null,
+     1
+    ],
+    9,
+    [],
+    "empty"
+   ]
+  ],
+  "top": []
+ },
+ "note:repeats": {
+  "note": [
+   [
+    [
+     "2026-W13",
+     1,
+     null,
+     0
+    ],
+    1,
+    []
+   ],
+   [
+    [
+     "A",
+     2,
+     null,
+     1
+    ],
+    2,
+    []
+   ],
+   [
+    [
+     "X",
+     3,
+     "A",
+     1
+    ],
+    3,
+    [
+     [
+      "A",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "X",
+     3,
+     "A",
+     2
+    ],
+    4,
+    [
+     [
+      "A",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "B",
+     2,
+     null,
+     1
+    ],
+    5,
+    []
+   ],
+   [
+    [
+     "X",
+     3,
+     "B",
+     1
+    ],
+    6,
+    [
+     [
+      "B",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Second",
+     1,
+     null,
+     0
+    ],
+    7,
+    []
+   ],
+   [
+    [
+     "A",
+     2,
+     null,
+     2
+    ],
+    8,
+    []
+   ]
+  ],
+  "template": [
+   [
+    [
+     "A",
+     2,
+     null,
+     1
+    ],
+    2,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "X",
+     3,
+     "A",
+     1
+    ],
+    3,
+    [
+     [
+      "A",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "X",
+     3,
+     "A",
+     2
+    ],
+    4,
+    [
+     [
+      "A",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "B",
+     2,
+     null,
+     1
+    ],
+    5,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "X",
+     3,
+     "B",
+     1
+    ],
+    6,
+    [
+     [
+      "B",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "A",
+     2,
+     null,
+     2
+    ],
+    8,
+    [],
+    "own"
+   ]
+  ],
+  "top": [
+   {
+    "heading": "2026-W13",
+    "line": 1
+   },
+   {
+    "heading": "Second",
+    "line": 7
+   }
+  ]
+ },
+ "note:skipped-level": {
+  "note": [
+   [
+    [
+     "Deep first",
+     4,
+     null,
+     1
+    ],
+    1,
+    []
+   ],
+   [
+    [
+     "Two",
+     2,
+     null,
+     1
+    ],
+    2,
+    []
+   ],
+   [
+    [
+     "Six",
+     6,
+     "Two",
+     1
+    ],
+    3,
+    [
+     [
+      "Two",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Three",
+     3,
+     "Two",
+     1
+    ],
+    4,
+    [
+     [
+      "Two",
+      2,
+      null,
+      1
+     ]
+    ]
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Deep first",
+     4,
+     null,
+     1
+    ],
+    1,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Two",
+     2,
+     null,
+     1
+    ],
+    2,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Six",
+     6,
+     "Two",
+     1
+    ],
+    3,
+    [
+     [
+      "Two",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Three",
+     3,
+     "Two",
+     1
+    ],
+    4,
+    [
+     [
+      "Two",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ]
+  ],
+  "top": []
+ },
+ "note:templater": {
+  "note": [
+   [
+    [
+     "<% tp.file.title %>",
+     1,
+     null,
+     0
+    ],
+    4,
+    []
+   ],
+   [
+    [
+     "inside",
+     2,
+     null,
+     1
+    ],
+    6,
+    []
+   ],
+   [
+    [
+     "Real",
+     2,
+     null,
+     1
+    ],
+    8,
+    []
+   ],
+   [
+    [
+     "<% x %>",
+     3,
+     "Real",
+     1
+    ],
+    9,
+    [
+     [
+      "Real",
+      2,
+      null,
+      1
+     ]
+    ]
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Real",
+     2,
+     null,
+     1
+    ],
+    8,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "<% x %>",
+     3,
+     "Real",
+     1
+    ],
+    9,
+    [
+     [
+      "Real",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ]
+  ],
+  "top": [
+   {
+    "heading": "<% tp.file.title %>",
+    "line": 4
+   }
+  ]
+ },
+ "template:t_month_privat": {
+  "note": [
+   [
+    [
+     "Monthly Review: <%\"[\"%>[<% tm %>]]",
+     1,
+     null,
+     0
+    ],
+    7,
+    []
+   ],
+   [
+    [
+     "Theme of the Month",
+     2,
+     null,
+     1
+    ],
+    13,
+    []
+   ],
+   [
+    [
+     "Outlook",
+     2,
+     null,
+     1
+    ],
+    30,
+    []
+   ],
+   [
+    [
+     "Goals and Wishes",
+     3,
+     "Outlook",
+     1
+    ],
+    32,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Work",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    34,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Contacts",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    37,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Health",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    40,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Spare Time",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    43,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "I look forward to",
+     3,
+     "Outlook",
+     1
+    ],
+    46,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "This will be challenging",
+     3,
+     "Outlook",
+     1
+    ],
+    49,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "ToDos for this month",
+     3,
+     "Outlook",
+     1
+    ],
+    54,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Goals and Milestones",
+     3,
+     "Outlook",
+     1
+    ],
+    57,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    65,
+    []
+   ],
+   [
+    [
+     "Habits %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    67,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Language Learning %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    72,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Body Values %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    77,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Temperature %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    83,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Energy and Sleep",
+     3,
+     "Overview",
+     1
+    ],
+    88,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Learnings of the Month  %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    98,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Review of the month",
+     2,
+     null,
+     1
+    ],
+    105,
+    []
+   ],
+   [
+    [
+     "Comments from this month",
+     3,
+     "Review of the month",
+     1
+    ],
+    107,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Review of the month",
+     1
+    ],
+    114,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Things I did well this month",
+     4,
+     "In my own words",
+     1
+    ],
+    118,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the month",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Things which were hard this month",
+     4,
+     "In my own words",
+     1
+    ],
+    121,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the month",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Reflections",
+     3,
+     "Review of the month",
+     1
+    ],
+    125,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "I like about myself",
+     3,
+     "Review of the month",
+     1
+    ],
+    148,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "The following is good for me",
+     3,
+     "Review of the month",
+     1
+    ],
+    153,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Plan",
+     2,
+     null,
+     1
+    ],
+    160,
+    []
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Theme of the Month",
+     2,
+     null,
+     1
+    ],
+    13,
+    [],
+    "automatic-only"
+   ],
+   [
+    [
+     "Outlook",
+     2,
+     null,
+     1
+    ],
+    30,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Goals and Wishes",
+     3,
+     "Outlook",
+     1
+    ],
+    32,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Work",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    34,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Contacts",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    37,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Health",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    40,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Spare Time",
+     4,
+     "Goals and Wishes",
+     1
+    ],
+    43,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ],
+     [
+      "Goals and Wishes",
+      3,
+      "Outlook",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "I look forward to",
+     3,
+     "Outlook",
+     1
+    ],
+    46,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "This will be challenging",
+     3,
+     "Outlook",
+     1
+    ],
+    49,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "ToDos for this month",
+     3,
+     "Outlook",
+     1
+    ],
+    54,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Goals and Milestones",
+     3,
+     "Outlook",
+     1
+    ],
+    57,
+    [
+     [
+      "Outlook",
+      2,
+      null,
+      1
+     ]
+    ],
+    "mixed"
+   ],
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    65,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Habits %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    67,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Language Learning %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    72,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Body Values %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    77,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Temperature %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    83,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Energy and Sleep",
+     3,
+     "Overview",
+     1
+    ],
+    88,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Learnings of the Month  %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    98,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Review of the month",
+     2,
+     null,
+     1
+    ],
+    105,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Comments from this month",
+     3,
+     "Review of the month",
+     1
+    ],
+    107,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Review of the month",
+     1
+    ],
+    114,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Things I did well this month",
+     4,
+     "In my own words",
+     1
+    ],
+    118,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the month",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Things which were hard this month",
+     4,
+     "In my own words",
+     1
+    ],
+    121,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the month",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Reflections",
+     3,
+     "Review of the month",
+     1
+    ],
+    125,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ],
+    "mixed"
+   ],
+   [
+    [
+     "I like about myself",
+     3,
+     "Review of the month",
+     1
+    ],
+    148,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "The following is good for me",
+     3,
+     "Review of the month",
+     1
+    ],
+    153,
+    [
+     [
+      "Review of the month",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Plan",
+     2,
+     null,
+     1
+    ],
+    160,
+    [],
+    "mixed"
+   ]
+  ],
+  "top": [
+   {
+    "heading": "Monthly Review: <%\"[\"%>[<% tm %>]]",
+    "line": 7
+   }
+  ]
+ },
+ "template:t_month_work": {
+  "note": [
+   [
+    [
+     "Monthly Review: <%\"[\"%>[<% tm %>]]",
+     1,
+     null,
+     0
+    ],
+    7,
+    []
+   ],
+   [
+    [
+     "Planing",
+     2,
+     null,
+     1
+    ],
+    12,
+    []
+   ],
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    18,
+    []
+   ],
+   [
+    [
+     "Reporting %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    20,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Learnings of the Month %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    26,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Working Times",
+     2,
+     null,
+     1
+    ],
+    32,
+    []
+   ],
+   [
+    [
+     "Review",
+     2,
+     null,
+     1
+    ],
+    36,
+    []
+   ],
+   [
+    [
+     "Comments from this month",
+     3,
+     "Review",
+     1
+    ],
+    38,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Review",
+     1
+    ],
+    45,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Things I did well this month",
+     4,
+     "In my own words",
+     1
+    ],
+    49,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Things which were hard this month",
+     4,
+     "In my own words",
+     1
+    ],
+    52,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Plan",
+     2,
+     null,
+     1
+    ],
+    55,
+    []
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Planing",
+     2,
+     null,
+     1
+    ],
+    12,
+    [],
+    "own"
+   ],
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    18,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Reporting %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    20,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Learnings of the Month %% fold %%",
+     3,
+     "Overview",
+     1
+    ],
+    26,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Working Times",
+     2,
+     null,
+     1
+    ],
+    32,
+    [],
+    "automatic-only"
+   ],
+   [
+    [
+     "Review",
+     2,
+     null,
+     1
+    ],
+    36,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Comments from this month",
+     3,
+     "Review",
+     1
+    ],
+    38,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Review",
+     1
+    ],
+    45,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Things I did well this month",
+     4,
+     "In my own words",
+     1
+    ],
+    49,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Things which were hard this month",
+     4,
+     "In my own words",
+     1
+    ],
+    52,
+    [
+     [
+      "Review",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Plan",
+     2,
+     null,
+     1
+    ],
+    55,
+    [],
+    "mixed"
+   ]
+  ],
+  "top": [
+   {
+    "heading": "Monthly Review: <%\"[\"%>[<% tm %>]]",
+    "line": 7
+   }
+  ]
+ },
+ "template:t_quarter_privat": {
+  "note": [
+   [
+    [
+     "not a heading in the block",
+     2,
+     null,
+     1
+    ],
+    8,
+    []
+   ],
+   [
+    [
+     "Quarterly Review: <%\"[\"%>[<% tq %>]]",
+     1,
+     null,
+     0
+    ],
+    13,
+    []
+   ],
+   [
+    [
+     "Review of Habits",
+     2,
+     null,
+     1
+    ],
+    23,
+    []
+   ],
+   [
+    [
+     "Healthfood",
+     3,
+     "Review of Habits",
+     1
+    ],
+    25,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Sport",
+     3,
+     "Review of Habits",
+     1
+    ],
+    30,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Bewegungs Break",
+     3,
+     "Review of Habits",
+     1
+    ],
+    35,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Entspannung",
+     3,
+     "Review of Habits",
+     1
+    ],
+    40,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Alcohol",
+     3,
+     "Review of Habits",
+     1
+    ],
+    45,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Junk Food",
+     3,
+     "Review of Habits",
+     1
+    ],
+    50,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Body Values",
+     2,
+     null,
+     1
+    ],
+    56,
+    []
+   ],
+   [
+    [
+     "Web of Life",
+     2,
+     null,
+     1
+    ],
+    63,
+    []
+   ],
+   [
+    [
+     "Notes Created This Quarter",
+     2,
+     null,
+     1
+    ],
+    71,
+    []
+   ],
+   [
+    [
+     "Review of Monthly Reviews",
+     3,
+     "Notes Created This Quarter",
+     1
+    ],
+    73,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%tp.date.now(\"YYYY-MM\", 0, tq, \"YYYY-[Q]Q\")%>",
+     4,
+     "Review of Monthly Reviews",
+     1
+    ],
+    77,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review of Monthly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%tp.date.now(\"YYYY-MM\", \"P+1M\", tq, \"YYYY-[Q]Q\")%>",
+     4,
+     "Review of Monthly Reviews",
+     1
+    ],
+    81,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review of Monthly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%tp.date.now(\"YYYY-MM\", \"P+2M\", tq, \"YYYY-[Q]Q\")%>",
+     4,
+     "Review of Monthly Reviews",
+     1
+    ],
+    85,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review of Monthly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Review Of Weekly Reviews",
+     3,
+     "Notes Created This Quarter",
+     1
+    ],
+    89,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What were the 3 most important lessons I learned",
+     4,
+     "Review Of Weekly Reviews",
+     1
+    ],
+    95,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review Of Weekly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Goals and Projects Review",
+     2,
+     null,
+     1
+    ],
+    100,
+    []
+   ],
+   [
+    [
+     "Review Of Milestones",
+     3,
+     "Goals and Projects Review",
+     1
+    ],
+    102,
+    [
+     [
+      "Goals and Projects Review",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Review Of Projects",
+     3,
+     "Goals and Projects Review",
+     1
+    ],
+    113,
+    [
+     [
+      "Goals and Projects Review",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Burnout Reflexion",
+     2,
+     null,
+     1
+    ],
+    123,
+    []
+   ],
+   [
+    [
+     "Bucket List",
+     2,
+     null,
+     1
+    ],
+    133,
+    []
+   ],
+   [
+    [
+     "Conclusions",
+     2,
+     null,
+     1
+    ],
+    139,
+    []
+   ],
+   [
+    [
+     "Start Stop Continue",
+     3,
+     "Conclusions",
+     1
+    ],
+    141,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What should I start doing next quarter?",
+     4,
+     "Start Stop Continue",
+     1
+    ],
+    142,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ],
+     [
+      "Start Stop Continue",
+      3,
+      "Conclusions",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What should I stop doing next quarter?",
+     4,
+     "Start Stop Continue",
+     1
+    ],
+    144,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ],
+     [
+      "Start Stop Continue",
+      3,
+      "Conclusions",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What should I continue doing next quarter?",
+     4,
+     "Start Stop Continue",
+     1
+    ],
+    146,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ],
+     [
+      "Start Stop Continue",
+      3,
+      "Conclusions",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Setting New Goals",
+     3,
+     "Conclusions",
+     1
+    ],
+    150,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ]
+    ]
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Review of Habits",
+     2,
+     null,
+     1
+    ],
+    23,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Healthfood",
+     3,
+     "Review of Habits",
+     1
+    ],
+    25,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Sport",
+     3,
+     "Review of Habits",
+     1
+    ],
+    30,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Bewegungs Break",
+     3,
+     "Review of Habits",
+     1
+    ],
+    35,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Entspannung",
+     3,
+     "Review of Habits",
+     1
+    ],
+    40,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Alcohol",
+     3,
+     "Review of Habits",
+     1
+    ],
+    45,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Junk Food",
+     3,
+     "Review of Habits",
+     1
+    ],
+    50,
+    [
+     [
+      "Review of Habits",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Body Values",
+     2,
+     null,
+     1
+    ],
+    56,
+    [],
+    "automatic-only"
+   ],
+   [
+    [
+     "Web of Life",
+     2,
+     null,
+     1
+    ],
+    63,
+    [],
+    "automatic-only"
+   ],
+   [
+    [
+     "Notes Created This Quarter",
+     2,
+     null,
+     1
+    ],
+    71,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Review of Monthly Reviews",
+     3,
+     "Notes Created This Quarter",
+     1
+    ],
+    73,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%tp.date.now(\"YYYY-MM\", 0, tq, \"YYYY-[Q]Q\")%>",
+     4,
+     "Review of Monthly Reviews",
+     1
+    ],
+    77,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review of Monthly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%tp.date.now(\"YYYY-MM\", \"P+1M\", tq, \"YYYY-[Q]Q\")%>",
+     4,
+     "Review of Monthly Reviews",
+     1
+    ],
+    81,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review of Monthly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%tp.date.now(\"YYYY-MM\", \"P+2M\", tq, \"YYYY-[Q]Q\")%>",
+     4,
+     "Review of Monthly Reviews",
+     1
+    ],
+    85,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review of Monthly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Review Of Weekly Reviews",
+     3,
+     "Notes Created This Quarter",
+     1
+    ],
+    89,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ]
+    ],
+    "mixed"
+   ],
+   [
+    [
+     "What were the 3 most important lessons I learned",
+     4,
+     "Review Of Weekly Reviews",
+     1
+    ],
+    95,
+    [
+     [
+      "Notes Created This Quarter",
+      2,
+      null,
+      1
+     ],
+     [
+      "Review Of Weekly Reviews",
+      3,
+      "Notes Created This Quarter",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Goals and Projects Review",
+     2,
+     null,
+     1
+    ],
+    100,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Review Of Milestones",
+     3,
+     "Goals and Projects Review",
+     1
+    ],
+    102,
+    [
+     [
+      "Goals and Projects Review",
+      2,
+      null,
+      1
+     ]
+    ],
+    "mixed"
+   ],
+   [
+    [
+     "Review Of Projects",
+     3,
+     "Goals and Projects Review",
+     1
+    ],
+    113,
+    [
+     [
+      "Goals and Projects Review",
+      2,
+      null,
+      1
+     ]
+    ],
+    "mixed"
+   ],
+   [
+    [
+     "Burnout Reflexion",
+     2,
+     null,
+     1
+    ],
+    123,
+    [],
+    "automatic-only"
+   ],
+   [
+    [
+     "Bucket List",
+     2,
+     null,
+     1
+    ],
+    133,
+    [],
+    "mixed"
+   ],
+   [
+    [
+     "Conclusions",
+     2,
+     null,
+     1
+    ],
+    139,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Start Stop Continue",
+     3,
+     "Conclusions",
+     1
+    ],
+    141,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What should I start doing next quarter?",
+     4,
+     "Start Stop Continue",
+     1
+    ],
+    142,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ],
+     [
+      "Start Stop Continue",
+      3,
+      "Conclusions",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What should I stop doing next quarter?",
+     4,
+     "Start Stop Continue",
+     1
+    ],
+    144,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ],
+     [
+      "Start Stop Continue",
+      3,
+      "Conclusions",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What should I continue doing next quarter?",
+     4,
+     "Start Stop Continue",
+     1
+    ],
+    146,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ],
+     [
+      "Start Stop Continue",
+      3,
+      "Conclusions",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Setting New Goals",
+     3,
+     "Conclusions",
+     1
+    ],
+    150,
+    [
+     [
+      "Conclusions",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ]
+  ],
+  "top": [
+   {
+    "heading": "Quarterly Review: <%\"[\"%>[<% tq %>]]",
+    "line": 13
+   }
+  ]
+ },
+ "template:t_week_privat": {
+  "note": [
+   [
+    [
+     "Weekly Review: <%\"[\"%>[<% tw %>]]",
+     1,
+     null,
+     0
+    ],
+    7,
+    []
+   ],
+   [
+    [
+     "Theme of the week",
+     2,
+     null,
+     1
+    ],
+    18,
+    []
+   ],
+   [
+    [
+     "Get Started",
+     3,
+     "Theme of the week",
+     1
+    ],
+    25,
+    [
+     [
+      "Theme of the week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    29,
+    []
+   ],
+   [
+    [
+     "Habits",
+     3,
+     "Overview",
+     1
+    ],
+    33,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Language Learning",
+     3,
+     "Overview",
+     1
+    ],
+    38,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Temperature",
+     3,
+     "Overview",
+     1
+    ],
+    43,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Energy and Sleep",
+     3,
+     "Overview",
+     1
+    ],
+    48,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Review of the Week",
+     2,
+     null,
+     1
+    ],
+    59,
+    []
+   ],
+   [
+    [
+     "Notes Created This Week",
+     3,
+     "Review of the Week",
+     1
+    ],
+    61,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    65,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     1
+    ],
+    66,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     1
+    ],
+    70,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    73,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     1
+    ],
+    74,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     1
+    ],
+    78,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    81,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     1
+    ],
+    82,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     1
+    ],
+    86,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    89,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     1
+    ],
+    90,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     1
+    ],
+    94,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    97,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     1
+    ],
+    98,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     1
+    ],
+    102,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    105,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+     1
+    ],
+    106,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+     1
+    ],
+    110,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    113,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     1
+    ],
+    114,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     1
+    ],
+    118,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Review Check",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     1
+    ],
+    121,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Learnings of the Week",
+     3,
+     "Review of the Week",
+     1
+    ],
+    126,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Reflections",
+     3,
+     "Review of the Week",
+     1
+    ],
+    134,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Review of the Week",
+     1
+    ],
+    145,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Went Well This Week?",
+     4,
+     "In my own words",
+     1
+    ],
+    148,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Should I Start Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    151,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Should I Stop Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    154,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Should I Continue Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    157,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Check My Own Words",
+     3,
+     "Review of the Week",
+     1
+    ],
+    160,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Organisation",
+     2,
+     null,
+     1
+    ],
+    164,
+    []
+   ],
+   [
+    [
+     "Planning",
+     3,
+     "Organisation",
+     1
+    ],
+    166,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Last Check",
+     3,
+     "Organisation",
+     1
+    ],
+    176,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ]
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Theme of the week",
+     2,
+     null,
+     1
+    ],
+    18,
+    [],
+    "own"
+   ],
+   [
+    [
+     "Get Started",
+     3,
+     "Theme of the week",
+     1
+    ],
+    25,
+    [
+     [
+      "Theme of the week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    29,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Habits",
+     3,
+     "Overview",
+     1
+    ],
+    33,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Language Learning",
+     3,
+     "Overview",
+     1
+    ],
+    38,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Temperature",
+     3,
+     "Overview",
+     1
+    ],
+    43,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Energy and Sleep",
+     3,
+     "Overview",
+     1
+    ],
+    48,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Review of the Week",
+     2,
+     null,
+     1
+    ],
+    59,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Notes Created This Week",
+     3,
+     "Review of the Week",
+     1
+    ],
+    61,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    65,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     1
+    ],
+    66,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     1
+    ],
+    70,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    73,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     1
+    ],
+    74,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     1
+    ],
+    78,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    81,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     1
+    ],
+    82,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     1
+    ],
+    86,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    89,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     1
+    ],
+    90,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     1
+    ],
+    94,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    97,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     1
+    ],
+    98,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     1
+    ],
+    102,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    105,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+     1
+    ],
+    106,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+     1
+    ],
+    110,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -2, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -2, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     3,
+     "Review of the Week",
+     1
+    ],
+    113,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Notes of the Day %% fold %%",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     1
+    ],
+    114,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that day",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     1
+    ],
+    118,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Review Check",
+     4,
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+     1
+    ],
+    121,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -1, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -1, nw)%>]]",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "Learnings of the Week",
+     3,
+     "Review of the Week",
+     1
+    ],
+    126,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Reflections",
+     3,
+     "Review of the Week",
+     1
+    ],
+    134,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "mixed"
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Review of the Week",
+     1
+    ],
+    145,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Went Well This Week?",
+     4,
+     "In my own words",
+     1
+    ],
+    148,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Should I Start Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    151,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Should I Stop Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    154,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Should I Continue Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    157,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Review of the Week",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Check My Own Words",
+     3,
+     "Review of the Week",
+     1
+    ],
+    160,
+    [
+     [
+      "Review of the Week",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "Organisation",
+     2,
+     null,
+     1
+    ],
+    164,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Planning",
+     3,
+     "Organisation",
+     1
+    ],
+    166,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ],
+    "mixed"
+   ],
+   [
+    [
+     "Last Check",
+     3,
+     "Organisation",
+     1
+    ],
+    176,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ]
+  ],
+  "top": [
+   {
+    "heading": "Weekly Review: <%\"[\"%>[<% tw %>]]",
+    "line": 7
+   }
+  ]
+ },
+ "template:t_week_work": {
+  "note": [
+   [
+    [
+     "Weekly Review: <%\"[\"%>[<% tw %>]]",
+     1,
+     null,
+     0
+    ],
+    7,
+    []
+   ],
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    14,
+    []
+   ],
+   [
+    [
+     "Reporting",
+     3,
+     "Overview",
+     1
+    ],
+    19,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Working Times",
+     3,
+     "Overview",
+     1
+    ],
+    29,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Get Started",
+     3,
+     "Overview",
+     1
+    ],
+    35,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Notes Created This Week",
+     3,
+     "Overview",
+     1
+    ],
+    38,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    42,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    47,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    52,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    57,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    62,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "My final thoughts for that week",
+     3,
+     "Overview",
+     1
+    ],
+    67,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Review Check",
+     4,
+     "My final thoughts for that week",
+     1
+    ],
+    70,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "My final thoughts for that week",
+      3,
+      "Overview",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Learnings of the Week",
+     3,
+     "Overview",
+     1
+    ],
+    73,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Overview",
+     1
+    ],
+    81,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Went Well This Week?",
+     4,
+     "In my own words",
+     1
+    ],
+    83,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Should I Start Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    85,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Should I Stop Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    87,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "What Should I Continue Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    89,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Check My Own Words",
+     3,
+     "Overview",
+     1
+    ],
+    92,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Organisation",
+     2,
+     null,
+     1
+    ],
+    95,
+    []
+   ],
+   [
+    [
+     "Planning",
+     3,
+     "Organisation",
+     1
+    ],
+    97,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Last Check",
+     3,
+     "Organisation",
+     1
+    ],
+    101,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ]
+   ],
+   [
+    [
+     "Shut Down",
+     3,
+     "Organisation",
+     1
+    ],
+    106,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ]
+   ]
+  ],
+  "template": [
+   [
+    [
+     "Overview",
+     2,
+     null,
+     1
+    ],
+    14,
+    [],
+    "automatic-only"
+   ],
+   [
+    [
+     "Reporting",
+     3,
+     "Overview",
+     1
+    ],
+    19,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Working Times",
+     3,
+     "Overview",
+     1
+    ],
+    29,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Get Started",
+     3,
+     "Overview",
+     1
+    ],
+    35,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "Notes Created This Week",
+     3,
+     "Overview",
+     1
+    ],
+    38,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -7, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -7, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    42,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -6, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -6, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    47,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -5, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -5, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    52,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -4, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -4, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    57,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "<%\"[\"%>[<%tp.date.now(\"YYYY-MM-DD\", -3, nw)%>|<%tp.date.now(\"YYYY-MM-DD ddd\", -3, nw)%>]]",
+     3,
+     "Overview",
+     1
+    ],
+    62,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "My final thoughts for that week",
+     3,
+     "Overview",
+     1
+    ],
+    67,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Review Check",
+     4,
+     "My final thoughts for that week",
+     1
+    ],
+    70,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "My final thoughts for that week",
+      3,
+      "Overview",
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "Learnings of the Week",
+     3,
+     "Overview",
+     1
+    ],
+    73,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "In my own words",
+     3,
+     "Overview",
+     1
+    ],
+    81,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Went Well This Week?",
+     4,
+     "In my own words",
+     1
+    ],
+    83,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Should I Start Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    85,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Should I Stop Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    87,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "What Should I Continue Doing?",
+     4,
+     "In my own words",
+     1
+    ],
+    89,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ],
+     [
+      "In my own words",
+      3,
+      "Overview",
+      1
+     ]
+    ],
+    "empty"
+   ],
+   [
+    [
+     "Check My Own Words",
+     3,
+     "Overview",
+     1
+    ],
+    92,
+    [
+     [
+      "Overview",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "Organisation",
+     2,
+     null,
+     1
+    ],
+    95,
+    [],
+    "empty"
+   ],
+   [
+    [
+     "Planning",
+     3,
+     "Organisation",
+     1
+    ],
+    97,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ],
+   [
+    [
+     "Last Check",
+     3,
+     "Organisation",
+     1
+    ],
+    101,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ],
+    "automatic-only"
+   ],
+   [
+    [
+     "Shut Down",
+     3,
+     "Organisation",
+     1
+    ],
+    106,
+    [
+     [
+      "Organisation",
+      2,
+      null,
+      1
+     ]
+    ],
+    "own"
+   ]
+  ],
+  "top": [
+   {
+    "heading": "Weekly Review: <%\"[\"%>[<% tw %>]]",
+    "line": 7
+   }
+  ]
+ }
+}

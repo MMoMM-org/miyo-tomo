@@ -156,3 +156,27 @@ ADR-13 / F7-AC3: after a template change the user must see the rows the new
 template no longer has. Occurrence is left out of the comparison: a new
 duplicate earlier in the template shifts occurrences without removing the
 heading the user mapped, and that case is a correction, not a loss.
+
+## WHY the Heading Walk Is Shared With the Note Planner (spec 046 T6.2)
+
+`walk_headings` turns a heading list into identities — text, level,
+parent, occurrence among identical (text, level, parent) — and ancestors.
+`_tree` uses it on the template's headings; `review_section_plan._Note.read`
+uses it on the note's headings as Hashi reads them. Until T6.2 the planner
+carried its own copy of the loop, and the two copies are what decide
+whether a row the setup saved (from the template) finds its heading in the
+note: a fix to one walk — how a level-1 heading ends a branch, from which
+number occurrences count — would have silently stopped matching the other.
+One walk keeps the identity the same on both sides.
+
+What differs stays at the callers, as parameters and inputs: the heading
+list (this module's `headings` after Templater spans, frontmatter offset
+applied by `_tree`; Hashi's `hashi_headings` for a note), and `name`, the
+text the identity holds (verbatim here, `rht.bare` — closing hashes off —
+in the planner). A level-1 heading yields no key: the template analysis
+lists it as a top line, the planner gives it occurrence 0, never a row. The
+walk lives here because this module defines `HeadingKey`;
+`review_section_plan` already imports it, and this module never imports
+the planner (`tests/test_review_section_plan.py`, `FORBIDDEN`). The change
+is pinned by a golden of both walks recorded before it
+(`tests/test_046_t6_2_heading_walk.py`).

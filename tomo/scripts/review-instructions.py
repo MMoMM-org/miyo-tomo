@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.3.4
+# version: 0.4.0
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13; spec 046 ADR-12: section stops, choices).
 
@@ -82,6 +82,9 @@ Exit codes:
     1 — unexpected exception; stderr carries the exception class name only
     2 — bad invocation (unknown subcommand or flag, missing argument, unsafe --stem)
 
+The target reads are ``lib/review_target_read``'s, the flags ``lib/review_instructions_args``'s, Kado's refused
+guard is read by ``lib/review_kado_conflict``.
+
 Design notes: docs/tomo/scripts/review-instructions.md
 """
 from __future__ import annotations
@@ -103,17 +106,14 @@ from lib import review_actions as ra  # noqa: E402
 from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
-from lib import review_new_note as rnn  # noqa: E402
-from lib import review_section_plan as rsp  # noqa: E402
-from lib.kado_client import (  # noqa: E402
-    KadoClient, KadoError, KadoNotFoundError,
-)
+from lib import review_instructions_args as rargs  # noqa: E402
+from lib import review_kado_conflict as rkc  # noqa: E402
+from lib import review_target_read as rtr  # noqa: E402
+from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.note_io import ConfigError, load_vault_config  # noqa: E402
-from lib.period import parse_name, render_name  # noqa: E402
 from lib import review_state as rs  # noqa: E402
-from lib.review_doc_parse import SECTION_KEY  # noqa: E402
 from lib.review_doc_read import DocRead, doc_path_of, read_document  # noqa: E402
-from lib.review_vault import Stopped, Vault, kado_stops  # noqa: E402
+from lib.review_vault import Stopped, Vault  # noqa: E402
 from lib.staged_delivery import DeliveryStop, StagedDelivery  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
@@ -135,18 +135,6 @@ class NotFound(Exception):
     def __init__(self, doc_path: Optional[str] = None):
         super().__init__("not-found")
         self.doc_path = doc_path
-
-
-# ---------------------------------------------------------------- Kado reads
-
-def _note(vault: Vault, path: str) -> Optional[str]:
-    """The note's text; None when nothing is at ``path``; ``Stopped`` on any other failure."""
-    with kado_stops():
-        try:
-            content = vault.client.read_note(path).get("content")
-        except KadoNotFoundError:
-            return None
-    return content if isinstance(content, str) else None
 
 
 # ---------------------------------------------------------------- the context of one run
@@ -216,38 +204,6 @@ def _setup(args: argparse.Namespace, kind: str) -> tuple:
     return setup, (name if isinstance(name, str) else None)
 
 
-def _target(vault: Vault, setup: rc.ReviewSetup, period_name: str) -> ra.Target:
-    period = parse_name(period_name, setup.format, setup.rule)
-    if period is None:
-        raise Refused("setup-invalid", errors=[f"/naming/calendar_patterns/{rc.GRANULARITY[setup.kind]}"])
-    candidates = period.note_paths(setup.folder, setup.format)
-    texts: Dict[str, Optional[str]] = {}
-    for path in candidates:
-        texts[path] = _note(vault, path)
-        if texts[path] is not None:
-            break
-    elsewhere: List[str] = []
-    if all(texts.get(p) is None for p in candidates):
-        name = f"{render_name(period, setup.format)}.md"
-        with kado_stops():
-            hits = vault.client.search_by_name(name)
-        inbox = setup.inbox.strip().strip("/") + "/"
-        elsewhere = sorted(str(h.get("path")) for h in hits
-                           if isinstance(h, dict) and posixpath.basename(str(h.get("path") or "")) == name
-                           and not str(h.get("path")).startswith(inbox))      # never the staged copy in the inbox
-        for path in elsewhere:
-            texts[path] = _note(vault, path)
-    return ra.locate_target(candidates, texts, elsewhere)
-
-
-def _template(vault: Vault, setup: rc.ReviewSetup, target: ra.Target) -> Optional[rnn.Template]:
-    if target.text is not None:
-        return None
-    raw_path, variant_path = rdl.template_paths(setup)
-    return rnn.Template(raw=_note(vault, raw_path) if raw_path else None,
-                       variant=_note(vault, variant_path) if variant_path else None)
-
-
 def load_run(args: argparse.Namespace) -> Run:
     """Read the document, the set at the stem's path, the target and the template; build the plan; classify its
     problems."""
@@ -270,8 +226,10 @@ def load_run(args: argparse.Namespace) -> Run:
     except rc.UnsafePath:
         raise Refused("inbox-not-configured") from None
     held = rs.read_set(vault, paths[rdl.SET_JSON])     # before the note, never after it (T6.2)
-    target = _target(vault, setup, str(period_name or ""))
-    template = _template(vault, setup, target)
+    target = rtr.locate(vault, setup, str(period_name or ""))
+    if target is None:
+        raise Refused("setup-invalid", errors=[f"/naming/calendar_patterns/{rc.GRANULARITY[setup.kind]}"])
+    template = rtr.template(vault, setup, target)
     anchor, choices = getattr(args, "place_anchor", None), getattr(args, "choices", None) or {}
     plan = ra.build_review_plan(read.parsed.approved_review(), setup, target, template, anchor=anchor,
                                 choices=choices, run_id=meta.run_id, generated=meta.generated)
@@ -313,8 +271,8 @@ def _mark_document(run: Run, delivery: StagedDelivery) -> None:
         run.vault.client.write_note(run.read.doc_path, marked, expected_modified=run.read.modified)
     except KadoError as exc:
         stop = delivery.fail(rdl.DOC_MARK, exc)
-        if rdl.is_conflict(exc):
-            stop.status, stop.reason = DOC_CHANGED, rdl.conflict_reason(exc)
+        if rkc.is_conflict(exc):
+            stop.status, stop.reason = DOC_CHANGED, rkc.conflict_reason(exc)
         raise stop from exc
     delivery.record(rdl.DOC_MARK)
 
@@ -425,7 +383,7 @@ def drop(args: argparse.Namespace) -> dict:
                                 expected_modified=held.modified if held is not None else None)
     except KadoError as exc:
         return {"status": "stopped", "stem": args.stem,
-                "problems": [SET_CHANGED if rdl.is_conflict(exc) else KADO_WRITE_FAILED],
+                "problems": [SET_CHANGED if rkc.is_conflict(exc) else KADO_WRITE_FAILED],
                 "error": {"kind": type(exc).__name__}}
     try:
         vault.client.write_note(paths[rdl.SET_MD], rdl.withdrawn_md(args.stem, meta, profile, files))
@@ -466,30 +424,6 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _stem_arg(text: str) -> str:
-    if not rs.safe_stem(text):
-        raise argparse.ArgumentTypeError("expected a plain stem like 2026-W13_review (not empty, . or .., no / or \\)")
-    return text
-
-
-class _ChoiceFlag(argparse.Action):
-    """``--section-choice <key>=skip|review`` and ``--confirm-moved <key>`` into one ``{key: choice}``; a malformed
-    value or a key given twice is a bad invocation."""
-
-    def __call__(self, parser, namespace, value, option_string=None):
-        if option_string == "--confirm-moved":
-            key, choice = value, rsp.CONFIRM_MOVED
-        else:
-            key, _, choice = value.partition("=")
-            if choice not in (rsp.SKIP, rsp.REVIEW):
-                parser.error(f"{option_string}: expected <key>=skip|review")
-        choices = dict(getattr(namespace, self.dest) or {})
-        if not SECTION_KEY.fullmatch(key) or key in choices:
-            parser.error(f"{option_string}: expected a section key, each key at most once")
-        choices[key] = choice
-        setattr(namespace, self.dest, choices)
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Pass 2 of /review: preview, deliver, drop, status.")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
@@ -502,13 +436,10 @@ def build_parser() -> argparse.ArgumentParser:
                        ("drop", "Withdraw a delivered set or remove the stage"),
                        ("status", "Name the review's state")):
         cmd = sub.add_parser(name, help=text)
-        cmd.add_argument("--stem", required=True, type=_stem_arg, help="<period>_review, the tomo-tmp/review/ folder")
+        cmd.add_argument("--stem", required=True, type=rargs.stem_arg,
+                         help="<period>_review, the tomo-tmp/review/ folder")
         if name in ("preview", "deliver"):
-            cmd.add_argument("--place-anchor", help="The heading the user chose instead of the configured anchor")
-            cmd.add_argument("--section-choice", action=_ChoiceFlag, dest="choices", metavar="KEY=skip|review",
-                             help="Answer a section stop: leave the section out, or put it into Tomo Review")
-            cmd.add_argument("--confirm-moved", action=_ChoiceFlag, dest="choices", metavar="KEY",
-                             help="Replace a moved block where it sits now")
+            rargs.add_plan_flags(cmd)
     return p
 
 

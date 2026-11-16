@@ -160,24 +160,14 @@ quoting a section marker would otherwise make that section's next run
 `section-broken`. An empty section leaves no sub-heading, like an empty
 group.
 
-## WHY the Delivery Reads the Section Plans Here (spec 046 T5.5)
+## WHY the Delivery's Readings of the Plans Moved Out (spec 046 T6.2)
 
-`review-instructions.py` needs three readings of `ReviewPlan.sections`
-besides the actions: `report` — the per-section output (`key`, `mode`,
-`placement`, `notices`, `scope_level`, a stop with its `offers` as `choices` and
-`block_at`, and in `preview` the block's `lines`) for every section whose
-block holds lines; `record` — `delivered_plan.sections`, `{key, mode,
-placement, scope_level}` for every section whose block holds lines, keys
-and enums only; `untaken` — the keys of the user's choices no plan took (no
-such section, or the choice answered no stop of it). They live here because
-this module owns the set of section plans and `lands`, the one test of
-"holds lines"; `review_delivery` calls them and stays below its size line.
-`report`'s `placement` is the row's configured one (`before`, `under`,
-`end`), carried on `SectionPlan.placement`; the preview lists it per section
-(F4-AC6). It is not `hashi_placement`, which only an insert has (None for a
-replace, a stop, a skip or a routed section) and which `record` keeps
-unchanged. Both are enums, so naming the placement costs no privacy.
-A section without lines is left out of both (the dropped and empty notices
-name it): it gets no action and no id whatever its mode, so a heading of it
-removed between a stop and the resume changes nothing the resume writes and
-must not refuse `replan-differs`.
+T5.5 put the delivery's readings of the section plans here — `report`,
+`record`, `untaken`, `dropped`, `empty`, `names`, `fields` — next to the
+set they read. That filled the module to 199 of its 200 lines. They read
+finished plans and are called only by `review_delivery`, while this module
+plans and composes; so at T6.2 they moved unchanged to
+`lib/review_section_report.py`, whose WHY document carries their
+rationale (configured vs Hashi placement, sections with lines only, how
+`untaken` compares). This module keeps the set-level steps that build what
+the set writes.

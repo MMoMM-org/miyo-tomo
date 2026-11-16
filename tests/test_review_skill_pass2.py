@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.8
+# version: 0.1.9
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -354,7 +354,7 @@ def _drop_problems() -> set[str]:
     from lib import review_delivery as rdl
 
     source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
-    setup_body = source[source.index("def _setup("):source.index("def _target(")]
+    setup_body = source[source.index("def _setup("):source.index("def load_run(")]
     drop_body = source[source.index("def drop("):source.index("def status(")]
     raised = set(re.findall(r'Refused\("([a-z-]+)"', setup_body + drop_body))
     assert raised == {"setup-missing", "setup-invalid", "inbox-not-configured"}, sorted(raised)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.6
+# version: 0.1.7
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -601,10 +601,19 @@ def test_crlf_heading_is_no_heading_for_hashi():
 LIB = TESTS_DIR.parent / "tomo" / "scripts" / "lib"
 # module -> the review modules it must never import (directly)
 FORBIDDEN = {   # the order (T5.4): review_actions -> review_new_note -> review_section_set -> review_section_plan
-    "review_hashi_text": {"review_actions", "review_new_note", "review_section_set", "review_section_plan"},
-    "review_section_plan": {"review_actions", "review_new_note", "review_section_set"},
+    "review_hashi_text": {"review_actions", "review_new_note", "review_section_set", "review_section_plan",
+                          "review_section_report"},
+    "review_section_plan": {"review_actions", "review_new_note", "review_section_set", "review_section_report"},
     "review_section_set": {"review_actions", "review_new_note"},
     "review_new_note": {"review_actions"},
+    # the T6.2 splits: review-instructions.py -> review_target_read -> review_delivery -> review_actions;
+    # review_delivery -> review_section_report -> review_section_plan; review_kado_conflict imports no review lib
+    "review_section_report": {"review_actions", "review_new_note", "review_section_set", "review_delivery"},
+    "review_actions": {"review_delivery", "review_section_report", "review_target_read"},
+    "review_delivery": {"review_target_read", "review_instructions_args", "review_kado_conflict"},
+    "review_kado_conflict": {"review_actions", "review_delivery", "review_section_plan", "review_state"},
+    "review_target_read": {"review_instructions_args", "review_kado_conflict"},
+    "review_instructions_args": {"review_actions", "review_delivery", "review_target_read", "review_kado_conflict"},
 }
 
 
@@ -628,7 +637,9 @@ def test_a_lower_review_module_never_imports_a_higher_one(module):
 
 @pytest.mark.parametrize("order", [("review_section_plan", "review_actions"), ("review_actions", "review_section_plan"),
                                    ("review_new_note", "review_actions"), ("review_hashi_text", "review_actions"),
-                                   ("review_section_set", "review_actions"), ("review_section_plan", "review_section_set")])
+                                   ("review_section_set", "review_actions"), ("review_section_plan", "review_section_set"),
+                                   ("review_section_report", "review_delivery"), ("review_kado_conflict",),
+                                   ("review_target_read", "review_actions"), ("review_instructions_args",)])
 def test_each_review_module_imports_alone_in_a_fresh_interpreter(order):
     code = f"import sys; sys.path.insert(0, {str(LIB.parent)!r}); " + "; ".join(f"from lib import {m}" for m in order)
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

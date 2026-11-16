@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.3.1
+# version: 0.4.0
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -15,7 +15,7 @@ contradicts the recorded ``delivered_plan`` while a set step is undone, and
 delivery begun with one — all listed among ``REFUSING`` so one pin covers
 every name. Spec 046 T5.5: the section stops, ``choice-invalid`` and
 ``choices-needed`` refuse, the section notices are notices
-(``review_section_set.names``); a plan with no refusing problem and no action
+(``review_section_report.names``); a plan with no refusing problem and no action
 is ``nothing-to-deliver``; ``section_report`` gives the fields of those names.
 ``STEPS`` is the delivery
 order ``note → set_json → set_md → doc_mark``. ``ReviewMeta`` lends the
@@ -36,12 +36,11 @@ peer through ``render_md`` with the stable tomo block; ``withdrawn_set`` and
 the envelope with an empty ``actions`` list and an MD that names the files
 to delete.
 
-``tool_error_payload``, ``tool_error_code``, ``is_conflict`` and
-``conflict_reason`` read a ``KadoError`` the delivery caught (Kado's refused
-guard, by code and by message); ``plan_record``, ``replan_differs``,
+``plan_record``, ``replan_differs``,
 ``resume_refusal`` and ``report_delivered_plan`` are the ``delivered_plan``
 record of ``meta.json`` and what a resumed run does with it (#258). They take
 the plan, the meta and the problems they need, never the script's ``Run``.
+Reading a ``KadoError`` the delivery caught is ``review_kado_conflict``'s (T6.2).
 
 No Kado call, no clock. Design notes: docs/tomo/scripts/lib/review_delivery.md
 """
@@ -54,9 +53,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from lib import review_actions as ra
 from lib import review_config as rc
 from lib import review_section_plan as rsp
-from lib import review_section_set as rss
+from lib import review_section_report as rsr
 from lib.doc_frontmatter import merge_tomo_block_into_markdown
-from lib.kado_client import KadoConcurrencyError, KadoError, KadoToolError
 from lib.note_io import atomic_write_text
 from lib.note_meta import META_FILE
 from lib.render_md import render_instructions_md
@@ -71,8 +69,8 @@ SET_WITHDRAWN = "set-withdrawn"
 ALREADY_APPLIED = "already-applied"
 REPLAN_DIFFERS = "replan-differs"
 ANCHOR_NEEDED = "anchor-needed"
-CHOICES_NEEDED, CHOICE_INVALID = "choices-needed", rss.CHOICE_INVALID
-SECTION_DROPPED, SECTION_EMPTY = rss.SECTION_DROPPED, rss.SECTION_EMPTY
+CHOICES_NEEDED, CHOICE_INVALID = "choices-needed", rsr.CHOICE_INVALID
+SECTION_DROPPED, SECTION_EMPTY = rsr.SECTION_DROPPED, rsr.SECTION_EMPTY
 TEMPLATER_HINT, VARIANT_MISSING, TEMPLATE_UNMERGEABLE = "templater_hint", "variant_missing", "template_unmergeable"
 REFUSING = (ra.NOT_APPROVED, APPROVED_MISSING, SECTION_CHECKBOX_MISSING, ra.NOTHING_TO_DELIVER, ra.PLACE_MISSING,
             ra.PLACE_TOO_DEEP, ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED, REPLAN_DIFFERS,
@@ -83,11 +81,6 @@ INSTRUCTIONS_SUFFIX = "_instructions"
 DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes
 ANCHOR_PICKED = "anchor_picked"                         # delivered_plan: --place-anchor was given (never the heading)
 SECTIONS, CHOICES_GIVEN = "sections", "choices_given"   # delivered_plan: section keys + modes; choices were given
-CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
-TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
-OPEN_UNSAVED, CHANGED_SINCE_READ, UNKNOWN_CONFLICT = "open-unsaved", "changed-since-read", "unknown"
-EDITOR_PHRASE = "open in the editor with unsaved changes"   # Kado's dirty-editor refusal (note-adapter conflictEditorError)
-GUARD_PHRASE = "updated in the background"                  # Kado's write guard (concurrency-guard)
 
 
 # --- the classification --------------------------------------------------------------
@@ -98,7 +91,7 @@ def classify(plan: ra.ReviewPlan, extra: Sequence[str] = (), counts: Optional[Di
     refuses; the parsed document's section ``counts`` and the user's ``choices`` add theirs."""
     problems: List[str] = []
     notices: List[str] = []
-    section_names = rss.names(plan.sections, counts or {}, choices or {})
+    section_names = rsr.names(plan.sections, counts or {}, choices or {})
     for name in [*plan.problems, *extra, *section_names, *plan.notices]:
         listed = notices if name in NOTICES else problems
         if name not in listed:
@@ -113,8 +106,8 @@ def classify(plan: ra.ReviewPlan, extra: Sequence[str] = (), counts: Optional[Di
 
 
 def section_report(plan: ra.ReviewPlan, counts: Dict[str, dict], choices: Dict[str, str], *, lines: bool) -> dict:
-    """The output fields of a mapped plan (``review_section_set.fields``)."""
-    return rss.fields(plan.sections, counts, choices, lines=lines)
+    """The output fields of a mapped plan (``review_section_report.fields``)."""
+    return rsr.fields(plan.sections, counts, choices, lines=lines)
 
 
 # --- meta.json ------------------------------------------------------------------------
@@ -235,50 +228,6 @@ def withdrawn_md(stem: str, meta: ReviewMeta, profile: Optional[str], files: Seq
     return merge_tomo_block_into_markdown(text, stable_block("instructions", "pending-apply", meta))
 
 
-# --- Kado's refused guard -------------------------------------------------------------
-
-def tool_error_payload(exc: KadoToolError) -> Optional[dict]:
-    """The MCP error payload after the client's prefix as a dict; None when it is not a JSON object."""
-    text = str(exc)
-    payload = text.split(TOOL_ERROR_PREFIX, 1)[1] if TOOL_ERROR_PREFIX in text else text
-    try:
-        data = json.loads(payload)
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def tool_error_code(exc: KadoToolError) -> Optional[str]:
-    """The ``code`` of the MCP error payload after the client's prefix; the exact ``"code":"CONFLICT"``
-    token when the payload is not JSON; None when neither names a code."""
-    data = tool_error_payload(exc)
-    if data is None:
-        return CONFLICT if f'"code":"{CONFLICT}"' in str(exc) else None
-    code = data.get("code")
-    return code if isinstance(code, str) else None
-
-
-def is_conflict(exc: KadoError) -> bool:
-    """Kado refused the guard: the client's concurrency error, or a tool error whose code is CONFLICT."""
-    return isinstance(exc, KadoConcurrencyError) or (
-        isinstance(exc, KadoToolError) and tool_error_code(exc) == CONFLICT)
-
-
-def conflict_reason(exc: KadoError) -> str:
-    """Why Kado refused the guard, as a name only: ``open-unsaved`` for the dirty-editor message,
-    ``changed-since-read`` for the write guard's message and for ``KadoConcurrencyError``, else ``unknown``."""
-    if isinstance(exc, KadoConcurrencyError):
-        return CHANGED_SINCE_READ
-    data = tool_error_payload(exc) if isinstance(exc, KadoToolError) else None
-    message = data.get("message") if data is not None else None
-    message = message if isinstance(message, str) else ""
-    if EDITOR_PHRASE in message:
-        return OPEN_UNSAVED
-    if GUARD_PHRASE in message:
-        return CHANGED_SINCE_READ
-    return UNKNOWN_CONFLICT
-
-
 # --- the delivered plan and the resume (#258) -----------------------------------------
 
 def plan_record(plan: ra.ReviewPlan, configured_anchor: Optional[str], anchor_picked: bool,
@@ -293,7 +242,7 @@ def plan_record(plan: ra.ReviewPlan, configured_anchor: Optional[str], anchor_pi
     if anchor_picked:
         record[ANCHOR_PICKED] = True
     if plan.sections:
-        record[SECTIONS], record[CHOICES_GIVEN] = rss.record(plan.sections), choices_given
+        record[SECTIONS], record[CHOICES_GIVEN] = rsr.record(plan.sections), choices_given
     return record
 
 
@@ -306,7 +255,7 @@ def replan_differs(plan: ra.ReviewPlan, record: dict) -> bool:
     keys = ["placement", "level"] + (["anchor"] if recorded.get("anchor") is not None else [])
     return (record.get("mode") != plan.mode or record.get("target") != plan.target
             or any(recorded.get(key) != place.get(key) for key in keys)
-            or (SECTIONS in record and record[SECTIONS] != rss.record(plan.sections)))
+            or (SECTIONS in record and record[SECTIONS] != rsr.record(plan.sections)))
 
 
 def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str], anchor_picked: bool,

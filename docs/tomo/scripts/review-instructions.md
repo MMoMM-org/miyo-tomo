@@ -391,7 +391,7 @@ has is still unlanded, as before.
 ### WHY the Record Holds Section Modes and Whether Choices Were Given
 
 `delivered_plan.sections` is `[{key, mode, placement, scope_level}]` per
-section whose block holds lines (`review_section_set.record`; Hashi's
+section whose block holds lines (`review_section_report.record`; Hashi's
 placement of an insert, None otherwise — a section without lines gets no
 action and no id, whatever its mode) and `choices_given` is a bool — keys and enums only, never
 a heading or an item (SDD Data Storage; the privacy test reads the record).
@@ -508,7 +508,7 @@ edits" — could not tell the user the one thing that helped: save (Cmd+S) or
 close the note, then Resume. Kado offers no structured sub-code (its hint
 says "the file changed" for both), so the only source is the message text.
 
-`conflict_reason` (lib/review_delivery.py) reads it and answers a name: `open-unsaved` when the
+`conflict_reason` (lib/review_kado_conflict.py) reads it and answers a name: `open-unsaved` when the
 message carries Kado's editor phrase ("open in the editor with unsaved
 changes"), `changed-since-read` for the write guard's phrase ("updated in
 the background") and for the client's `KadoConcurrencyError` (the client
@@ -710,3 +710,23 @@ argparse wiring. The reason of a `doc-changed` stop is read from
 `DeliveryStop.reason` (declared in `lib/staged_delivery.py`, `None` unless the
 mark set it), so the stop's output no longer tests the status as well.
 Nothing the script prints changed; the delivery tests run unchanged.
+
+## WHY the Target Reads, the Flags and the Guard Reading Live in Libs (spec 046 T6.2)
+
+The script stood at 536 lines (cap 540), `lib/review_delivery.py` at 348
+(cap 350) and `lib/review_section_set.py` at 199 (cap 200), with Phase 6
+still to add code. Three seams of the script and its libs needed no `Run`
+and moved unchanged, each into a lib of its own: the Kado reads around the
+target note (`lib/review_target_read.py`: `note_text`, `locate`,
+`template`), the argparse pieces (`lib/review_instructions_args.py`: the
+`--stem` type and the `preview` / `deliver` flags with `ChoiceFlag`), and
+Kado's refused guard read off a `KadoError`
+(`lib/review_kado_conflict.py`, out of `review_delivery`). The section
+report and record moved from `review_section_set` to
+`lib/review_section_report.py`. `build_parser`, `load_run` and the
+subcommands stay here: the parser names the script's defaults, and the
+order of reads is the script's. One adaptation: `locate` answers None for
+a period the setup's naming does not parse, and the script raises
+`setup-invalid` with the same pointer, so no lib imports the script's
+`Refused`. Nothing the script prints changed; the delivery tests run
+unchanged, two source-reading pins follow the code to its new place.

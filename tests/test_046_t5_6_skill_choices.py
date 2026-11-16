@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_046_t5_6_skill_choices.py — the per-section choice dialogue of the periodic-review skill (spec 046 T5.6).
 
 PRD F4-AC4, F4-AC6, F5-AC3, F3-AC4, F3-AC5; SDD User Interface & UX ("per-section choices in the existing Deliver
@@ -65,8 +65,8 @@ def test_the_flags_and_choices_the_skill_names_are_the_scripts():
     load_script("review-instructions.py")
     from lib import review_section_plan as rsp  # the scripts put tomo/scripts on sys.path
 
-    source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
-    assert '"--section-choice"' in source and '"--confirm-moved"' in source
+    source = (REPO / "tomo" / "scripts" / "lib" / "review_instructions_args.py").read_text(encoding="utf-8")
+    assert '"--section-choice"' in source and '"--confirm-moved"' in source     # the script's flags (T6.2 split)
     assert f"--section-choice <key>={rsp.SKIP}" in QUESTION and f"--section-choice <key>={rsp.REVIEW}" in QUESTION
     assert "--confirm-moved <key>" in QUESTION
     stops = _section("7. Preview")

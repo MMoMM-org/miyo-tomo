@@ -423,6 +423,10 @@ tomo/
         ├── review_hashi_text.py                 # NEW (spec 046 T5.2): the Hashi-parse mirror and item lines, split out of review_actions
         ├── review_new_note.py                   # NEW (spec 046 T5.2): new-note text (template choice, splice, stamp), split out of review_actions
         ├── review_section_set.py                # NEW (spec 046 T5.4): the delivery's sections as a set (plan per row, routing, parts, splice) and the I01…In composition
+        ├── review_section_report.py             # NEW (spec 046 T6.2): what the delivery reports and records of the section plans, split out of review_section_set
+        ├── review_kado_conflict.py              # NEW (spec 046 T6.2): Kado's refused guard read off a KadoError (code, reason), split out of review_delivery
+        ├── review_target_read.py                # NEW (spec 046 T6.2): Pass 2's Kado reads of the target note and its template, split out of review-instructions.py
+        ├── review_instructions_args.py          # NEW (spec 046 T6.2): the --stem type and the preview/deliver flags (ChoiceFlag), split out of review-instructions.py
         ├── review_children.py                   # NEW
         ├── review_read_parts.py                 # NEW (spec 046 T3.4): read*.json layout, quarter split per month, loader
         ├── period.py                            # MODIFY: QUARTER, Q token, months(), parsing
@@ -460,6 +464,10 @@ docs/tomo/
     ├── review_hashi_text.md                     # NEW (T5.2)
     ├── review_new_note.md                       # NEW (T5.2)
     ├── review_section_set.md                    # NEW (T5.4)
+    ├── review_section_report.md                 # NEW (T6.2)
+    ├── review_kado_conflict.md                  # NEW (T6.2)
+    ├── review_target_read.md                    # NEW (T6.2)
+    ├── review_instructions_args.md              # NEW (T6.2)
     ├── review_children.md                       # NEW
     └── review_read_parts.md                     # NEW (T3.4)
 ```
@@ -490,6 +498,7 @@ tests/
 ├── test_046_t4_5_skill_quarter.py               # NEW (T4.5): skill pins for the quarter read
 ├── fixtures/046-t4-2-unmapped-doc-golden/       # NEW (T4.2)
 ├── fixtures/046-t4-3-unmapped-parse-golden/     # NEW (T4.3)
+├── test_046_t6_2_carried_debt.py               # NEW (T6.2): the code debt carried from Phase 5 (section key, read order, splits)
 ├── test_046_close_out_gaps.py                   # NEW at close-out
 └── fixtures/instructions-v4-candidate.schema.json   # NEW until T6.1: test-only schema from the handoff fragment
 ```

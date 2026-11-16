@@ -51,7 +51,7 @@ and `choices-needed`; `NOTICES` gains `block-replaced`,
 they arise: the stop of every section of `ReviewPlan.sections` whose block
 holds lines, the sections' notices and `ReviewPlan.notices`, the parsed
 document's `section_counts` (`counts`) for dropped and empty sections, and
-`choices` against what the plan took (`review_section_set.untaken`); a plan
+`choices` against what the plan took (`review_section_report.untaken`); a plan
 with no refusing problem and no action is `nothing-to-deliver`. Each name is
 listed once, in the order found. The rationale for each rule is in
 docs/tomo/scripts/review-instructions.md, "WHY Every Section Stop Refuses
@@ -142,10 +142,15 @@ the flag of that record, moved with them. Passing `configured_anchor` and
 cycle. `delivery_paths` and `public_paths` sit with the other path functions.
 At 348 lines (cap 350) the module stays one responsibility (what a delivery needs
 around the plan); a split such as a resume lib is the move before anything is added.
+Spec 046 T6.2 made that split along the cleaner seam: the guard reading
+(`tool_error_payload`, `tool_error_code`, `is_conflict`, `conflict_reason`
+and their constants) depends on nothing else here and has one caller, so it
+moved unchanged to `lib/review_kado_conflict.py`; the resume record stays,
+since it shares the step names and `ReviewMeta` with the rest of the module.
 Spec 046 T5.5 adds `sections` and `choices_given` to the record
 (`plan_record(..., choices_given)`), the section comparison to
 `replan_differs` and `choices-needed` to `resume_refusal`; the per-section
 helpers they call (`record`, `report`, `untaken`) live in
-`review_section_set`, which already owns the set of section plans, so this
+`review_section_report` (in `review_section_set` until T6.2), so this
 module stays under that line.
 

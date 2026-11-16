@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -113,24 +113,64 @@ def hashi_apply(text: str, action: dict) -> str:
     return "\n".join(body) + ("\n" if trailing else "")
 
 
-def applied(r, lines, period=WEEK, **kw):
-    """``(plan, note text after Hashi applies it)``, asserting that every character outside the block is unchanged."""
-    before = note(lines)
-    p = rsp.plan_section(r, before, period, ITEMS, **kw)
+def _marker_index(lines: List[str], marker: str) -> int:
+    """The one unfenced line equal to ``marker`` after JavaScript's trimEnd."""
+    fenced = ra.fenced_mask(lines)
+    found = [i for i, ln in enumerate(lines) if not fenced[i] and ln.rstrip(ra.JS_WS) == marker]
+    assert len(found) == 1, f"marker {marker!r} found {len(found)} times"
+    return found[0]
+
+
+def splice(before: str, p: rsp.SectionPlan) -> str:
+    """The note after Hashi applies ``p``, asserting that every character outside the markers is unchanged."""
     action = p.action("I01", "Calendar/W13.md")
     assert action is not None, p.mode
     after = hashi_apply(before, action)
     old, new = before.split("\n"), after.split("\n")
-    s = new.index(p.start_marker)
-    e = new.index(p.end_marker)
+    s = _marker_index(new, p.start_marker)
+    e = _marker_index(new, p.end_marker)
     assert new[s + 1:e] == p.lines
     if p.mode == "insert":
         # the inserted block plus its one trailing blank line; everything else is the old note
         assert new[:s] + new[e + 2:] == old and new[e + 1] == ""
     else:
-        os_, oe = old.index(p.start_marker), old.index(p.end_marker)
+        os_, oe = _marker_index(old, p.start_marker), _marker_index(old, p.end_marker)
         assert new[:s + 1] == old[:os_ + 1] and new[e:] == old[oe:]
-    return p, after
+    return after
+
+
+# --- the guard: every plan_section call in this module whose plan carries an action is spliced ----
+
+_PLAN_SECTION = rsp.plan_section
+SPLICED: List[str] = []
+
+
+def _spliced_plan_section(r, note_text, period, items, **kw):
+    p = _PLAN_SECTION(r, note_text, period, items, **kw)
+    if p.action("I01", "Calendar/W13.md") is not None:
+        splice(note_text, p)
+        SPLICED.append(p.mode)
+    return p
+
+
+@pytest.fixture(autouse=True)
+def _splice_every_applied_plan(monkeypatch):
+    monkeypatch.setattr(rsp, "plan_section", _spliced_plan_section)
+
+
+def test_guard_every_applied_plan_goes_through_the_splice():
+    assert rsp.plan_section is _spliced_plan_section
+    before = len(SPLICED)
+    rsp.plan_section(row("s1", "A", 3, "Review", "end"), note(_two_sections()), WEEK, ITEMS)
+    assert SPLICED[before:] == ["insert"]
+
+
+def applied(r, lines, period=WEEK, **kw):
+    """``(plan, note text after Hashi applies it)``; the splice check runs inside ``plan_section``."""
+    before = note(lines)
+    p = rsp.plan_section(r, before, period, ITEMS, **kw)
+    assert p.action("I01", "Calendar/W13.md") is not None, p.mode
+    return p, hashi_apply(before, p.action("I01", "Calendar/W13.md"))
 
 
 # --- SDD traced examples ------------------------------------------------------------------

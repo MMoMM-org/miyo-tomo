@@ -1,5 +1,5 @@
 # review_sections.py — the Pass 1 section side of /review: section proposals checked, parts rendered.
-# version: 0.2.1
+# version: 0.2.2
 """The user's mapped sections in the Pass 1 proposals of ``/review`` (spec 046, ADR-1, ADR-2).
 
 ``read.json`` carries ``sections`` (the SectionDefinitions) only when the
@@ -28,8 +28,8 @@ note, every other section item on a daily of the period.
 parent, placement); ``SectionsChanged`` when the keys differ. ``render_parts``
 renders the mapped body: each part (``## <heading> %%<key>%%``, the section
 checkbox ``- [x] <label> %%<key>%%``, unticked when empty, the italic landing
-line, the items or the nothing-found bullet), then, when an analysis part or a
-non-empty group is left, the ``## <review heading> %%review%%`` divider with its
+line, the items or the nothing-found bullet), then, when an analysis part, a
+routed part or a non-empty group is left, the ``## <review heading> %%review%%`` divider with its
 landing line, the analysis parts and the non-empty groups. ``group_parts`` and
 ``part_items`` render the groups and the items of any part (a mark as the
 ``_LABELS`` suffix, ids global over the document), for both documents.
@@ -286,7 +286,7 @@ def render_parts(inp: rd.DocInput, words: Dict[str, str]) -> Tuple[List[str], Di
         counts[part.key] = len(part.items)
     groups, group_counts, number = group_parts(inp, words, number, keep_empty=False)
     counts.update(group_counts)
-    if review or groups:
+    if review or groups or any(p.routed for p in inp.sections):
         review_heading = display_heading(inp.review_heading)
         place = words["place_h"].format(r=review_heading, where=words[inp.placement], h=display_heading(inp.anchor))
         lines += ["", f"## {review_heading} {REVIEW_ID}", f"*{words['lands']}: {place}*", *review, *groups]

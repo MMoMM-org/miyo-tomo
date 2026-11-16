@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.6.4
+# version: 0.7.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (``read.json``; a quarter's ``read-index.json`` and
@@ -55,7 +55,9 @@ Rules:
     mark-not-allowed) included, on ``write`` and ``replace --confirm`` alike;
     a read.json whose section keys are not the configured rows' ids is
     refused ``sections-changed``. A part lands where its configured row
-    says. The target is the first
+    says; for a new note the template (or its ``_tomo`` variant) is read and
+    a part whose heading it cannot take is marked routed to "Tomo Review"
+    (``review_section_plan.routed_keys``). The target is the first
     of the period's note paths (flat, then the year subfolder) that exists;
     when neither does, one byName search finds a note of that exact name the
     user moved, and the document targets it there. ``write`` never
@@ -97,9 +99,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib import review_config as rc  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
+from lib import review_actions as ra  # noqa: E402
+from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_habits as rh  # noqa: E402
 from lib import review_read_parts as rrp  # noqa: E402
+from lib import review_section_plan as rsp  # noqa: E402
 from lib import review_sections as rs  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
@@ -157,6 +162,31 @@ def find_target(vault: Vault, candidates: List[str], name: str) -> Tuple[str, bo
 
 
 ABSENT, NOT_TOMO, TOMO_REVIEW = "absent", "not-tomo", "tomo-review"
+
+
+def _read(vault: Vault, path: Optional[str]) -> Optional[str]:
+    """The note's text; None when ``path`` is None or nothing is there; ``Stopped`` when Kado cannot answer."""
+    if path is None:
+        return None
+    try:
+        content = vault.client.read_note(path).get("content")
+    except KadoNotFoundError:
+        return None
+    except KadoAuthError as exc:
+        raise Stopped("kado-auth", str(exc)) from None
+    except KadoError as exc:
+        raise Stopped("kado-unreachable", str(exc)) from None
+    return content if isinstance(content, str) else None
+
+
+def route_new_note(vault: Vault, setup: rc.ReviewSetup, period_name: str, parts: List[rs.SectionPart]) -> None:
+    """Marks the parts a new note's template cannot take as routed to "Tomo Review" (spec 046 F4-AC5)."""
+    raw, variant = rdl.template_paths(setup)
+    template = ra.Template(raw=_read(vault, raw), variant=_read(vault, variant))
+    routed = set(rsp.routed_keys(setup.sections, ra.template_choice(setup, template)[0], period_name,
+                                 setup.off_limits))
+    for part in parts:
+        part.routed = part.key in routed
 
 
 def doc_state(vault: Vault, doc_path: str) -> str:
@@ -262,6 +292,8 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
     vault = Vault(KadoClient)
     target, exists, elsewhere = find_target(vault, period.note_paths(setup.folder, setup.format),
                                             render_name(period, setup.format))
+    if defs is not None and not exists:
+        route_new_note(vault, setup, period.name, parts)
     result = {"stem": args.stem, "doc_path": doc_path, "target": target, "target_exists": exists}
     if elsewhere:
         result["target_found_elsewhere"] = elsewhere

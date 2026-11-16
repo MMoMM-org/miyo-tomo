@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.4.4
+# version: 0.5.0
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -35,6 +35,8 @@ named) and the by-name hits elsewhere. ``pick_headings`` names the headings a he
 chooses from without a refusal (the target note's, or the chosen template's for a new note) —
 the list a resume of a delivery begun with ``--place-anchor`` offers again.
 ``build_review_instruction_set`` wraps the actions in the wire envelope.
+Mapped rows (spec 046 T5.2): ``ReviewPlan.sections`` (``choices`` answer stops), analysis and routed
+sub-parts in "Tomo Review", blocks spliced into a new note, ``landing-off-limits``, ``review-section-kept``.
 
 No Kado, no clock, no file I/O (the wire schema version is read from the schema file).
 
@@ -50,6 +52,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from lib import review_config as rc
 from lib import review_doc as rd
 from lib import review_md
+from lib import review_section_plan as rsp
 from lib.doc_frontmatter import FrontmatterMergeError, build_tomo_block, merge_tomo_block_into_markdown
 from lib.review_doc_parse import APPROVED_MISSING, SECTION_CHECKBOX_MISSING
 from lib.review_vault import TEMPLATER_MARK
@@ -122,6 +125,8 @@ class ReviewPlan:
     actions: List[dict] = field(default_factory=list)
     note_path: Optional[str] = None            # the new note waiting in the inbox
     note_text: Optional[str] = None            # its stamped text
+    sections: List[rsp.SectionPlan] = field(default_factory=list)   # per mapped row placed in the note
+    notices: List[str] = field(default_factory=list)                # spec 046 notices, names only
 
     def preview(self) -> dict:
         """The SDD preview shape; optional keys only when they carry something."""
@@ -292,13 +297,15 @@ def _level_or_refuse(plan: ReviewPlan, placement: str, anchor_level: int, headin
         return None
 
 
-def _insertion(plan: ReviewPlan, setup: rc.ReviewSetup, anchor: str, headings: Headings, n_lines: int
+def _insertion(plan: ReviewPlan, setup: rc.ReviewSetup, anchor: str, headings: Headings, text: str
                ) -> Optional[Tuple[str, int, int]]:
-    """``(the heading's text as Hashi reads it, level, line index)`` of an insert at ``anchor``; None
-    with the problem recorded."""
+    """``(Hashi's heading text, level, line index)`` of an insert at ``anchor`` into ``text``; None on a problem."""
     found = _first(headings, anchor)
     if found is None:
         _refuse(plan, PLACE_MISSING, headings)
+        return None
+    if setup.off_limits and rsp.place_off_limits(text, anchor, setup.placement, setup.off_limits) is not None:
+        plan.problems.append(rsp.STOPS[rsp.OFF_LIMITS_LANDING])   # "Tomo Review" and its sub-parts would land off limits
         return None
     if setup.placement == rc.INSIDE and _own(setup, found[2]):
         _refuse(plan, HEADING_COLLISION, headings)
@@ -308,6 +315,7 @@ def _insertion(plan: ReviewPlan, setup: rc.ReviewSetup, anchor: str, headings: H
         return None
     if setup.placement == rc.BEFORE:
         return found[2], level, found[0]
+    n_lines = len(split_lines(text)[0])
     return found[2], level, review_md.section_end((headings, []), headings.index(found), n_lines)
 
 
@@ -325,40 +333,58 @@ def _gate(review: dict, groups: list) -> Optional[str]:
 
 def pick_headings(setup: rc.ReviewSetup, target: Target, template: Optional[Template] = None) -> List[str]:
     """The headings a heading pick chooses from, as a place problem names them: the target note's, else the
-    chosen template's for a new note (as ``_template_choice`` picks it), none for a plain note."""
+    chosen template's for a new note (as ``template_choice`` picks it), none for a plain note."""
     text = target.text
     if text is None:
-        text = _template_choice(setup, template or Template())[0]
+        text = template_choice(setup, template or Template())[0]
     if text is None:
         return []
     return [heading for _, _, heading in hashi_headings(split_lines(text)[0])]
 
 
 def build_review_plan(review: dict, setup: rc.ReviewSetup, target: Target, template: Optional[Template] = None,
-                      *, anchor: Optional[str] = None, run_id: str, generated: str) -> ReviewPlan:
+                      *, anchor: Optional[str] = None, choices: Optional[Dict[str, str]] = None, run_id: str,
+                      generated: str) -> ReviewPlan:
     """The plan for ``review`` into ``target``; ``anchor`` overrides the setup's (``--place-anchor``)."""
     anchor = anchor or setup.anchor
     plan = ReviewPlan(INSERT if target.text is not None else NEW_NOTE, target.path, target.moved,
                       list(target.duplicates), {"anchor": anchor, "placement": setup.placement})
-    groups, plan.escaped_lines, plan.unlanded = landed_groups(review)
-    gate = _gate(review, groups)
+    every, keys = review.get("groups") or {}, {str(r.get("id")) for r in setup.sections}
+    ctx = ({k: v for k, v in every.items() if k in keys}, choices or {})
+    groups, plan.escaped_lines, plan.unlanded = landed_groups({**review, "groups": {
+        k: v for k, v in every.items() if k not in keys}})
+    ctx += (plan.escaped_lines,)               # the groups' escapes: the base a re-plan starts from
+    gate = _gate(review, groups or [k for k, v in ctx[0].items() if rsp.block_lines(v)[0]])
     if gate is not None:
         plan.problems.append(gate)
     elif target.text is None:
         _new_note(plan, setup, template or Template(), anchor, str(review.get("period") or ""), groups,
-                  run_id, generated)
+                  run_id, generated, ctx)
     else:
-        _existing_note(plan, setup, target, anchor, str(review.get("period") or ""), groups)
+        _existing_note(plan, setup, target, anchor, str(review.get("period") or ""), groups, ctx)
     if plan.unlanded:
         plan.problems.append(UNLANDED_ITEMS)
     return plan
 
 
+def _sectioned(plan: ReviewPlan, setup: rc.ReviewSetup, text: Optional[str], period: str, groups: list,
+               ctx: tuple, new_note: bool, **review_at) -> list:
+    """Plans the mapped rows; the "Tomo Review" content: analysis rows and routed sections, then ``groups``."""
+    if not setup.sections:
+        return groups
+    plan.sections = (rsp.plan_new_note if new_note else rsp.plan_existing)(
+        setup.sections, text, period, ctx[0], choices=ctx[1], off_limits=setup.off_limits, **review_at)
+    parts, escaped = rsp.review_parts(setup.sections, plan.sections, ctx[0])
+    plan.escaped_lines = ctx[2] + escaped
+    return parts + list(groups)
+
+
 def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anchor: str, period: str,
-                   groups: list) -> ReviewPlan:
+                   groups: list, ctx: tuple) -> ReviewPlan:
     lines, _ = split_lines(target.text or "")
     headings = hashi_headings(lines)
     marker_at = marker_index(lines, marker_line(period))
+    groups = _sectioned(plan, setup, target.text, period, groups, ctx, False)
     if marker_at is not None:
         plan.mode = REPLACE                    # the marker proves the rerun; a refusal reports what it found
         above = next((h for h in reversed(headings) if h[0] < marker_at), None)
@@ -367,6 +393,9 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
             return _refuse(plan, PLACE_MISSING, headings)
         _, level, text = above
         plan.place = {"anchor": text, "placement": REPLACE, "level": level}
+        if not groups:                         # nothing left for the earlier section: it stays as it is
+            plan.notices.append(rsp.REVIEW_SECTION_KEPT)
+            return plan
         if _own(setup, text) or _resolved(headings, text) != above:
             return _refuse(plan, HEADING_COLLISION, headings)
         if _level_or_refuse(plan, rc.BEFORE, level, headings) is None:
@@ -377,12 +406,15 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
         plan.actions = [{"id": ACTION_ID, "action": "replace_section", "target_path": target.path,
                          "anchor": {"type": "heading", "value": text}, "content": body}]
         return plan
+    if not groups:
+        return plan                            # nothing for a new "Tomo Review": no insert
     if _first(headings, setup.heading) is not None:
         return _refuse(plan, HEADING_COLLISION, headings)
-    placed = _insertion(plan, setup, anchor, headings, len(lines))
+    placed = _insertion(plan, setup, anchor, headings, target.text or "")
     if placed is None:
         return plan
-    value, level, _ = placed
+    value, level, at = placed
+    _sectioned(plan, setup, target.text, period, groups, ctx, False, review_at=at)   # an insert at `at` stops
     plan.place = {"anchor": value, "placement": setup.placement, "level": level}
     plan.section_md, _ = render_section(setup.heading, level, period, groups)
     plan.actions = [{"id": ACTION_ID, "action": "insert_under_marker", "target_path": target.path,
@@ -391,7 +423,7 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
     return plan
 
 
-def _template_choice(setup: rc.ReviewSetup, template: Template) -> Tuple[Optional[str], bool, bool]:
+def template_choice(setup: rc.ReviewSetup, template: Template) -> Tuple[Optional[str], bool, bool]:
     """``(text, templater_hint, variant_missing)``: the variant text when one is configured and readable,
     else the raw template (``variant_missing`` when a variant was configured), else None for a plain note."""
     if setup.template is None or template.raw is None:
@@ -408,32 +440,36 @@ def _plain_note(plan: ReviewPlan, setup: rc.ReviewSetup, name: str, period: str,
     return f"# {name}\n\n{plan.section_md}"
 
 
-def _templated_note(plan: ReviewPlan, setup: rc.ReviewSetup, text: str, anchor: str, period: str, groups: list
-                    ) -> Optional[str]:
-    """The template ``text`` with the section placed by the before/inside rule; None with the problem recorded."""
+def _templated_note(plan: ReviewPlan, setup: rc.ReviewSetup, text: str, anchor: str, period: str, groups: list,
+                    ctx: tuple) -> Optional[str]:
+    """The template ``text`` with the section by the before/inside rule and the blocks; None on a problem."""
     lines, trailing = split_lines(text)
-    placed = _insertion(plan, setup, anchor, hashi_headings(lines), len(lines))
-    if placed is None:
-        return None
-    value, level, at = placed
-    plan.place = {"anchor": value, "placement": setup.placement, "level": level}
-    plan.section_md, _ = render_section(setup.heading, level, period, groups)
-    # Hashi's spliceLines: the block's lines, trailing blank included, at the index
-    lines[at:at] = plan.section_md.split("\n")
+    content = _sectioned(plan, setup, text, period, groups, ctx, True)
+    inserts = [(p.insert_at, p.block()) for p in plan.sections if p.mode == rsp.INSERT]
+    if content:
+        placed = _insertion(plan, setup, anchor, hashi_headings(lines), text)
+        if placed is None:
+            return None
+        value, level, at = placed
+        plan.place = {"anchor": value, "placement": setup.placement, "level": level}
+        plan.section_md, _ = render_section(setup.heading, level, period, content)
+        inserts.append((at, plan.section_md.split("\n")))     # Hashi's spliceLines: trailing blank included
+    rsp.splice_blocks(lines, inserts)                          # a block at Tomo Review's index goes above it
     return "\n".join(lines) + ("\n" if trailing else "")
 
 
 def _new_note(plan: ReviewPlan, setup: rc.ReviewSetup, template: Template, anchor: str, period: str,
-              groups: list, run_id: str, generated: str) -> ReviewPlan:
-    text, plan.templater_hint, plan.variant_missing = _template_choice(setup, template)
+              groups: list, run_id: str, generated: str, ctx: tuple) -> ReviewPlan:
+    text, plan.templater_hint, plan.variant_missing = template_choice(setup, template)
     name = posixpath.basename(plan.target)
     name = name[:-3] if name.endswith(".md") else name
     block = build_tomo_block(NOTE_DOC_TYPE, NOTE_STATE, run_id)
     block["updated_at"] = generated
     if text is None:
-        plan.note_text = merge_tomo_block_into_markdown(_plain_note(plan, setup, name, period, groups), block)
+        plain = _sectioned(plan, setup, None, period, groups, ctx, True)
+        plan.note_text = merge_tomo_block_into_markdown(_plain_note(plan, setup, name, period, plain), block)
     else:
-        note = _templated_note(plan, setup, text, anchor, period, groups)
+        note = _templated_note(plan, setup, text, anchor, period, groups, ctx)
         if note is None:
             return plan
         try:
@@ -442,7 +478,8 @@ def _new_note(plan: ReviewPlan, setup: rc.ReviewSetup, template: Template, ancho
             # the template's frontmatter cannot take the stamp: the plain note, as a missing template yields
             plan.template_unmergeable = str(error)
             plan.templater_hint = False
-            plan.note_text = merge_tomo_block_into_markdown(_plain_note(plan, setup, name, period, groups), block)
+            plain = _sectioned(plan, setup, None, period, groups, ctx, True)
+            plan.note_text = merge_tomo_block_into_markdown(_plain_note(plan, setup, name, period, plain), block)
     plan.note_path = setup.inbox_path(f"{name}.md")
     plan.actions = [{"id": ACTION_ID, "action": "move_note", "source": plan.note_path, "destination": plan.target,
                      "title": name, "rendered_file": f"{name}.md", "source_inbox_item": None}]

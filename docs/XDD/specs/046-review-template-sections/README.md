@@ -89,6 +89,7 @@
 | 2026-11-16 | T4.2: placement and landing of each section part come from the configured `setup.sections` row by id, not from read.json; a read whose section keys differ from the config rows is refused `sections-changed`; headings, landing lines and the mapped callout's anchor are display-neutralised; the unmapped callout keeps its raw anchor | Keeps the model's file free of where a section lands; a hand-edited heading cannot forge a section id for the parser; CON-2 byte identity of the unmapped document (orchestrator decision, reviewed) |
 | 2026-11-16 | Model escalation: T4.3 opus → opus@max | Trigger: second review FAIL |
 | 2026-11-16 | Phase 4 drift check (Drift, Alignment, Consistency; no FAIL, 9 MEDIUM, 9 LOW): all fixed — SDD write/parse contracts, section-checkbox-missing as a gate refusal, ParsedDoc/SectionDefinition/SectionPart/meta fields, display-neutralised headings, Directory Map, ADR-1 growth (31,600 bytes, trim #259), ADR-7 quarter context-size risk, review_actions WHY, Phase 5/6 notes, spec 045 superseded pointers | Owner chose "fix all now" |
+| 2026-11-16 | T5.2: split `lib/review_hashi_text.py` (the Hashi-parse mirror) and `lib/review_new_note.py` (new-note composition) out of `review_actions.py`, with Directory Map entries | review_actions.py (500/500) and review_section_plan.py (350/350) had no room for T5.4/T5.5 and imported each other; owner chose "split now in T5.2" |
 
 ## Context
 

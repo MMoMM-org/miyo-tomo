@@ -358,3 +358,15 @@ unticked or deleted, or never any — `section-empty`). `counts()` keeps its
 four spec 045 numbers by the item boxes, so the engagement KPI and the
 unmapped report do not change meaning; the preview's wording of the two
 notices is `review-instructions.py`'s (Phase 5).
+
+## WHY `SECTION_KEY` Is Public (spec 046 T6.2)
+
+The section key `^s[0-9]{1,3}$` is what `review_mapping.assign_ids` mints
+and the config schema allows. The parser reads `pass1_sections` keys with
+it, and `review-instructions.py` checks its `--section-choice` /
+`--confirm-moved` keys against it. Two patterns drifted: the flags' private
+`[A-Za-z0-9_-]+` let keys no configuration can hold through to the planner,
+where they surfaced as `choice-invalid` (a "preview again" answer) instead
+of a bad invocation. One public definition here, where the key is read from
+Tomo's own record, keeps both checks the same. ASCII digits, not `\d`: a
+`str` pattern's `\d` takes every script's digits, and no id has them.

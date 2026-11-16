@@ -1,5 +1,5 @@
 # review_doc_parse.py — the edited review document of /review read back: Approved line, sections, items by id.
-# version: 0.4.1
+# version: 0.4.2
 """Parse the review document after the user edited it (spec 045, T3.7, PRD F5, ADR-9, ADR-13).
 
 ``parse_document`` reads the text of ``<period> Review.md`` and returns a
@@ -39,7 +39,8 @@ with one ``SectionProblem`` per key (the key, the document's heading text,
 the line to restore). An unticked section lands nothing (``approved_review``,
 ``nothing_to_deliver``), the user's items in it too; ``section_counts`` gives
 per key the box, Tomo's kept / unticked, the user's ticked ``added`` and
-``empty``. Without ``pass1_sections`` the grammar is spec 045's unchanged.
+``empty``. Without ``pass1_sections`` the grammar is spec 045's unchanged. ``SECTION_KEY`` is the
+section key ``^s[0-9]{1,3}$``, the one definition the Pass 2 choice flags check too.
 
 No Kado, no file I/O. Needs PyYAML.
 
@@ -72,7 +73,7 @@ _APPROVED = re.compile(r"^- \[([ xX])\] Approved\s*$")
 _LINK = re.compile(r"\[\[([^\]|#]+)")
 _TRAILING_DONE_MARK = re.compile(DONE_MARK_RE.pattern + r"\s*$")
 _SECTION_ID = re.compile(r"%%(s\d{1,3})%%")
-_SECTION_KEY = re.compile(r"^s\d{1,3}$")
+SECTION_KEY = re.compile(r"^s[0-9]{1,3}$")          # a mapped section's key; review-instructions' flags too
 
 
 def _without_done_mark(line: str) -> str:
@@ -260,7 +261,7 @@ def _expected(pass1_sections: Any) -> Optional[Dict[str, bool]]:
     if not isinstance(pass1_sections, list):
         return None
     return {str(s["key"]): bool(s.get("empty")) for s in pass1_sections
-            if isinstance(s, dict) and isinstance(s.get("key"), str) and _SECTION_KEY.match(s["key"])}
+            if isinstance(s, dict) and isinstance(s.get("key"), str) and SECTION_KEY.match(s["key"])}
 
 
 def _section_heading(text: str, sections: Optional[_Sections], order: List[str], warnings: List[str]) -> tuple:

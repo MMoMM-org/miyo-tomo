@@ -337,9 +337,18 @@ see: the skill passes a choice only for a stop the preview showed, so a
 choice without its stop means the note changed between preview and Deliver
 (the user fixed the heading meanwhile) or the skill misread the keys, and
 both deserve a fresh preview rather than a guess. A malformed value
-(`s4=maybe`, no `=`, an empty key) and a key given twice (also across the
-two flags) are a bad invocation, exit 2: they are the skill's mistakes, not
-the vault's state.
+(`s4=maybe`, no `=`, an empty key), a key that is no section key and a key
+given twice (also across the two flags) are a bad invocation, exit 2: they
+are the skill's mistakes, not the vault's state.
+
+The key check is `lib/review_doc_parse.SECTION_KEY` (`^s[0-9]{1,3}$`), the
+one definition the document parser reads `pass1_sections` with, never a
+copy of the script's own (spec 046 T6.2). The flags once checked a looser
+`[A-Za-z0-9_-]+`: `x`, `S1` or `s1000` passed the parser and came back as
+`choice-invalid`, which tells the skill the note changed and to preview
+again — the wrong remedy for a key no configuration can hold. ASCII digits
+only: `\d` would also take the digits of other scripts, which `assign_ids`
+never writes.
 
 Each stop's output carries `sections` — per section with lines, mapping
 order: `key`, `mode`, `placement` (the row's configured `before`, `under`

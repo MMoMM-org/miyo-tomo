@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.3.2
+# version: 0.3.3
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13; spec 046 ADR-12: section stops, choices).
 
@@ -89,7 +89,6 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
-import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -112,6 +111,7 @@ from lib.kado_client import (  # noqa: E402
 from lib.note_io import ConfigError, load_vault_config  # noqa: E402
 from lib.period import parse_name, render_name  # noqa: E402
 from lib import review_state as rs  # noqa: E402
+from lib.review_doc_parse import SECTION_KEY  # noqa: E402
 from lib.review_doc_read import DocRead, doc_path_of, read_document  # noqa: E402
 from lib.review_vault import Stopped, Vault, kado_stops  # noqa: E402
 from lib.staged_delivery import DeliveryStop, StagedDelivery  # noqa: E402
@@ -123,7 +123,6 @@ NEXT = "hashi-or-by-hand"
 DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
 SET_CHANGED = "set-changed"
 SET_REPLACED = "set_replaced"                           # meta.json: this delivery writes over an earlier run's applied set
-SECTION_KEY = re.compile(r"[A-Za-z0-9_-]+")
 
 
 class Refused(Exception):

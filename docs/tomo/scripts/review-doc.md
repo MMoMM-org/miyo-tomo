@@ -96,7 +96,7 @@ because the overwrite flag covers Tomo's own document and nothing else.
 `replace --abort` is the user declining to start over: the run that
 produced the kept `read.json` and `proposals.json` is over, and ADR-9 says
 content does not linger for a run that is not going anywhere. Both files
-are deleted; the document and `meta.json` stay untouched, because the
+(for a quarter every read file, see below) are deleted; the document and `meta.json` stay untouched, because the
 existing review goes on exactly as it was. `--confirm` and `--abort` are
 mutually exclusive on the parser so a mixed call is exit 2, not a guess.
 
@@ -155,6 +155,41 @@ Both hold journal content. The document in the inbox is the only copy the
 user needs after Pass 1; the counts Pass 2 reports against (`pass1_counts`)
 go to the content-free `meta.json`. Deleting after the write, not before,
 means a failed write never loses the model's work.
+
+A quarter's read is not one file (ADR-7): the success path and
+`replace --abort` delete every read file of the stage through
+`lib/review_read_parts.stage_files` — `read.json`, `read-index.json` and
+every `read-YYYY-MM.json` — and `proposals.json`. The folder listing, not
+the index's part list, decides what goes: a part the index does not list
+(an earlier quarter's under a reused stem) is journal content too, and an
+index that no longer parses would otherwise keep its parts forever. A
+refused or failed write deletes none of them, for the reason above. For a
+week or a month `stage_files` is `read.json` alone, so nothing changes there.
+
+## WHY the Read Comes Through `review_read_parts.load` (Spec 046 T4.5, ADR-7)
+
+A quarter's read is `read-index.json` plus one `read-<YYYY-MM>.json` per
+month, so that the model can read each file within its Read tool's limit.
+The script has no such limit, and its checks are about the period, not
+about a file: `write`, `replace --confirm` and `replace`'s `needs-confirm`
+take the read through `review_read_parts.load`, which gives `read.json` as
+it is or the index joined with its parts in the index's order — the one
+result `read_period` returned. Every consumer of the read (`period_of`, the
+source rule through `review_doc.Sources`, `review_sections.check` and
+`definitions`, `sections-changed`, the habits over all days, `not_read`,
+`partly_read`) therefore sees the whole quarter and none of them knows that
+parts exist. A source resolves against the joined lists, never per part:
+an item may name a January daily and a March daily, and a `monthly_only`
+item a monthly note from any part.
+
+`ReadFilesMissing` (no read file) is `read-missing`; `ReadFilesInvalid` is
+`read-invalid` — a listed part missing, unreadable or holding another
+month, a duplicated or unsafe part name, or both layouts at once. A quarter
+with one part gone is not reviewed from the others: the document would
+name the quarter while each item resting on the missing month would be
+rejected "outside the period" one by one, which reads like the model's
+fault. The skill shows the problem and stops; reading the period again
+writes a whole set.
 
 ## WHY the Exit Codes and the Bare Class Name on stderr
 

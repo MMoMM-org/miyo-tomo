@@ -90,7 +90,12 @@ wrote one of them and the loader cannot know which is current, so it raises
 `ReadFilesInvalid` rather than guessing. A part name in the index must match
 `read-YYYY-MM.json`: the index is a file on disk, and a name like
 `../../config/x.json` would make the loader read outside the stage folder.
-A listed part that is missing, unreadable, not an object, or whose `month`
+The match is a `fullmatch`: with `re.match` and `$`, a name ending in a
+newline (`read-2026-01.json\n`) passes, and the check is meant to admit
+exactly the names this module writes. A part named twice is
+`ReadFilesInvalid` as well (T4.5): joining it twice would double that
+month's days, and the habits and the source rule would count them twice
+without any error. A listed part that is missing, unreadable, not an object, or whose `month`
 does not match its name is `ReadFilesInvalid` too; no file at all is
 `ReadFilesMissing`. The two exceptions map to `review-doc.py`'s existing
 `read-invalid` and `read-missing` (T4.5).

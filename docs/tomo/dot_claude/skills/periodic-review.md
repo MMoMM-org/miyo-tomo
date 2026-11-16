@@ -350,14 +350,16 @@ for any other.
 **The quarter in the same flow (F6-AC1).** Step 2 runs for `quarter` exactly as for `week` and `month` (the week
 question never fires for it; `match` proposes the folder, the `YYYY-[Q]Q` format or the one found, template, place,
 language and rows). Step 1 sends a quarter request with `setup.quarter` `missing` into step 2 and reruns `start`
-after the save, like the other kinds (F2-AC10: the request continues in the same session). A quarter cannot be read
-yet (`review-read.py` takes `--kind quarter` only from spec 046 Phase 3 on), so a quarter request then stops with
-one line that the setup is saved and Tomo cannot review a quarter yet — the skill never routes a quarter to step 3,
-where the read would exit 2 and look like a failure. Phases 3 and 4 replace that line with the quarter branch.
-`/review setup` runs the quarter after the week and the month only when `setup.quarter` is `present`: a vault
-without quarterly notes is not walked through a third dialogue it has no use for, while a saved quarter setup can
-be changed the same way as the others; the first quarter setup comes from `/review quarter` (or `/review 2026-Q1`).
-The command's and the skill's argument hints name `quarter` and `2026-Q1`.
+after the save, like the other kinds (F2-AC10: the request continues in the same session), and then on to step 3
+like a week or a month (F6-AC6: a quarter's review applies "as for a month"). Until spec 046 T4.5 a quarter request
+stopped there with one line that Tomo could not review a quarter yet, because `review-read.py` did not read one and
+`review-doc.py write` could not load its split read; both now do, so the interim line and its pin are gone.
+`/review setup` walks the quarter after the week and the month, like them, with no `setup.quarter` gate. The gate
+(only when `setup.quarter` was `present`) kept a vault without quarterly notes out of a third dialogue while a quarter
+could not be reviewed anyway; with the quarter a reviewable kind, "setup" means the setup of every kind, the same
+way the week and the month are walked whether or not they were set up before — Abort at the quarter's confirm
+question leaves it unsaved and the week and month saved. The command's and the skill's argument hints and
+descriptions name the quarter (`quarter`, `2026-Q1`).
 
 **Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to 28,176 characters
 (+3,898, `wc -c`; 220 → 233 lines) at 0.2.0; the T2.3 review fixes (the empty-candidates question, the table
@@ -479,7 +481,7 @@ can — those the rewrite-once loop below covers.
   rule still holds: the habit lines are computed; an analysis item is the model's reading of them.
 - **Marks stay on the items (F1-AC9).** A month's section item that only the weekly notes hold, or that they left
   out, carries the group name as `mark`, its sources as for that group; the script refuses a mark the kind does not
-  have (`mark-not-allowed`). The quarter's marks come with its branch (T4.5).
+  have (`mark-not-allowed`). A quarter's section items carry `monthly_only` / `not_in_monthly` the same way (T4.5).
 - **Own sections.** The spec 045 line "never propose text for the user's own sections" now says "other than the
   `sections` of `read.json`": a mapped section is the user's too, and without the carve-out a literal model leaves
   every section empty.
@@ -512,6 +514,35 @@ line rather than adding the keys to the Pass 2 script's output.
 for the whole Pass 1 side, because each rule the scripts cannot check needs its own imperative and the config path
 of `<section heading>` is spelled out once. The trim is #259. No `STRICT` block: no run has shown a deviation in
 these steps yet.
+
+## Why a Quarter Is Read File by File in Step 5 (Spec 046 ADR-7, F6-AC6)
+
+WHY: the Read tool takes at most 256 KB per call, and a quarter measured 710 KB as one file (T3.4, 2026-Q1). So
+`review-read.py` splits a quarter into `read-index.json` and one `read-<YYYY-MM>.json` per month and prints
+`read_path` (the index) and `read_parts` (the month files, in order). Step 5 reads `read_path` — the same key for a
+week and a month, where it is `read.json` — so the step names one file to start from instead of a path the skill
+spells per kind; a quarter then reads each `read_parts` entry, one Read call each, in the listed order.
+
+- **One after the other, not in parallel.** The index carries what no month owns (period, report, sections, open
+  tasks, growth, `not_read`, the two mark lists) and is read first so the months are read knowing what to look for;
+  the order of the parts is the quarter's order. Parallel Read calls give no order to rely on.
+- **The parts stay in the conversation; nothing is merged on disk.** The model keeps what it read in the
+  conversation, the way it keeps a month's one file, and writes `proposals.json` once, after the last part. It writes
+  no intermediate file — the skill's opening line allows `proposals.json` and the confirmed setup only — so there is
+  no joined copy of the journal on disk and nothing for the clean-up to miss. No visible running notes either: the
+  privacy rule keeps read content out of the reply.
+- **"`read.json` means all these files together".** Every later line of step 5 says `read.json` (the sources, the
+  growth lists, the section keys, the rewrite fixes). One sentence maps the name onto the quarter's files instead of
+  rewording each line, which keeps the growth small and the week/month lines and pins unchanged.
+- **The quarter keys are named like the month's.** The groups line names, for the month, `weekly`,
+  `only_in_weekly_links` and `dailies_not_in_weekly`; the quarter line names `monthly` (its entries' `month_text`),
+  `only_in_monthly_links`, `dailies_not_in_monthly` and `report.monthly_status` — the groups only when a monthly note
+  was found, which is the script's `no-monthly-notes` rule said up front. Step 4 prints `monthly_status` and
+  `monthly_notes` like the weekly pair, so the user sees which monthly notes were not found (F6-AC5).
+- **The script joins, the model does not.** `review-doc.py write` loads all parts through `lib/review_read_parts.load`, so a
+  source from any month resolves, and its clean-up removes every read file
+  (docs/tomo/scripts/review-doc.md). A missing or broken part is `read-invalid`, which step 5 already shows and stops
+  on.
 
 ## Why the Review Language Is Read From the Config File
 

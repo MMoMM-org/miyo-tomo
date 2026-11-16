@@ -36,8 +36,8 @@ or another name, decided by the owner, never a silent rename.
 WHY: The `argument-hint` in the frontmatter is what the `/` menu shows next to the command, so it names the argument
 kinds in a few words (a period, `month`, `quarter`, `setup`, an `@`-picked note). It is a menu label, not help: the
 forms themselves stay with `review-session.py start` and `tomo-help.md`, as the section above says. `quarter` and
-`2026-Q1` joined the label with spec 046 (F6-AC1): `start` parses a quarter, and the skill runs its setup; reading a
-quarter follows in spec 046 Phase 3, so until then a quarter request ends after the setup.
+`2026-Q1` joined the label with spec 046 (F6-AC1): `start` parses a quarter, and since T4.5 the skill sets it up,
+reads it and writes its review like a month's, so the description names the quarter beside the week and the month.
 
 ## Why the Command Carries No Argument Help
 

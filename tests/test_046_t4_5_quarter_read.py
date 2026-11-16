@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t4_5_quarter_read.py — review-doc.py on a quarter's split read (spec 046 T4.5; ADR-7; PRD F6-AC6).
 
 A quarter's read is ``read-index.json`` plus one ``read-<YYYY-MM>.json`` per month (T3.4). On
@@ -39,7 +39,7 @@ from test_review_doc import MONTHLY, WEEKLY, _config, _daily, _day, item, propos
 SCRIPT_PATH = SCRIPTS_DIR / "review-doc.py"
 STEM = "2026-Q1_review"
 DOC_PATH = "100 Inbox/2026-Q1 Review.md"
-TEMPLATE = "Templates/t_quarterly"
+TEMPLATE = "Templates/t_quarterly.md"         # a saved name ends in .md (review_templates.template_name)
 MARKER = "MARKER-45q private"
 DAYS = [f"2026-{m:02d}-{d:02d}" for m in (1, 2, 3) for d in (5, 15, 25)]
 ROWS = [{"id": "s1", "heading": "Highlights", "level": 2, "parent": None, "occurrence": 1,

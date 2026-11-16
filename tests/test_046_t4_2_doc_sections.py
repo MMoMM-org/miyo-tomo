@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_046_t4_2_doc_sections.py — the review document by section and its write path (spec 046 T4.2).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files and a vault config that
@@ -46,7 +46,7 @@ from test_review_doc import (  # noqa: E402
     DAILY, INBOX, MONTHLY, WEEKLY, _config, _daily, _day, item, month_read, proposals, stage, week_read,
 )
 
-TEMPLATE = "Templates/t_weekly"
+TEMPLATE = "Templates/t_weekly.md"            # a saved name ends in .md (review_templates.template_name)
 MARKER = "MARKER-46b2 private"
 SCRIPT_PATH = SCRIPTS_DIR / "review-doc.py"
 

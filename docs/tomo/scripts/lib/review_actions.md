@@ -361,12 +361,22 @@ removing it is the user's choice. The notice is a name only — no heading,
 no text (CON-3). Without rows this case is still spec 045's
 `nothing-to-deliver`.
 
+It sits in `ReviewPlan.notices`, not in `problems`: `review_delivery.classify`
+refuses every problem name it does not list, and listing a name there
+requires the skill's wording for it (`test_review_skill_pass2`), which is a
+later task's (T5.5 wires the notice into the output, T5.6 words it). The
+constant lives in `review_section_plan` beside the other spec 046 notice
+names, so the guard that every problem constant of this module is
+classified keeps meaning "every spec 045 problem".
+
 ## WHY the "Tomo Review" Placement Is Checked Against Off-Limits Rows
 
 `landing-off-limits` (`review_section_plan.place_off_limits`) runs where
 "Tomo Review" is inserted — an existing note without the marker and a new
 note's template — so neither the Tomo Review heading nor an analysis or
 routed sub-heading lands in an off-limits section (ADR-8). It is a refusal
-without a heading pick: the fix is the setup's place. A re-run replaces the
+without a heading pick: the fix is the setup's place. The name is
+`review_section_plan.STOPS`' `landing-off-limits`, the same stop a section
+gets; `classify` refuses it as an unlisted name until T5.5 lists it. A re-run replaces the
 section where it already sits and is not re-checked. With no off-limits
 rows the check finds nothing and spec 045's plans are unchanged.

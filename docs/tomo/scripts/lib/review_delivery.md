@@ -122,8 +122,3 @@ cycle. `delivery_paths` and `public_paths` sit with the other path functions.
 At about 320 lines the module stays one responsibility (what a delivery needs
 around the plan); a split such as a resume lib is the move if it passes 350.
 
-## WHY `review-section-kept` Is a Notice (spec 046 T5.2)
-
-`classify` refuses every name it does not list as a notice. A re-run that
-keeps an earlier "Tomo Review" section is a delivery that goes ahead, so the
-name is listed in `NOTICES` the moment `review_actions` emits it.

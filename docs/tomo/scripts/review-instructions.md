@@ -39,7 +39,9 @@ shown, delivery proceeds. The plan's boolean flags join the notices as names
 so the skill reads one list. A name the classification does not know is
 treated as refusing: a new problem added to the builder stops a delivery
 until someone decides it may proceed, never the other way round. A test
-pins every name to its side.
+pins every name to its side. Spec 046 T5.5 adds the section stops, the
+choice refusals and the section notices to both tuples; see "WHY Every
+Section Stop Refuses Until a Choice Answers It" below.
 
 ## WHY the Second Set Is Refused Before Anything Is Built
 
@@ -86,9 +88,11 @@ set JSON step compares the set at the path, its `applied` flags stripped,
 with the rebuilt payload: Tomo's own landed set is recorded done, never
 rewritten (a rewrite would clear a flag Hashi may have set meanwhile).
 
-A set with no action applied, or with some, stays `set-exists`: the
-listing shows the stem as `delivered`, the skill says the set waits for
-Hashi. A withdrawn set (`meta.withdrawn`) stays `set-exists` as before; it
+A set with no action applied stays `set-exists`: the listing shows the
+stem as `delivered`, the skill says the set waits for Hashi. A set with
+*some* actions applied — a multi-action set of spec 046 where Hashi failed
+one section — is written over too since spec 046 T5.5; see "WHY a Partly
+Applied Set Is Written Over (spec 046 ADR-12)" below. A withdrawn set (`meta.withdrawn`) stays `set-exists` as before; it
 is never fully applied (its `actions` list is empty, and `all_applied`
 needs at least one action). After the rerun's delivery the new set waits
 unapplied, so the stem reads `delivered`, then `applied` once Hashi applied
@@ -302,6 +306,126 @@ One new step 8 line routes the pick back through step 7's rerun of
 dialogue exists. The `headings` field on a `deliver` output is user text,
 named in the privacy allowlist (tests/test_review_privacy.py
 `USER_TEXT_FIELDS`) with this reason.
+
+## WHY Every Section Stop Refuses Until a Choice Answers It (spec 046 T5.5, ADR-12)
+
+ADR-12: "every stop asks before writing". `lib/review_section_set.compose`
+(T5.4) composes only the sections that plan an `insert` or `replace`; a
+stopped section (`section-missing`, `section-ambiguous`, `section-broken`,
+`section-moved`, `block-in-review-section`, `landing-off-limits`) stays in
+`ReviewPlan.sections` with its mode and gets no action. Delivered as it is,
+the set would quietly leave that section out — the user ticked it and would
+find nothing in the note. So `lib/review_delivery.classify` adds the stop
+of every section whose block holds lines to the refusing problems: `preview`
+shows it, `deliver` writes nothing, and the whole delivery waits for the
+user's answer, not only the stopped section — a half-delivered review the
+user then has to complete by hand is the outcome the stop exists to avoid.
+A stop of a section that holds no lines (an unticked one, or one whose
+items were all unticked) refuses nothing: nothing of it would land, so
+there is nothing to ask about; its mode is still recorded (below).
+
+The answer comes back as flags on `preview` and `deliver` (ADR-12):
+`--section-choice <key>=skip|review` and `--confirm-moved <key>`, both
+collected into one `{key: choice}` by the flag parser. The planner
+(`review_section_plan.plan_section`) applies a choice only at the stop that
+offers it; at the CLI level a choice the plan did not take — a key no
+placed section has, a choice where the section has no stop, `review` on a
+stop that offers only `skip`, `--confirm-moved` for a section that is not
+moved — refuses `choice-invalid` and names the keys in `choices_invalid`.
+Ignoring it, as the planner does, would deliver something the user did not
+see: the skill passes a choice only for a stop the preview showed, so a
+choice without its stop means the note changed between preview and Deliver
+(the user fixed the heading meanwhile) or the skill misread the keys, and
+both deserve a fresh preview rather than a guess. A malformed value
+(`s4=maybe`, no `=`, an empty key) and a key given twice (also across the
+two flags) are a bad invocation, exit 2: they are the skill's mistakes, not
+the vault's state.
+
+Each stop's output carries `sections` — per section with lines, mapping
+order: `key`, `mode`, `notices`, `scope_level` for a scoped replace, and for
+a stop `stop` and the `choices` it offers (`block_at` for a moved block:
+the heading it sits under, note text like `headings`) — and `preview` adds
+each section's `lines`, the block as it lands (F4-AC6; item text, printed on
+purpose like `section_md`). Keys, never headings: the skill names a section
+by its key from the config rows (step 5), as it does for
+`section-checkbox-missing`, so no config or note heading text is in stdout
+except where a refusal needs the note's own (`block_at`, `headings`).
+
+The notices: `block-replaced` (a re-run replaces the section's earlier
+block; the skill's sentence that edits inside Tomo's block are replaced and
+text outside is kept, F5-AC4), `block-moved-confirmed`, `review-section-kept`
+(an earlier "Tomo Review" section a re-run leaves nothing for), and two from
+the parsed document's `section_counts`: `section-dropped` with `dropped:
+[{key, added}]` for every unticked section that held anything — Tomo's items
+or the user's (F3-AC4: the user's own items go with it, and the count says
+how many) — and `section-empty` with `empty: [key]` for a ticked section
+that receives nothing (F3-AC5). A section that started unticked because
+Pass 1 found nothing for it (F1-AC8) and holds nothing is neither: naming
+it "dropped" would report a loss that did not happen.
+
+`nothing-to-deliver` keeps its spec 045 name. The gate in `review_actions`
+already counts the kept sections and the "Tomo Review" part; what it cannot
+see is a plan that composes no action after the choices (every section with
+lines skipped, nothing for "Tomo Review", or a re-run that keeps an earlier
+"Tomo Review" and lands no section). `classify` refuses `nothing-to-deliver`
+for a plan with no refusing problem and no action, so an empty set is never
+written and never marks the document delivered.
+
+Kept section items never count as `unlanded-items`: `review_actions` hands
+`landed_groups` only the groups that are not configured section keys, so an
+item of a mapped section lands in its block, in "Tomo Review" (routed or
+`review`), or is left out by a choice the user made — never "under a heading
+the parser does not know". A key the parser files that the config no longer
+has is still unlanded, as before.
+
+### WHY the Record Holds Section Modes and Whether Choices Were Given
+
+`delivered_plan.sections` is `[{key, mode, placement, scope_level}]` per
+section whose block holds lines (`review_section_set.record`; Hashi's
+placement of an insert, None otherwise — a section without lines gets no
+action and no id, whatever its mode) and `choices_given` is a bool — keys and enums only, never
+a heading or an item (SDD Data Storage; the privacy test reads the record).
+`replan_differs` compares the list as a whole when the record holds one:
+with dense ids `I01…In` (ADR-12) a section that turned from `insert` to
+`skip` shifts every later id, so the set a resume writes would not be the
+set the first attempt began, and a byte-identical resume needs the same
+modes. A resume of a delivery begun with choices and run without any refuses
+`choices-needed` (like `anchor-needed`, and in the same place: the delivery
+still open, before `replan-differs`, also when only `doc_mark` is undone —
+the re-plan without the choices would refuse on its stops anyway, and one
+rule says why). The choices themselves are not recorded: the skill asks
+again from a fresh `preview`, and the section comparison catches a
+different answer as `replan-differs`.
+
+### WHY a Partly Applied Set Is Written Over (spec 046 ADR-12)
+
+A spec 046 set carries one action per section plus "Tomo Review". When
+Hashi fails one (a heading renamed meanwhile, an end marker deleted) the
+set holds some actions `applied: true` and some not, and
+`review_state` reads the stem `open` (step 6a). Under the spec 045 rule
+that set would be `set-exists` for every later delivery and `drop` would
+refuse it `already-applied` — the review stuck. So the set at the path is
+written over once *any* action in it is applied (`review_state.any_applied`
+instead of `all_applied` in `load_run`), through the same `_overwrite_step`
+and the same `modified` guard as a fully applied set: the vault holds the
+applied sections' effect, and a re-run plans from the note as it is now
+(their blocks become `replace`). A set with no action applied still waits
+for Hashi (`set-exists`). `drop` keeps refusing a set with any applied
+action (`already-applied`): withdrawing it would leave the applied sections
+in the note while the set claims nothing was done, and a partly applied set
+is not stuck without `drop` — a new delivery replaces it. Preview's
+`set_applied` keeps meaning "every action applied".
+
+### WHY a Resume Over an Earlier Set at the Path Is `name-taken`
+
+A delivery stopped with `set_json` in flight resumes by comparing the set
+at the path with the rebuilt payload (`staged_delivery`). When the set
+there is another one — an earlier `schema_version` "3" set uploaded before
+the release that bumps the wire to "4" (ADR-5), or any other content — the
+comparison differs and the loop stops `exists`, which `deliver` reports as
+`name-taken` with `exists_path`: nothing is overwritten, and the skill
+offers a fresh delivery (T5.6). No converter: the SDD leaves a waiting v3
+set to Hashi.
 
 ## WHY `generated` and `run_id` Come From `meta.json`
 

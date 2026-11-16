@@ -40,6 +40,25 @@ gate stops a heading that carries another expected key first
 (`## <heading> %%s3%% %%s1%%`): the parser files the items under `s3`,
 which may be ticked, and only the warning keeps them from landing.
 
+Spec 046 T5.5 widens the table, not the rule. `REFUSING` gains the six
+section stops (`review_section_plan.STOPS`: `section-missing`,
+`section-ambiguous`, `section-broken`, `section-moved`,
+`block-in-review-section`, `landing-off-limits` — the last also the plan
+problem of a "Tomo Review" place that would land off limits), `choice-invalid`
+and `choices-needed`; `NOTICES` gains `block-replaced`,
+`block-moved-confirmed`, `review-section-kept`, `section-dropped` and
+`section-empty`. `classify(plan, extra, counts, choices)` reads them where
+they arise: the stop of every section of `ReviewPlan.sections` whose block
+holds lines, the sections' notices and `ReviewPlan.notices`, the parsed
+document's `section_counts` (`counts`) for dropped and empty sections, and
+`choices` against what the plan took (`review_section_set.untaken`); a plan
+with no refusing problem and no action is `nothing-to-deliver`. Each name is
+listed once, in the order found. The rationale for each rule is in
+docs/tomo/scripts/review-instructions.md, "WHY Every Section Stop Refuses
+Until a Choice Answers It". `section_report` gives the output fields that
+go with the names (`sections`, `dropped`, `empty`, `choices_invalid`), so
+the names and their detail come from one reading of the plan.
+
 ## WHY `second_set` Takes Whether the Set at the Path Is Applied (T6.1 fix round)
 
 Owner decision 2026-11-12 (spec 045 T6.1 finding: the PRD said F6-AC3 "a
@@ -52,13 +71,14 @@ set; a set this delivery did not write (`wrote_set()` false) is a second set
 earlier run of the same period, the vault already holds its effect, and the
 rerun's `deliver` writes the new set over it
 (docs/tomo/scripts/review-instructions.md, "WHY a Fully Applied Set Is
-Written Over"). A set with no action applied, or with some applied, stays
-`set-exists`: Hashi may still be working on it, and a partial apply is the
-user's problem to look at before anything new lands. The predicate for
-"every action applied" is `review_state.all_applied` — the same reading the
-state function uses for `applied` (ADR-6), an empty `actions` list never
-counting (that is `drop`'s signature, see `SET_WITHDRAWN`) — so the two
-cannot drift. The flag is an argument, not a read inside `ReviewMeta`,
+Written Over"). A set with no action applied stays `set-exists`: Hashi may
+still be working on it. Since spec 046 T5.5 (ADR-12) the caller passes
+`review_state.any_applied` as the flag, so a partly applied set — one
+section failed at Hashi — is written over as well instead of leaving the
+review stuck (docs/tomo/scripts/review-instructions.md, "WHY a Partly
+Applied Set Is Written Over"). The predicate is `review_state`'s — an
+empty `actions` list never counting (that is `drop`'s signature, see
+`SET_WITHDRAWN`) — so the state function and the delivery cannot drift. The flag is an argument, not a read inside `ReviewMeta`,
 because the adapter holds no set and no Kado.
 
 ## WHY `ReviewMeta` Wraps the Dict
@@ -121,4 +141,10 @@ the flag of that record, moved with them. Passing `configured_anchor` and
 cycle. `delivery_paths` and `public_paths` sit with the other path functions.
 At about 320 lines the module stays one responsibility (what a delivery needs
 around the plan); a split such as a resume lib is the move if it passes 350.
+Spec 046 T5.5 adds `sections` and `choices_given` to the record
+(`plan_record(..., choices_given)`), the section comparison to
+`replan_differs` and `choices-needed` to `resume_refusal`; the per-section
+helpers they call (`record`, `report`, `untaken`) live in
+`review_section_set`, which already owns the set of section plans, so this
+module stays under that line.
 

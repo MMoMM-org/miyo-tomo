@@ -143,7 +143,17 @@ nothing: the section is planned as if no choice were given, so a stale
 flag cannot drop or reroute a section that is fine. `landing-off-limits`
 offers no choice (Rule 4): the user unticks the section or corrects the
 setup. Whether a stale or unknown choice refuses is `review-instructions.py`'s
-decision (T5.5).
+decision (T5.5: it refuses `choice-invalid`; docs/tomo/scripts/review-instructions.md,
+"WHY Every Section Stop Refuses Until a Choice Answers It").
+
+`SectionPlan.offers` names the choices a stop that stays offers, so the
+output can list them next to the stop and the skill never offers one the
+planner would ignore: the tuple the stop accepts, plus `confirm-moved` where
+it opens another path — a missing heading whose block is intact (the moved
+path decides from there), and a block moved under a heading (`skip` or
+`confirm-moved`; moved into the preamble only `skip`, never replaced
+without a scope). `landing-off-limits` offers nothing. A choice that was
+taken leaves `offers` empty: the section has no stop.
 
 ## WHY Notices `block-replaced` and `block-moved-confirmed`
 

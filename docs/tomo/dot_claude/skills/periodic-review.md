@@ -676,6 +676,24 @@ The `ok` output has one line for `mode` `replace` now, before the notices: the n
 section; it is replaced, not added to. The line is a flag of the `ok` output, not a notice, because
 `lib/review_delivery.NOTICES` is what the plan reports as notices and `mode` is not a problem of the plan.
 
+## Why Steps 7 and 8 Carry One Line per Section Stop and Notice (Spec 046 T5.5)
+
+WHY: spec 046 T5.5 added section stops (`section-missing`, `section-ambiguous`, `section-broken`, `section-moved`,
+`block-in-review-section`, `landing-off-limits`), the refusals `choice-invalid` and `choices-needed`, and the notices
+`block-replaced`, `block-moved-confirmed`, `review-section-kept`, `section-dropped` and `section-empty` to
+`lib/review_delivery.REFUSING` / `NOTICES`. The skill's coverage test demands a branch for every refusing name and a
+line for every notice, and a name the skill does not know reaches the user as a bare token — so each name got one
+plain-language line in the existing lists the same task the script learned it, not one phase later. The lines name a
+section by the heading of its `key` from step 5 (the script prints keys only, as for `section-checkbox-missing`).
+The stop line ends the step for now: asking per section, passing the answers as `--section-choice` /
+`--confirm-moved` on `deliver`, and offering a fresh delivery after `name-taken` are spec 046 T5.6's dialogue
+(PRD F4-AC4, F4-AC6). The `block-replaced` line already says that edits inside Tomo's block are replaced and text
+outside it is kept (F5-AC4): a re-run replaces the block whether or not T5.6 has landed. `sections` is printed in the
+`ok` line, not as a bullet, because it is output, not a problem the step branches on (F4-AC6: heading, placement
+from step 5, and the lines that land). `choices-needed` sends the user back through a fresh `preview` of step 7: the
+choices are not recorded (keys and modes only), so they are asked again, and a different answer is caught as
+`replan-differs`.
+
 ## Why the Heading Pick Is Offered Once for a Collision (Third T5.2 Fix Round)
 
 WHY: `user-heading-collision` with `mode` `insert` has two causes in `lib/review_actions._existing_note`, and only

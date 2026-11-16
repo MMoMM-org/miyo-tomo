@@ -158,3 +158,20 @@ never forms an id or a marker. Item lines go through
 quoting a section marker would otherwise make that section's next run
 `section-broken`. An empty section leaves no sub-heading, like an empty
 group.
+
+## WHY the Delivery Reads the Section Plans Here (spec 046 T5.5)
+
+`review-instructions.py` needs three readings of `ReviewPlan.sections`
+besides the actions: `report` — the per-section output (`key`, `mode`,
+`notices`, `scope_level`, a stop with its `offers` as `choices` and
+`block_at`, and in `preview` the block's `lines`) for every section whose
+block holds lines; `record` — `delivered_plan.sections`, `{key, mode,
+placement, scope_level}` for every section whose block holds lines, keys
+and enums only; `untaken` — the keys of the user's choices no plan took (no
+such section, or the choice answered no stop of it). They live here because
+this module owns the set of section plans and `lands`, the one test of
+"holds lines"; `review_delivery` calls them and stays below its size line.
+A section without lines is left out of both (the dropped and empty notices
+name it): it gets no action and no id whatever its mode, so a heading of it
+removed between a stop and the resume changes nothing the resume writes and
+must not refuse `replan-differs`.

@@ -97,7 +97,12 @@ look the same in the document, so the schema sets `additionalProperties:
 false` on `groups` and the whole file is refused (`proposals-invalid`) when
 the key is present. The same closed key set is what enforces F4-AC7: there
 is no way to write text for one of the user's own sections because there is
-no group a model could put it in. The habits items arrive already rendered
+no group a model could put it in. Spec 046 (ADR-1) opens exactly one door:
+`sections: [{key, items}]`, where `key` is a row id (`^s[0-9]{1,3}$`) and
+never heading text, so the model can fill a section the user mapped but
+cannot name a new one; `review_sections` refuses a key without a definition
+in `read.json`. The optional `mark` is defined on section items only, so the
+group items' schema is spec 045's unchanged. The habits items arrive already rendered
 (`text`) from the habits module; this module only gives them an id and a
 line, so the number and its wording keep one owner. An item whose `value`
 is `None` ("no clear average") renders like any other, from its `text`.
@@ -145,6 +150,28 @@ at least one weekly note; items the model put there anyway are rejected
 with `month-only-group` (a week) or `no-weekly-notes` (a month without
 weekly notes) rather than rendered under a heading that claims a weekly
 review was read.
+
+## WHY the Groups Come From a Table Per Kind (spec 046 T4.1, F6-AC4)
+
+The quarter has its own pair of marks: `monthly_only` (only the monthly
+reviews hold it, no daily of the quarter does) and `not_in_monthly` (the
+dailies held it, no monthly review mentions it). A flat group list with a
+"month groups" flag cannot say which pair belongs to which kind, so the
+groups come from `KIND_GROUPS`: the week's five, the month's five plus
+`weekly_only` / `not_in_weekly`, the quarter's five plus `monthly_only` /
+`not_in_monthly`. The week and month order is unchanged, so their documents
+stay byte-identical. One rule decides a child group's fate everywhere
+(`group_reason`): a group of another kind is rejected with
+`month-only-group` / `quarter-only-group`, a group of the right kind whose
+child notes were not read with `no-weekly-notes` / `no-monthly-notes` — a
+heading that claims a monthly review was read must not appear when none was.
+`has_child_notes` names those notes per kind (`weekly` for a month,
+`monthly` for a quarter); the quarter's weekly notes are sources, not the
+reviews it marks against. `Sources` therefore also resolves the `monthly`
+entries, and a `monthly_only` item needs one of them, as a `weekly_only`
+item needs a weekly. `check_item` and `group_reason` are public because
+`review_sections` applies the same rule to section items with their mark as
+the group: one rule, not two copies.
 
 ## WHY the Review Keys Are Top-Level Frontmatter (ADR-2 Amendment)
 

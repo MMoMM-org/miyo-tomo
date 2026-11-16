@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.4.3
+# version: 0.4.4
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -211,7 +211,7 @@ def render_section(heading: str, level: int, period_name: str, groups: Sequence[
 
 # --- the target's structure ----------------------------------------------------------------
 
-def _split_lines(text: str) -> Tuple[List[str], bool]:
+def split_lines(text: str) -> Tuple[List[str], bool]:
     """``(lines, trailing newline)``: Hashi's ``content.split("\\n")`` without the element the final newline makes."""
     lines = text.split("\n")
     trailing = text.endswith("\n")
@@ -254,7 +254,7 @@ def bare(text: str) -> str:
     return _CLOSING_HASHES_RE.sub("", text.rstrip())
 
 
-def _marker_index(lines: List[str], marker: str) -> Optional[int]:
+def marker_index(lines: List[str], marker: str) -> Optional[int]:
     """The first unfenced line that is ``marker`` at column 0, trailing whitespace tolerated; an
     indented copy (an item's continuation line) is not the marker."""
     fenced = fenced_mask(lines)
@@ -331,7 +331,7 @@ def pick_headings(setup: rc.ReviewSetup, target: Target, template: Optional[Temp
         text = _template_choice(setup, template or Template())[0]
     if text is None:
         return []
-    return [heading for _, _, heading in hashi_headings(_split_lines(text)[0])]
+    return [heading for _, _, heading in hashi_headings(split_lines(text)[0])]
 
 
 def build_review_plan(review: dict, setup: rc.ReviewSetup, target: Target, template: Optional[Template] = None,
@@ -356,9 +356,9 @@ def build_review_plan(review: dict, setup: rc.ReviewSetup, target: Target, templ
 
 def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anchor: str, period: str,
                    groups: list) -> ReviewPlan:
-    lines, _ = _split_lines(target.text or "")
+    lines, _ = split_lines(target.text or "")
     headings = hashi_headings(lines)
-    marker_at = _marker_index(lines, marker_line(period))
+    marker_at = marker_index(lines, marker_line(period))
     if marker_at is not None:
         plan.mode = REPLACE                    # the marker proves the rerun; a refusal reports what it found
         above = next((h for h in reversed(headings) if h[0] < marker_at), None)
@@ -411,7 +411,7 @@ def _plain_note(plan: ReviewPlan, setup: rc.ReviewSetup, name: str, period: str,
 def _templated_note(plan: ReviewPlan, setup: rc.ReviewSetup, text: str, anchor: str, period: str, groups: list
                     ) -> Optional[str]:
     """The template ``text`` with the section placed by the before/inside rule; None with the problem recorded."""
-    lines, trailing = _split_lines(text)
+    lines, trailing = split_lines(text)
     placed = _insertion(plan, setup, anchor, hashi_headings(lines), len(lines))
     if placed is None:
         return None

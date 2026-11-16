@@ -273,7 +273,7 @@ and keeps `variant_missing` (it is still true of the variant). A template
 whose frontmatter carries `tomo:` is not the variant convention — the
 variant replaces Templater tokens, nothing else.
 
-The template's text is taken by the exact bytes: `_split_lines` mirrors
+The template's text is taken by the exact bytes: `split_lines` mirrors
 Hashi's `content.split("\n")`, and the rebuilt note ends with a newline
 only when the template did. A note whose template lacks the final newline
 lands without one; adding it would make the plain-vs-template byte
@@ -297,7 +297,7 @@ delivery that began with a picked heading needs the same list without a
 refusal — the re-plan at the configured anchor may be clean —
 (docs/tomo/scripts/review-instructions.md, "WHY a Picked Anchor Is Recorded
 as a Flag and Asked Again"). `pick_headings(setup, target, template)` is that
-one definition, built from the same `_template_choice` and `_split_lines`
+one definition, built from the same `_template_choice` and `split_lines`
 the planner uses, so the list the resume offers is the list the first pick
 offered; a plain note (no template) has none. A plan that always carried
 `headings` was rejected: `preview` prints them only on a place problem (SDD

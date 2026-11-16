@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.2
+# version: 0.4.3
 r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -289,8 +289,8 @@ def test_actions_an_indented_marker_copy_is_not_the_marker():
     p = plan(target_text=NOTE.replace("text der Woche", f"- mein Punkt\n{indented}"))
     assert p.mode == "insert" and p.problems == [] and p.actions[0]["action"] == "insert_under_marker"
     # the real marker is matched with trailing whitespace, never with leading
-    assert ra._marker_index([f"{MARKER}  \t"], MARKER) == 0
-    assert ra._marker_index([f" {MARKER}"], MARKER) is None
+    assert ra.marker_index([f"{MARKER}  \t"], MARKER) == 0
+    assert ra.marker_index([f" {MARKER}"], MARKER) is None
 
 
 def test_actions_a_marker_with_no_heading_above_it_is_place_missing():

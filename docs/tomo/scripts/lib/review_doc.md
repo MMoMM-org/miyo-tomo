@@ -179,7 +179,7 @@ Without a mapping (`DocInput.sections` is None) `render_document` runs the
 group loop it ran in spec 045: every group of the kind, the nothing-found
 bullet for an empty one, the same ids. The section side is a second branch,
 not a generalisation of the first, so a user who never maps a section gets
-the document spec 045 shipped, byte for byte. `tests/test_review_doc_golden.py`
+the document spec 045 shipped, byte for byte. `tests/test_046_t4_2_unmapped_doc_golden.py`
 pins that against a recording of the pre-T4.2 head (week and month); a
 change there is a regression, not a stale golden.
 
@@ -188,11 +188,13 @@ change there is a regression, not a stale golden.
 With a mapping the document mirrors the user's note: the section parts in
 template order, then the "Tomo Review" part — a divider heading
 `## <review heading> %%review%%` with its landing line, the analysis parts
-(rows with placement `review`, F2-AC12), then the groups. The section part
-itself is `review_sections`' (one owner for its heading, checkbox, landing
-line and mark); this module keeps the frame and the groups and hands the
-section side one function, `group_parts`, so a group renders the same way in
-both documents. Empty groups are left out with a mapping: the user's own
+(rows with placement `review`, F2-AC12), then the groups. The parts are
+rendered in `review_sections` (one owner for a section's heading, checkbox,
+landing line and mark, and for `group_parts` / `part_items`, which both
+documents use, so a group renders the same way in each); this module keeps
+the frame (title, callout, Approved line, frontmatter), the item line
+(`item_lines`, which takes the mark as a suffix) and the label table. The
+move also keeps this file under the L2 size guide (≤ 450 lines). Empty groups are left out with a mapping: the user's own
 sections already answer "what happened", and a column of "nothing found"
 groups under "Tomo Review" would be noise (F1-AC7). When no group and no
 analysis part is left, the divider goes too: an empty "Tomo Review" part

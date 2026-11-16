@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.4.0
+# version: 0.5.0
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -29,7 +29,10 @@ checkbox bullet, quote, fence, thematic break) is escaped with a leading
 backslash so the text cannot forge a line Pass 2 would read (``neutralised``
 is that predicate, shared with ``review_actions`` for the landing). Habits arrive
 rendered from ``review_habits`` and get an id like every Tomo item; no habits
-means no habits heading. ``ID_PATTERN`` and ``group_labels`` are the shared
+means no habits heading. With a mapping (``DocInput.sections``) the body is
+``review_sections.render_parts``; without one it is spec 045's byte for byte
+(``review_sections.group_parts``, every group).
+``ID_PATTERN`` and ``group_labels`` are the shared
 vocabulary of ``review_doc_parse``, which reads the document back.
 ``mark_delivered`` (F5-AC11) is the delivered mark: ``tomo.state``
 becomes ``approved`` and the title line gets the language's "delivered"
@@ -102,6 +105,11 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "nothing": "nothing found", "target": "Target", "exists": "exists", "created": "will be created",
         "elsewhere": "found at {path}", "before": "before", "inside": "inside",
         "not_read": "not read", "partly_read": "partly read", "delivered": "delivered",
+        "take": "Use this section", "lands": "Lands", "level": "level {level}", "parent": 'under "{h}"',
+        "before_h": 'before "{h}"', "under_h": 'right under "{h}"', "end_h": 'at the end of "{h}"',
+        "review_h": 'in the section "{r}" under "{h}"', "place_h": 'as the section "{r}" {where} "{h}"',
+        "mark_weekly_only": "only in the weekly review", "mark_not_in_weekly": "in no weekly review",
+        "mark_monthly_only": "only in the monthly review", "mark_not_in_monthly": "in no monthly review",
     },
     "de": {
         DONE: "Erledigt", OPEN: "Offen", THEMES: "Wiederkehrende Themen", GROWTH: "Vault-Wachstum",
@@ -110,6 +118,11 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "nothing": "nichts gefunden", "target": "Ziel", "exists": "vorhanden", "created": "wird angelegt",
         "elsewhere": "gefunden unter {path}", "before": "vor", "inside": "in",
         "not_read": "nicht gelesen", "partly_read": "teilweise gelesen", "delivered": "geliefert",
+        "take": "Abschnitt übernehmen", "lands": "Landet", "level": "Ebene {level}", "parent": "unter „{h}“",
+        "before_h": "vor „{h}“", "under_h": "direkt unter „{h}“", "end_h": "am Ende von „{h}“",
+        "review_h": "im Abschnitt „{r}“ unter „{h}“", "place_h": "als Abschnitt „{r}“ {where} „{h}“",
+        "mark_weekly_only": "nur im Wochenrückblick", "mark_not_in_weekly": "in keinem Wochenrückblick",
+        "mark_monthly_only": "nur im Monatsrückblick", "mark_not_in_monthly": "in keinem Monatsrückblick",
     },
 }
 
@@ -308,8 +321,10 @@ class DocInput:
     placement: str
     not_read: List[str]
     partly_read: List[str]
-    month_groups: bool
+    month_groups: bool                   # a child group of the kind was accepted (month or quarter pair)
     groups: Dict[str, List[dict]]        # group -> [{text, links}], habits included
+    sections: Optional[list] = None      # review_sections.SectionPart per mapped section; None = no mapping
+    review_heading: str = "Tomo Review"
 
 
 def _clean(text: Any) -> List[str]:
@@ -325,11 +340,11 @@ def neutralised(line: str) -> str:
     return _ESCAPE + line if _STRUCTURAL.match(line) or _RULE.match(line) else line
 
 
-def item_lines(text: str, links: Sequence[str], number: int) -> List[str]:
-    """The checkbox line with links and id, then the continuation lines; no line of the text is structure."""
+def item_lines(text: str, links: Sequence[str], number: int, suffix: str = "") -> List[str]:
+    """The checkbox line with links, ``suffix`` (a mark) and id, then the continuation lines; no line is structure."""
     first, *rest = (neutralised(ln) for ln in _clean(text))
     link_part = f" ({', '.join(f'[[{link}]]' for link in links)})" if links else ""
-    return [f"- [x] {first}{link_part} {ID_MARK}t{number}{ID_MARK}", *(_CONTINUATION + ln for ln in rest)]
+    return [f"- [x] {first}{link_part}{suffix} {ID_MARK}t{number}{ID_MARK}", *(_CONTINUATION + ln for ln in rest)]
 
 
 def _callout(inp: DocInput, words: Dict[str, str]) -> str:
@@ -346,7 +361,7 @@ def _callout(inp: DocInput, words: Dict[str, str]) -> str:
     return "> [!info] " + " · ".join(parts)
 
 
-def _rendered_groups(inp: DocInput) -> List[str]:
+def rendered_groups(inp: DocInput) -> List[str]:
     groups = [g for g in KIND_GROUPS.get(inp.kind, KIND_GROUPS[WEEK])
               if inp.month_groups or g not in MONTH_GROUPS + QUARTER_GROUPS]
     if not inp.groups.get(HABITS):
@@ -360,17 +375,13 @@ def render_document(inp: DocInput) -> Tuple[str, Dict[str, int]]:
 
     words = labels(inp.language)
     lines = [f"# {inp.period_name}{DOC_SUFFIX}", _callout(inp, words), APPROVED_LINE]
-    counts: Dict[str, int] = {}
-    number = 0
-    for group in _rendered_groups(inp):
-        items = inp.groups.get(group) or []
-        counts[group] = len(items)
-        lines += ["", f"## {words[group]}"]
-        if not items:
-            lines.append(f"- {words['nothing']}")
-        for entry in items:
-            number += 1
-            lines += item_lines(entry["text"], entry.get("links") or [], number)
+    from lib import review_sections          # imports this module: the parts are rendered there
+
+    if inp.sections is None:
+        body, counts, _ = review_sections.group_parts(inp, words, 0, keep_empty=True)
+    else:
+        body, counts = review_sections.render_parts(inp, words)
+    lines += body
     front = {
         "tomo": build_tomo_block(DOC_TYPE, DOC_STATE, inp.run_id),
         "review_period": inp.period_name, "review_kind": inp.kind, "review_target": inp.target,

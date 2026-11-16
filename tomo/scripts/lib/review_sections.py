@@ -1,5 +1,5 @@
-# review_sections.py — the Pass 1 section side of /review: the model's section proposals checked.
-# version: 0.1.2
+# review_sections.py — the Pass 1 section side of /review: section proposals checked, parts rendered.
+# version: 0.2.0
 """The user's mapped sections in the Pass 1 proposals of ``/review`` (spec 046, ADR-1, ADR-2).
 
 ``read.json`` carries ``sections`` (the SectionDefinitions) only when the
@@ -23,6 +23,17 @@ A section item follows ``review_doc.check_item`` with its mark as the group:
 a ``weekly_only`` / ``monthly_only`` item rests on a listed weekly / monthly
 note, every other section item on a daily of the period.
 
+``parts(defs, rows, accepted)`` builds one ``SectionPart`` per definition in
+``read.json`` order from the configured row of the same id (heading, level,
+parent, placement); ``SectionsChanged`` when the keys differ. ``render_parts``
+renders the mapped body: each part (``## <heading> %%<key>%%``, the section
+checkbox ``- [x] <label> %%<key>%%``, unticked when empty, the italic landing
+line, the items or the nothing-found bullet), then, when an analysis part or a
+non-empty group is left, the ``## <review heading> %%review%%`` divider with its
+landing line, the analysis parts and the non-empty groups. ``group_parts`` and
+``part_items`` render the groups and the items of any part (a mark as the
+``_LABELS`` suffix, ids global over the document), for both documents.
+
 No Kado, no model, no file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_sections.md
@@ -31,7 +42,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
 from lib import review_doc as rd
 from lib.review_config import DEFAULT_CAP
@@ -41,6 +52,8 @@ DUPLICATE_SECTION = "duplicate-section"
 OVER_CAP = "over-cap"
 MARK_NOT_ALLOWED = "mark-not-allowed"
 DOUBLE_PLACEMENT = "double-placement"
+REVIEW = "review"                                   # an analysis row's placement (F2-AC12)
+REVIEW_ID = "%%review%%"
 
 _LINK = r"!?\[\[[^\]\n]*\]\]"
 _LINK_LIST = re.compile(rf"\(\s*{_LINK}(?:\s*,\s*{_LINK})*\s*\)\s*$")   # the trailing ([[a]], [[b]]) list
@@ -60,6 +73,10 @@ def definitions(read: dict) -> Optional[Dict[str, dict]]:
     if not isinstance(sections, list):
         return None
     return {str(d["key"]): d for d in sections if isinstance(d, dict) and d.get("key")}
+
+
+class SectionsChanged(ValueError):
+    """The section keys of ``read.json`` are not the configured rows: the mapping changed after the read."""
 
 
 def _cap(definition: dict) -> int:
@@ -120,8 +137,8 @@ def check(proposals: dict, read: dict) -> SectionCheck:
 def _normalised_lines(text: object) -> List[str]:
     """The text's lines casefolded, whitespace collapsed, without ``%%`` marks and a trailing link list,
     each inline link reduced to its target; empty ones dropped."""
-    lines = (" ".join(_INLINE_LINK.sub(r"\1", _LINK_LIST.sub("", ln)).casefold().split())
-             for ln in str(text).replace(rd.ID_MARK, "").splitlines())
+    bare = (rd.ID_PATTERN.sub("", ln).replace(rd.ID_MARK, "").rstrip() for ln in str(text).splitlines())
+    lines = (" ".join(_INLINE_LINK.sub(r"\1", _LINK_LIST.sub("", ln)).casefold().split()) for ln in bare)
     return [ln for ln in lines if ln]
 
 
@@ -157,3 +174,109 @@ def _double_placements(proposals: dict, refused: set) -> List[str]:
         texts.add(text)
         firsts.add(first)
     return errors
+
+
+# --- the parts of the document ------------------------------------------------------------
+
+@dataclass
+class Landing:
+    heading: str
+    level: int
+    parent: Optional[str]
+
+
+@dataclass
+class SectionPart:
+    key: str
+    heading: str
+    placement: str                                       # before | under | end | review
+    landing: Landing
+    items: List[dict]                                    # [{text, links, mark?}]
+    routed: bool = False                                 # lands in "Tomo Review" (set by delivery planning)
+
+    @property
+    def empty(self) -> bool:
+        return not self.items
+
+    @property
+    def in_review(self) -> bool:
+        return self.placement == REVIEW or self.routed
+
+
+def parts(defs: Dict[str, dict], rows: Sequence[dict], accepted: Dict[str, List[dict]]) -> List[SectionPart]:
+    """One part per definition in ``read.json`` order, its landing from the configured row of the same id."""
+    by_id = {str(r.get("id")): r for r in rows}
+    if set(defs) != set(by_id):
+        raise SectionsChanged("the mapped sections changed since the period was read")
+    out = []
+    for key in defs:
+        r = by_id[key]
+        out.append(SectionPart(key=key, heading=str(r["heading"]), placement=str(r["placement"]),
+                               landing=Landing(str(r["heading"]), int(r["level"]), r.get("parent")),
+                               items=list(accepted.get(key) or [])))
+    return out
+
+
+def part_items(items: Sequence[dict], number: int, words: Dict[str, str]) -> Tuple[List[str], int]:
+    """A part's item lines, ids from ``number + 1`` and a mark as suffix, or the nothing-found bullet; the last id."""
+    lines: List[str] = [] if items else [f"- {words['nothing']}"]
+    for entry in items:
+        number += 1
+        suffix = f" · {words['mark_' + entry['mark']]}" if entry.get("mark") else ""
+        lines += rd.item_lines(entry["text"], entry.get("links") or [], number, suffix)
+    return lines, number
+
+
+def group_parts(inp: rd.DocInput, words: Dict[str, str], number: int, keep_empty: bool) -> Tuple[list, dict, int]:
+    """``(lines, counts, last id)`` of the rendered groups; an empty one only with ``keep_empty`` (spec 045)."""
+    lines: List[str] = []
+    counts: Dict[str, int] = {}
+    for group in rd.rendered_groups(inp):
+        items = inp.groups.get(group) or []
+        counts[group] = len(items)
+        if items or keep_empty:
+            body, number = part_items(items, number, words)
+            lines += ["", f"## {words[group]}", *body]
+    return lines, counts, number
+
+
+def landing_line(part: SectionPart, words: Dict[str, str], review_heading: str) -> str:
+    """Where the part lands: placement and heading, with level and parent unless it lands in "Tomo Review"."""
+    land = part.landing
+    if part.in_review:
+        return f"*{words['lands']}: {words['review_h'].format(r=review_heading, h=land.heading)}*"
+    where = [words["level"].format(level=land.level)]
+    if land.parent:
+        where.append(words["parent"].format(h=land.parent))
+    return f"*{words['lands']}: {words[part.placement + '_h'].format(h=land.heading)} ({', '.join(where)})*"
+
+
+def _section_part(part: SectionPart, words: Dict[str, str], number: int, review_heading: str) -> Tuple[list, int]:
+    mark = f"{rd.ID_MARK}{part.key}{rd.ID_MARK}"
+    box = " " if part.empty else "x"
+    body, number = part_items(part.items, number, words)
+    return ["", f"## {part.heading} {mark}", f"- [{box}] {words['take']} {mark}",
+            landing_line(part, words, review_heading), *body], number
+
+
+def render_parts(inp: rd.DocInput, words: Dict[str, str]) -> Tuple[List[str], Dict[str, int]]:
+    """The mapped body and its counts (section keys and groups), ids global over the document."""
+    lines: List[str] = []
+    counts: Dict[str, int] = {}
+    number = 0
+    analysis = [p for p in inp.sections if p.placement == REVIEW]
+    for part in (p for p in inp.sections if p.placement != REVIEW):
+        body, number = _section_part(part, words, number, inp.review_heading)
+        lines += body
+        counts[part.key] = len(part.items)
+    review: List[str] = []
+    for part in analysis:
+        body, number = _section_part(part, words, number, inp.review_heading)
+        review += body
+        counts[part.key] = len(part.items)
+    groups, group_counts, number = group_parts(inp, words, number, keep_empty=False)
+    counts.update(group_counts)
+    if review or groups:
+        place = words["place_h"].format(r=inp.review_heading, where=words[inp.placement], h=inp.anchor)
+        lines += ["", f"## {inp.review_heading} {REVIEW_ID}", f"*{words['lands']}: {place}*", *review, *groups]
+    return lines, counts

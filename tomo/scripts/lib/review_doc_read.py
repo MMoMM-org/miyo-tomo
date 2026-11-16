@@ -1,13 +1,14 @@
 # review_doc_read.py — the one reader of the /review document for Pass 2: path, note read, parse with pass1_links.
-# version: 0.1.2
+# version: 0.1.3
 """Read the edited review document back for ``parse``, ``preview`` and ``deliver`` (spec 045).
 
 ``doc_path_of(meta, override)`` is the path a Pass 2 command reads: the
 caller's ``--doc-path`` or ``meta.json``'s ``doc_path``; None when neither
 names one. ``read_document(vault, doc_path, meta)`` reads the note through
 Kado and parses it with ``review_doc_parse.parse_document``, handing it the
-``pass1_links`` map and the ``pass1_counts`` total of ``meta`` so ``edited``
-and ``deleted`` are computed one way for every command. It returns a
+``pass1_links`` map and the ``pass1_counts`` total of ``meta`` (every integer
+value: group and section keys alike) so ``edited`` and ``deleted`` are computed
+one way for every command. It returns a
 ``DocRead`` — the path, the text, Kado's ``modified`` stamp (the guard for
 the delivered mark) and the ``ParsedDoc`` — or None when nothing is at the
 path. A refused key or a dead connection raises ``review_vault.Stopped``

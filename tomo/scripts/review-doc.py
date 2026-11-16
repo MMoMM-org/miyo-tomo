@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.5.1
+# version: 0.6.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (``read.json``) and the model wrote its proposals
-(``proposals.json``), ``write`` checks the proposals against the period,
-computes the habits from the tracker values, probes the target note, renders
+(``proposals.json``), ``write`` checks the proposals against the period
+(the groups through ``lib/review_doc``, the sections through
+``lib/review_sections``), computes the habits from the tracker values,
+probes the target note, renders
 ``<period> Review.md`` and writes it to the inbox through Kado — the only
 vault write of Pass 1. The Pass 1 counts and the source-link stems per Tomo
 item (``pass1_links``, nothing text-derived) go to ``meta.json`` of the
-stem; ``read.json`` and ``proposals.json`` are deleted once the document is
+stem, with a mapping also ``pass1_sections`` ``[{key, count, empty}]``;
+``read.json`` and ``proposals.json`` are deleted once the document is
 written (ADR-9). ``parse`` reads the edited document back through Kado and
 prints counts and ids only; it writes no file — the document is the source
 of truth and Phase 4 reads it fresh. ``replace`` is the confirmed
@@ -27,9 +30,10 @@ Usage (cwd = instance root):
 
 Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
-           counts {group: n}, rejected [{group, index, reason}], calls
+           counts {group or section key: n}, rejected [{group | section, index, reason}], calls
          | status refused, problems [proposals-invalid | doc-name-taken | review-exists | read-missing |
-           read-invalid | setup-missing | setup-invalid | inbox-not-configured], errors? [pointers]
+           read-invalid | setup-missing | setup-invalid | inbox-not-configured | sections-changed],
+           errors? [pointers, or "<pointer>: <error>" for a section check]
          | status stopped, problems [kado-write-failed] or error {kind kado-unreachable|kado-auth, detail}
     parse: status ok, stem, doc_path, approved, nothing_to_deliver,
            items {group: [{id?, origin tomo|user, kept, edited}]},
@@ -43,7 +47,12 @@ Output: one JSON object on stdout, ASCII-escaped.
            | --abort: status aborted, stem
 
 Rules:
-    The proposals are validated before any Kado call. The target is the first
+    The proposals are validated before any Kado call, the section checks
+    (unknown-section, duplicate-section, over-cap (<key>), double-placement,
+    mark-not-allowed) included, on ``write`` and ``replace --confirm`` alike;
+    a read.json whose section keys are not the configured rows' ids is
+    refused ``sections-changed``. A part lands where its configured row
+    says. The target is the first
     of the period's note paths (flat, then the year subfolder) that exists;
     when neither does, one byName search finds a note of that exact name the
     user moved, and the document targets it there. ``write`` never
@@ -86,6 +95,7 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_habits as rh  # noqa: E402
+from lib import review_sections as rs  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import Period, render_name  # noqa: E402
@@ -199,6 +209,8 @@ def _write_meta(stage: Path, inp: rd.DocInput, counts: dict, doc_path: str, text
         "pass1_counts": counts, "pass1_links": rdp.link_stems(text),
         "steps_done": [], "failed_step": "", "withdrawn": False,
     }
+    if inp.sections is not None:
+        meta["pass1_sections"] = [{"key": p.key, "count": counts[p.key], "empty": p.empty} for p in inp.sections]
     atomic_write_text(stage / META_FILE, json.dumps(meta, ensure_ascii=True, indent=2) + "\n")
 
 
@@ -228,6 +240,14 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
     config, setup, period, doc_path = _resolve(args, read)
 
     accepted, rejected = rd.check_items(proposals, read)
+    sections = rs.check(proposals, read)
+    if sections.errors:
+        raise Refused("proposals-invalid", errors=sections.errors)
+    defs = rs.definitions(read)
+    try:
+        parts = rs.parts(defs or {}, setup.sections, sections.accepted)
+    except rs.SectionsChanged:
+        raise Refused("sections-changed") from None
     habits = rh.habits(rh.tracker_defs(config), read.get("days") or [], period.days(), setup.language)
     accepted[rd.HABITS] = [{"text": item["text"], "links": []} for item in habits]
 
@@ -249,7 +269,8 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
         target_found_elsewhere=elsewhere, anchor=setup.anchor, placement=setup.placement,
         not_read=[str(p) for p in read.get("not_read") or []],
         partly_read=[str(d.get("date")) for d in read.get("days") or [] if d.get("partly_read")],
-        month_groups=rd.WEEKLY_ONLY in accepted, groups=accepted,
+        month_groups=any(g in accepted for g in rd.CHILD_GROUPS.get(period.kind, ())), groups=accepted,
+        sections=parts if defs is not None else None, review_heading=setup.heading,
     )
     text, counts = rd.render_document(inp)
     try:
@@ -261,7 +282,7 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
     _write_meta(stage, inp, counts, doc_path, text)
     for path in (stage / READ_FILE, proposals_path):
         path.unlink(missing_ok=True)
-    return {"status": "written", **result, "counts": counts, "rejected": rejected,
+    return {"status": "written", **result, "counts": counts, "rejected": rejected + sections.rejected,
             "calls": vault.client.call_count}
 
 

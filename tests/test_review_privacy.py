@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.5
+# version: 0.3.6
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -41,6 +41,9 @@ which marker kinds it may carry and why. The walk then asserts:
   it, the tracker marker's days are named unreadable in the habits line;
 - read.json and proposals.json are gone after `write`, `replace --confirm`
   and `replace --abort`, and kept after a refused or failed write.
+- (spec 046 T4.2, amended CON-3) a mapped write's meta.json is a closed key set: spec 045's keys
+  plus `pass1_sections` with entries exactly {key, count, empty}; section headings, parents,
+  descriptions and keywords carrying a marker never reach it.
 
 Runs in tmp_path; the scripts are loaded in-process with KadoClient replaced
 by tests/review_fake_vault.ReviewFakeVault. All data is synthetic. Never a
@@ -568,3 +571,44 @@ def test_every_marker_reached_the_scripts(walk):
     doc = walk.vault.text(WEEK_DOC)
     assert "Sleep:" in doc and "unreadable: 2026-03-24" in doc, "Sleep:: TRK on 2026-03-24"
     assert "Sport:" in doc and "unreadable: 2026-03-25" in doc, "Sport:: TRK on 2026-03-25"
+
+
+# ── spec 046 T4.2: meta.json of a mapped write (amended CON-3) ──────────────────
+
+META_KEYS = {"stem", "period", "kind", "doc_path", "target", "target_exists", "mode", "run_id", "generated",
+             "pass1_counts", "pass1_links", "steps_done", "failed_step", "withdrawn", "pass1_sections"}
+
+
+def test_a_mapped_meta_json_is_a_closed_set_of_keys_ids_and_counts(tmp_path, monkeypatch, capsys):
+    """Amended CON-3: section headings, parents and descriptions are setup text the vault config and
+    read.json may hold; meta.json holds the closed spec 045 keys plus pass1_sections, whose entries are
+    exactly {key, count, empty}, and section keys in pass1_counts are row ids — no heading, no text."""
+    import test_046_t4_2_doc_sections as tds
+    from review_fake_vault import ReviewFakeVault
+
+    marker = "MARKER-46c9"
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "profiles").mkdir()
+    (tmp_path / "profiles" / "miyo.yaml").write_text(yaml.safe_dump({"concept_defaults": {}}), encoding="utf-8")
+    rows = [tds.row("s1", f"{marker} heading", "end", parent=f"{marker} parent", description=f"{marker} desc",
+                    keywords=[f"{marker} kw"]),
+            tds.row("s2", f"{marker} analysis", "review")]
+    tds.map_config(tmp_path, rows)
+    read = tds.mapped_week(rows)
+    props = {"language": "de", "groups": {"done": [tds.item(f"{marker} done", "2026-03-25")]},
+             "sections": [tds.section("s1", tds.item(f"{marker} item", "2026-03-24"))]}
+    stem, path = tds.stage(tmp_path, read, props)
+    spec = importlib.util.spec_from_file_location("review_doc_privacy_046", SCRIPTS_DIR / "review-doc.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    fake = ReviewFakeVault({})
+    monkeypatch.setattr(module, "KadoClient", fake)
+    assert module.main(["--profiles-dir", "profiles", "write", "--stem", stem, "--proposals", str(path)]) == 0
+    out, err = capsys.readouterr()
+    assert json.loads(out)["status"] == "written" and marker not in out + err
+    raw = (tmp_path / "tomo-tmp" / "review" / stem / "meta.json").read_text(encoding="utf-8")
+    meta = json.loads(raw)
+    assert set(meta) == META_KEYS and marker not in raw
+    assert [set(entry) for entry in meta["pass1_sections"]] == [{"key", "count", "empty"}] * 2
+    assert {k for k in meta["pass1_counts"] if k not in rd.GROUPS} == {"s1", "s2"}

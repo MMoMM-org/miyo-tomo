@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_sections.py — lib/review_sections.py and the spec 046 proposals schema (046 T4.1).
 
 Synthetic read.json / proposals.json dicts, no Kado:
@@ -17,6 +17,7 @@ Synthetic read.json / proposals.json dicts, no Kado:
   note for a ``weekly_only`` / ``monthly_only`` mark)
 - spec 045 proposals without ``sections`` and a read without ``sections`` give no section result and
   check_items exactly as before
+- an echoed rendered line (`x ([[a]]) %%t1%%`) loses its id before its trailing link list (T4.2)
 
 All data is synthetic.
 """
@@ -305,6 +306,13 @@ def test_a_trailing_link_list_with_aliases_and_headings_normalises_away():
     props = with_sections(proposals(done=[item("Finished the report ([[2026-03-02|Mon]], [[2026-03-03#Log]])",
                                                "2026-03-24")]),
                           section("s1", item("finished the report ([[2026-03-25]])", "2026-03-25")))
+    assert rs.check(props, mapped(week_read())).errors == ["/groups/done/0: double-placement"]
+
+
+def test_an_echoed_rendered_line_loses_its_id_before_its_link_list():
+    # the rendered form ends "([[stem]]) %%tN%%": the id goes first, so the list is trailing again (046 T4.2)
+    props = with_sections(proposals(done=[item("Finished the report ([[2026-03-25]]) %%t1%%", "2026-03-24")]),
+                          section("s1", item("finished the report", "2026-03-25")))
     assert rs.check(props, mapped(week_read())).errors == ["/groups/done/0: double-placement"]
 
 

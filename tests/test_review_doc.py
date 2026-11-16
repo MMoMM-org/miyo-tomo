@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.5
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files:
@@ -13,7 +13,7 @@ On tests/review_fake_vault with synthetic read.json / proposals.json files:
   source order; a source carrying a newline, ], | or %% and a note outside
   the period are never linked; a bare weekly stem resolves; an item whose
   only source is wiki-link-shaped ([[2026-03-26]], [[2026-W13]]) resolves
-  through the stem fallback of Sources.daily_of / weekly_of (T3.8 pin)
+  through the stem fallback of Sources.daily_of / child_of (T3.8 pin)
 - a structural marker at the start of any item line (heading, checkbox,
   quote, fence, thematic break) is escaped with a backslash, on the first
   line and on continuation lines, so the document keeps exactly one Approved
@@ -276,7 +276,7 @@ def test_a_bare_weekly_stem_resolves_for_weekly_only():
 
 
 def test_a_wiki_link_shaped_daily_as_the_only_source_resolves_through_the_stem_fallback():
-    # RED when Sources.daily_of drops `or self.dailies.get(_stem(source))`: the brackets never match a
+    # RED when Sources.daily_of drops `or self.dailies.get(note_stem(source))`: the brackets never match a
     # listed path or stem, the item has no other source and is rejected with no-source-in-period
     props = proposals(done=[item("only a wiki link", "[[2026-03-26]]")],
                       themes=[item("two wiki links", "[[2026-03-24]]", "[[2026-03-26.md]]")])
@@ -287,7 +287,7 @@ def test_a_wiki_link_shaped_daily_as_the_only_source_resolves_through_the_stem_f
 
 
 def test_a_wiki_link_shaped_weekly_as_the_only_source_resolves_through_the_stem_fallback():
-    # RED when Sources.weekly_of drops `or self.weeklies.get(_stem(source))`: Sources.of keys the weekly
+    # RED when Sources.child_of drops `or notes.get(note_stem(source))`: Sources.of keys the weekly
     # by its path and bare stem only, so `[[2026-W13]]` matches neither and the item is rejected
     props = proposals(weekly_only=[item("only a wiki link", "[[2026-W13]]")])
     accepted, rejected = rd.check_items(props, month_read())

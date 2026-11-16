@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.3.1
+# version: 0.4.0
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -10,9 +10,13 @@ the ``Period`` from ``read.json`` under the configured week rule;
 period, a ``weekly_only`` item a weekly note the reader listed, a theme two
 distinct days, a text that is not empty; the month-only groups only for a
 month with weekly notes) and returns the accepted items per group with their
-links and the rejected ones with group, index and reason. A link is the stem
+links and the rejected ones with group, index and reason. The groups come
+from ``KIND_GROUPS`` per kind (the quarter's ``monthly_only`` needs a listed
+monthly note, its pair only a quarter with monthly notes; ``group_reason``);
+``check_item`` and ``group_reason`` also serve ``review_sections`` for the
+section items. A link is the stem
 of a note ``read.json`` lists that a source resolved to — a daily of the
-period or, for ``weekly_only``, a listed weekly — deduplicated in source
+period or, for ``weekly_only`` / ``monthly_only``, a listed weekly / monthly — deduplicated in source
 order; a source that resolves to nothing is dropped from the links, and no
 model string is ever rendered as a link. ``render_document`` renders the
 frontmatter (a schema-valid ``tomo:`` block plus the top-level ``review_*``
@@ -46,7 +50,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from lib.doc_frontmatter import build_tomo_block
-from lib.period import KINDS, MONTH, Period, WeekRule
+from lib.period import KINDS, MONTH, QUARTER, WEEK, Period, WeekRule
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "review-proposals.schema.json"
 
@@ -60,16 +64,27 @@ _DELIVERED_SEP = " — "
 
 DONE, OPEN, THEMES, GROWTH, HABITS, WEEKLY_ONLY, NOT_IN_WEEKLY = (
     "done", "open", "themes", "growth", "habits", "weekly_only", "not_in_weekly")
-GROUPS = (DONE, OPEN, THEMES, GROWTH, HABITS, WEEKLY_ONLY, NOT_IN_WEEKLY)
-MODEL_GROUPS = tuple(g for g in GROUPS if g != HABITS)
+MONTHLY_ONLY, NOT_IN_MONTHLY = "monthly_only", "not_in_monthly"
 MONTH_GROUPS = (WEEKLY_ONLY, NOT_IN_WEEKLY)
+QUARTER_GROUPS = (MONTHLY_ONLY, NOT_IN_MONTHLY)
+_BASE_GROUPS = (DONE, OPEN, THEMES, GROWTH, HABITS)
+KIND_GROUPS = {WEEK: _BASE_GROUPS, MONTH: _BASE_GROUPS + MONTH_GROUPS, QUARTER: _BASE_GROUPS + QUARTER_GROUPS}
+GROUPS = _BASE_GROUPS + MONTH_GROUPS + QUARTER_GROUPS
+MODEL_GROUPS = tuple(g for g in GROUPS if g != HABITS)
+CHILD_GROUPS = {MONTH: MONTH_GROUPS, QUARTER: QUARTER_GROUPS}       # the marks of a kind, against its child notes
+_CHILD_NOTES = {MONTH: "weekly", QUARTER: "monthly"}                # the read.json key of those child notes
+_ONLY_IN_CHILD = (WEEKLY_ONLY, MONTHLY_ONLY)                         # rests on a child note, not on a daily
 MIN_THEME_DAYS = 2
 
 NO_SOURCE = "no-source-in-period"
 THEME_DAYS = "theme-needs-two-days"
 MONTH_ONLY = "month-only-group"
+QUARTER_ONLY = "quarter-only-group"
 NO_WEEKLY = "no-weekly-notes"
+NO_MONTHLY = "no-monthly-notes"
 EMPTY_TEXT = "empty-text"
+_OTHER_KIND = {MONTH: MONTH_ONLY, QUARTER: QUARTER_ONLY}
+_NO_CHILD_NOTES = {MONTH: NO_WEEKLY, QUARTER: NO_MONTHLY}
 
 ID_MARK = "%%"
 ID_PATTERN = re.compile(r"%%(t\d+)%%")
@@ -83,6 +98,7 @@ _LABELS: Dict[str, Dict[str, str]] = {
     "en": {
         DONE: "Done", OPEN: "Open", THEMES: "Recurring themes", GROWTH: "Vault growth", HABITS: "Habits",
         WEEKLY_ONLY: "Only in the weekly reviews", NOT_IN_WEEKLY: "Not in the weekly reviews",
+        MONTHLY_ONLY: "Only in the monthly reviews", NOT_IN_MONTHLY: "Not in the monthly reviews",
         "nothing": "nothing found", "target": "Target", "exists": "exists", "created": "will be created",
         "elsewhere": "found at {path}", "before": "before", "inside": "inside",
         "not_read": "not read", "partly_read": "partly read", "delivered": "delivered",
@@ -90,6 +106,7 @@ _LABELS: Dict[str, Dict[str, str]] = {
     "de": {
         DONE: "Erledigt", OPEN: "Offen", THEMES: "Wiederkehrende Themen", GROWTH: "Vault-Wachstum",
         HABITS: "Gewohnheiten", WEEKLY_ONLY: "Nur in den Wochenreviews", NOT_IN_WEEKLY: "Nicht in den Wochenreviews",
+        MONTHLY_ONLY: "Nur in den Monatsreviews", NOT_IN_MONTHLY: "Nicht in den Monatsreviews",
         "nothing": "nichts gefunden", "target": "Ziel", "exists": "vorhanden", "created": "wird angelegt",
         "elsewhere": "gefunden unter {path}", "before": "vor", "inside": "in",
         "not_read": "nicht gelesen", "partly_read": "teilweise gelesen", "delivered": "geliefert",
@@ -156,17 +173,19 @@ def period_of(read: dict, rule: WeekRule) -> Period:
     return period
 
 
-def _stem(path: str) -> str:
+def note_stem(path: str) -> str:
     name = posixpath.basename(path.strip().strip("[]"))
     return name[:-3] if name.endswith(".md") else name
 
 
 @dataclass
 class Sources:
-    """What a source may resolve to, keyed by the listed path and by its stem: a daily → (day, stem), a weekly → stem."""
+    """What a source may resolve to, keyed by the listed path and by its stem: a daily → (day, stem),
+    a weekly or monthly note → stem."""
 
     dailies: Dict[str, Tuple[date, str]] = field(default_factory=dict)
     weeklies: Dict[str, str] = field(default_factory=dict)
+    monthlies: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def of(cls, read: dict) -> "Sources":
@@ -177,37 +196,50 @@ class Sources:
             except ValueError:
                 continue
             for path in entry.get("dailies") or []:
-                stem = _stem(str(path))
+                stem = note_stem(str(path))
                 sources.dailies[str(path)] = (day, stem)
                 sources.dailies.setdefault(stem, (day, stem))
-        for entry in read.get("weekly") or []:
-            path = str(entry.get("path") or "")
-            if path:
-                sources.weeklies[path] = _stem(path)
-                sources.weeklies.setdefault(_stem(path), _stem(path))
+        for key, notes in (("weekly", sources.weeklies), ("monthly", sources.monthlies)):
+            for entry in read.get(key) or []:
+                path = str(entry.get("path") or "")
+                if path:
+                    notes[path] = note_stem(path)
+                    notes.setdefault(note_stem(path), note_stem(path))
         return sources
 
     def daily_of(self, source: str) -> Optional[Tuple[date, str]]:
-        return self.dailies.get(source.strip()) or self.dailies.get(_stem(source))
+        return self.dailies.get(source.strip()) or self.dailies.get(note_stem(source))
 
-    def weekly_of(self, source: str) -> Optional[str]:
-        return self.weeklies.get(source.strip()) or self.weeklies.get(_stem(source))
+    def child_of(self, group: str, source: str) -> Optional[str]:
+        """The weekly note of a ``weekly_only`` source, the monthly note of a ``monthly_only`` one."""
+        notes = self.weeklies if group == WEEKLY_ONLY else self.monthlies
+        return notes.get(source.strip()) or notes.get(note_stem(source))
 
 
 def _rejection(group: str, index: int, reason: str) -> dict:
     return {"group": group, "index": index, "reason": reason}
 
 
-def _group_reason(group: str, kind: str, has_weeklies: bool) -> Optional[str]:
-    if group not in MONTH_GROUPS:
-        return None
-    if kind != MONTH:
-        return MONTH_ONLY
-    return None if has_weeklies else NO_WEEKLY
+def has_child_notes(read: dict) -> bool:
+    """Whether the reader listed the child notes a month (weekly) or a quarter (monthly) marks against."""
+    key = _CHILD_NOTES.get(str((read.get("period") or {}).get("kind")))
+    return bool(key and read.get(key))
 
 
-def _check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str], List[str]]:
-    """``(reason, links)``: the rejection reason or None, and the stems of the resolved sources in source order."""
+def group_reason(group: str, kind: str, has_children: bool) -> Optional[str]:
+    """Why a child group (or a section item's mark) is not allowed in ``kind``; None when it is."""
+    for owner, groups in CHILD_GROUPS.items():
+        if group in groups:
+            if kind != owner:
+                return _OTHER_KIND[owner]
+            return None if has_children else _NO_CHILD_NOTES[owner]
+    return None
+
+
+def check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str], List[str]]:
+    """``(reason, links)``: the rejection reason or None, and the stems of the resolved sources in source order.
+
+    ``group`` is the item's group, or a section item's mark ("" without one)."""
     if _clean(item.get("text")) == [""]:
         return EMPTY_TEXT, []
     days: set = set()
@@ -215,7 +247,7 @@ def _check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str]
     links: List[str] = []
     for source in (str(s) for s in item.get("sources") or []):
         daily = sources.daily_of(source)
-        weekly = sources.weekly_of(source) if group == WEEKLY_ONLY and daily is None else None
+        weekly = sources.child_of(group, source) if group in _ONLY_IN_CHILD and daily is None else None
         if daily is not None:
             days.add(daily[0])
             link = daily[1]
@@ -226,7 +258,7 @@ def _check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str]
             continue
         if link not in links:
             links.append(link)
-    if (not weeklies) if group == WEEKLY_ONLY else (not days):
+    if (not weeklies) if group in _ONLY_IN_CHILD else (not days):
         return NO_SOURCE, links
     if group == THEMES and len(days) < MIN_THEME_DAYS:
         return THEME_DAYS, links
@@ -236,23 +268,23 @@ def _check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str]
 def check_items(proposals: dict, read: dict) -> Tuple[Dict[str, List[dict]], List[dict]]:
     """``(accepted {group: [{text, links}]}, rejected [{group, index, reason}])`` over the model groups.
 
-    The month-only groups appear in ``accepted`` only for a month whose reader
-    listed weekly notes; their items are rejected otherwise."""
+    A child group appears in ``accepted`` only for its kind (month, quarter) when
+    the reader listed that kind's child notes; its items are rejected otherwise."""
     kind = str((read.get("period") or {}).get("kind"))
-    has_weeklies = bool(read.get("weekly"))
+    has_children = has_child_notes(read)
     sources = Sources.of(read)
     accepted: Dict[str, List[dict]] = {}
     rejected: List[dict] = []
     groups = proposals.get("groups") or {}
     for group in MODEL_GROUPS:
         items = groups.get(group) or []
-        group_reason = _group_reason(group, kind, has_weeklies)
-        if group_reason is not None:
-            rejected.extend(_rejection(group, i, group_reason) for i in range(len(items)))
+        reason = group_reason(group, kind, has_children)
+        if reason is not None:
+            rejected.extend(_rejection(group, i, reason) for i in range(len(items)))
             continue
         accepted[group] = []
         for index, item in enumerate(items):
-            reason, links = _check_item(group, item, sources)
+            reason, links = check_item(group, item, sources)
             if reason is not None:
                 rejected.append(_rejection(group, index, reason))
                 continue
@@ -305,17 +337,18 @@ def _callout(inp: DocInput, words: Dict[str, str]) -> str:
         state = words["elsewhere"].format(path=inp.target_found_elsewhere)
     else:
         state = words["exists"] if inp.target_exists else words["created"]
-    parts = [f"{words['target']}: [[{_stem(inp.target)}]] ({state})",
+    parts = [f"{words['target']}: [[{note_stem(inp.target)}]] ({state})",
              f"{words[inp.placement]} \"{inp.anchor}\""]
     if inp.not_read:
-        parts.append(f"{words['not_read']}: {', '.join(_stem(p) for p in inp.not_read)}")
+        parts.append(f"{words['not_read']}: {', '.join(note_stem(p) for p in inp.not_read)}")
     if inp.partly_read:
         parts.append(f"{words['partly_read']}: {', '.join(inp.partly_read)}")
     return "> [!info] " + " · ".join(parts)
 
 
 def _rendered_groups(inp: DocInput) -> List[str]:
-    groups = [g for g in GROUPS if inp.month_groups or g not in MONTH_GROUPS]
+    groups = [g for g in KIND_GROUPS.get(inp.kind, KIND_GROUPS[WEEK])
+              if inp.month_groups or g not in MONTH_GROUPS + QUARTER_GROUPS]
     if not inp.groups.get(HABITS):
         groups.remove(HABITS)
     return groups

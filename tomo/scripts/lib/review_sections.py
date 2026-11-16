@@ -1,5 +1,5 @@
 # review_sections.py — the Pass 1 section side of /review: section proposals checked, parts rendered.
-# version: 0.2.0
+# version: 0.2.1
 """The user's mapped sections in the Pass 1 proposals of ``/review`` (spec 046, ADR-1, ADR-2).
 
 ``read.json`` carries ``sections`` (the SectionDefinitions) only when the
@@ -33,6 +33,8 @@ non-empty group is left, the ``## <review heading> %%review%%`` divider with its
 landing line, the analysis parts and the non-empty groups. ``group_parts`` and
 ``part_items`` render the groups and the items of any part (a mark as the
 ``_LABELS`` suffix, ids global over the document), for both documents.
+Every heading, parent and anchor text placed in a part, a landing line or the
+divider goes through ``display_heading`` first; the parts keep the config text.
 
 No Kado, no model, no file I/O.
 
@@ -58,6 +60,8 @@ REVIEW_ID = "%%review%%"
 _LINK = r"!?\[\[[^\]\n]*\]\]"
 _LINK_LIST = re.compile(rf"\(\s*{_LINK}(?:\s*,\s*{_LINK})*\s*\)\s*$")   # the trailing ([[a]], [[b]]) list
 _INLINE_LINK = re.compile(r"!?\[\[([^\]|\n]*)(?:\|[^\]\n]*)?\]\]")      # [[a|b]] -> a, [[a#h]] -> a#h
+_COMMENT = re.compile(r"%%.*?%%")                                       # an Obsidian comment span, ids included
+_PERCENTS = re.compile(r"%{2,}")
 
 
 @dataclass
@@ -240,22 +244,28 @@ def group_parts(inp: rd.DocInput, words: Dict[str, str], number: int, keep_empty
     return lines, counts, number
 
 
+def display_heading(text: object) -> str:
+    """``text`` on one line for the document: whitespace collapsed, ``%% … %%`` spans dropped, no ``%%`` left."""
+    one_line = " ".join(str(text).split())
+    return " ".join(_PERCENTS.sub("%", _COMMENT.sub("", one_line)).split())
+
+
 def landing_line(part: SectionPart, words: Dict[str, str], review_heading: str) -> str:
     """Where the part lands: placement and heading, with level and parent unless it lands in "Tomo Review"."""
-    land = part.landing
+    land, heading = part.landing, display_heading(part.landing.heading)
     if part.in_review:
-        return f"*{words['lands']}: {words['review_h'].format(r=review_heading, h=land.heading)}*"
+        return f"*{words['lands']}: {words['review_h'].format(r=display_heading(review_heading), h=heading)}*"
     where = [words["level"].format(level=land.level)]
     if land.parent:
-        where.append(words["parent"].format(h=land.parent))
-    return f"*{words['lands']}: {words[part.placement + '_h'].format(h=land.heading)} ({', '.join(where)})*"
+        where.append(words["parent"].format(h=display_heading(land.parent)))
+    return f"*{words['lands']}: {words[part.placement + '_h'].format(h=heading)} ({', '.join(where)})*"
 
 
 def _section_part(part: SectionPart, words: Dict[str, str], number: int, review_heading: str) -> Tuple[list, int]:
     mark = f"{rd.ID_MARK}{part.key}{rd.ID_MARK}"
     box = " " if part.empty else "x"
     body, number = part_items(part.items, number, words)
-    return ["", f"## {part.heading} {mark}", f"- [{box}] {words['take']} {mark}",
+    return ["", f"## {display_heading(part.heading)} {mark}", f"- [{box}] {words['take']} {mark}",
             landing_line(part, words, review_heading), *body], number
 
 
@@ -277,6 +287,7 @@ def render_parts(inp: rd.DocInput, words: Dict[str, str]) -> Tuple[List[str], Di
     groups, group_counts, number = group_parts(inp, words, number, keep_empty=False)
     counts.update(group_counts)
     if review or groups:
-        place = words["place_h"].format(r=inp.review_heading, where=words[inp.placement], h=inp.anchor)
-        lines += ["", f"## {inp.review_heading} {REVIEW_ID}", f"*{words['lands']}: {place}*", *review, *groups]
+        review_heading = display_heading(inp.review_heading)
+        place = words["place_h"].format(r=review_heading, where=words[inp.placement], h=display_heading(inp.anchor))
+        lines += ["", f"## {review_heading} {REVIEW_ID}", f"*{words['lands']}: {place}*", *review, *groups]
     return lines, counts

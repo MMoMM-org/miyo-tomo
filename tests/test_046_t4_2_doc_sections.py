@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t4_2_doc_sections.py — the review document by section and its write path (spec 046 T4.2).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files and a vault config that
@@ -404,3 +404,61 @@ def test_a_read_whose_sections_no_longer_match_the_config_is_refused(script, ins
 def test_the_inbox_path_is_unchanged_by_the_mapping(script, inst, monkeypatch, capsys):
     _, out, _ = write(script, monkeypatch, capsys, inst, mapped_week(), WEEK_PROPS)
     assert out["doc_path"] == f"{INBOX}2026-W13 Review.md" and DAILY not in out["doc_path"]
+
+
+# ---------------------------------------------------------------- headings are display-neutralised
+
+def _heading_lines(text: str) -> list:
+    return [ln for ln in text.splitlines() if ln.startswith("#")]
+
+
+def test_a_hostile_row_heading_forges_no_line_and_no_id():
+    hostile = "X\n## y %%s9%%"
+    part = rs.SectionPart(key="s1", heading=hostile, placement="end",
+                          landing=rs.Landing(heading=hostile, level=3, parent=None),
+                          items=[{"text": "a", "links": []}])
+    text, _ = rd.render_document(_doc_input(sections=[part]))
+    assert _heading_lines(text) == ["# 2026-Q1 Review", "## X ## y %%s1%%"]
+    assert text.count("%%s1%%") == 2 and "%%s9%%" not in text
+    assert '*Lands: at the end of "X ## y" (level 3)*' in text.splitlines()
+
+
+def test_a_hostile_review_heading_yields_one_review_id():
+    text, _ = rd.render_document(_doc_input(sections=[_part(placement="review")], review_heading="A %%review%%"))
+    assert text.count("%%review%%") == 1 and "## A %%review%%" in text.splitlines()
+    assert '*Lands: as the section "A" inside "Reflections"*' in text.splitlines()
+    assert '*Lands: in the section "A" under "Goals"*' in text.splitlines()
+
+
+@pytest.mark.parametrize("heading,shown", [
+    ("Habits %% fold %%", "Habits"),
+    ("Learnings of the Month  %% fold %%", "Learnings of the Month"),
+])
+def test_a_folded_template_heading_renders_without_its_comment(heading, shown):
+    part = rs.SectionPart(key="s1", heading=heading, placement="before",
+                          landing=rs.Landing(heading=heading, level=2, parent=heading), items=[])
+    lines = rd.render_document(_doc_input(sections=[part]))[0].splitlines()
+    assert f"## {shown} %%s1%%" in lines
+    assert f'*Lands: before "{shown}" (level 2, under "{shown}")*' in lines
+    assert part.heading == heading and part.landing.heading == heading      # display only
+
+
+def test_a_hostile_parent_and_anchor_in_the_landing_lines():
+    part = rs.SectionPart(key="s1", heading="Goals", placement="under",
+                          landing=rs.Landing(heading="Goals", level=3, parent="P\n- [x] q %%t9%%"),
+                          items=[{"text": "a", "links": []}])
+    analysis = _part("s2", placement="review", items=[{"text": "b", "links": []}])
+    text, _ = rd.render_document(_doc_input(sections=[part, analysis], anchor="R %%s7%%\n## z"))
+    lines = text.splitlines()
+    body = lines[lines.index("## Goals %%s1%%"):]          # the spec 045 info callout above is pinned as is
+    assert '*Lands: right under "Goals" (level 3, under "P - [x] q")*' in body
+    assert '*Lands: as the section "Tomo Review" inside "R ## z"*' in body
+    assert "%%t9%%" not in text and "%%s7%%" not in "\n".join(body)
+    assert not any(ln.startswith("- [x] q") or ln == "## z" for ln in body)
+
+
+@pytest.mark.parametrize("raw,shown", [
+    ("a %%s1", "a %s1"), ("%%%review%%%", "%"), ("  x \t\r\n y  ", "x y"), ("[[Link]] h", "[[Link]] h"),
+])
+def test_display_heading_leaves_no_id_able_percent_pair(raw, shown):
+    assert rs.display_heading(raw) == shown and "%%" not in rs.display_heading(raw)

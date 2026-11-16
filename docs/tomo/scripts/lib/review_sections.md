@@ -198,3 +198,25 @@ echoes such a line into `text` used to keep its link list: removing every
 (`%%t<n>%%`) are now removed whole first, then any other `%%`, and only then
 is the trailing link list taken off, so an echoed line normalises to its
 finding text like any other copy.
+
+## WHY Headings Are Display-Neutralised in the Document (T4.2)
+
+Section headings, the "Tomo Review" heading, a row's parent and the place
+anchor are user text from the vault config, kept verbatim (ADR-9), and only
+`setup.heading` is checked, as non-blank. Placed raw, a heading with a line
+break (`"X\n## y %%s9%%"`) would emit a second column-0 heading or checkbox,
+and a heading holding `%%…%%` (`"A %%review%%"`) a second id the T4.3 parser
+reads as structure. A real template heading with an Obsidian fold comment
+(`Habits %% fold %%`) would put two `%%` marks on the heading line.
+`display_heading` therefore collapses all whitespace to single spaces (one
+line, no forged line), drops every `%% … %%` span (the fold comment, any
+id-shaped text) and folds any leftover `%%` run to one `%`, so no id can form;
+`Habits %% fold %%` reads `Habits`. `[[…]]` is left alone: a link in a heading
+is legitimate Obsidian text, starts no column-0 structure and is not an id.
+
+It is display only. The parts, the config rows, `read.json` and everything
+delivery planning reads keep the original text; a section is identified by
+its `%%sN%%` key, never by the heading shown, so the delivered heading is
+matched against the template as configured. The spec 045 info callout
+(`review_doc._callout`, which also shows the anchor) is not touched: the
+unmapped document is pinned byte for byte by its golden.

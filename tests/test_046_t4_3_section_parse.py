@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_046_t4_3_section_parse.py — the mapped review document read back by section (spec 046 T4.3).
 
 Documents are the T4.2 renderer's own output (``review-doc.py write`` on the
@@ -27,7 +27,10 @@ meta.json:
   ``review-doc.py parse`` warns ``section-checkbox-missing`` and leaks no
   heading text
 - a Tomo id on a checkbox line is the checkbox's (the id counts as deleted);
-  the first expected ``%%sN%%`` on a line names the section.
+  the first expected ``%%sN%%`` on a heading or checkbox line names it: an id
+  after it changes nothing, expected or not; an expected key typed in front
+  of the rendered one names the line, and every key left without its
+  checkbox in its own part stops.
 
 All data is synthetic.
 """
@@ -359,3 +362,35 @@ def test_a_heading_carrying_an_unlisted_key_before_the_expected_one_keeps_its_se
     assert by_id(parsed)["t1"].group == "s1"
     boxed = parse(edit(text, S1_BOX, "- [x] Abschnitt übernehmen %%s9%% %%s1%%"), meta)
     assert boxed.sections["s1"] is True and boxed.section_problems == []
+
+
+def test_an_expected_key_typed_in_front_names_the_heading_and_the_rendered_key_stops(written):
+    text, meta = written
+    parsed = parse(edit(text, S1_HEAD, "## What Went Well This Week? %%s3%% %%s1%%"), meta)
+    # s3 is first: the line is another heading of s3, and s1's checkbox under it stands outside s1's part
+    assert [by_id(parsed)[tid].group for tid in ("t1", "t2")] == ["s3", "s3"]
+    assert parsed.warnings == [rdp.DUPLICATE_GROUP, MISSING]
+    assert parsed.sections == {"s1": None, "s3": False, "s4": True, "s2": True}
+    assert problems(parsed) == [("s1", None, S1_BOX)]                 # no heading names s1 any more
+
+
+def test_an_expected_key_typed_in_front_on_the_checkbox_line_stops_both_keys(written):
+    text, meta = written
+    parsed = parse(edit(text, S1_BOX, "- [x] Abschnitt übernehmen %%s3%% %%s1%%"), meta)
+    # s3 is first: the line is s3's checkbox under s1's heading, and s1 has no checkbox left
+    assert parsed.sections == {"s1": None, "s3": None, "s4": True, "s2": True}
+    assert problems(parsed) == [("s1", "What Went Well This Week?", S1_BOX), ("s3", "Planning", S3_BOX)]
+    assert parsed.warnings == [MISSING] and len(parsed.items) == 6     # the line is a checkbox, never an item
+
+
+@pytest.mark.parametrize("extra", ["%%s3%%", "%%s9%%"], ids=["expected", "unlisted"])
+@pytest.mark.parametrize("line", [S1_HEAD, S1_BOX], ids=["heading", "checkbox"])
+def test_a_key_appended_after_the_rendered_one_changes_nothing(written, line, extra):
+    text, meta = written
+    unedited = parse(text, meta)
+    parsed = parse(edit(text, line, f"{line} {extra}"), meta)
+    # s3's own heading and checkbox still stand and still count
+    assert parsed.sections == unedited.sections == {"s1": True, "s3": False, "s4": True, "s2": True}
+    assert parsed.warnings == [] and parsed.section_problems == []
+    assert [(it.id, it.group) for it in parsed.items] == [(it.id, it.group) for it in unedited.items]
+    assert parsed.group_order == unedited.group_order

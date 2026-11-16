@@ -283,11 +283,21 @@ before, so an unknown key is `unknown-group` with its items kept under
 `unknown` — the same answer as a renamed heading, and no new way to land
 text Tomo cannot place. A second heading with the same key continues that
 section, like a heading rendered twice (`duplicate-group`). A line carrying
-several section ids is named by the first one that is an expected key, so a
+several section ids, heading or checkbox, is named by the first one that is
+an expected key, and an id after it changes nothing, expected or not: a
 typed or copied `%%s9%%` in front of the rendered `%%s1%%` neither hides the
-section nor stops; two expected keys on one heading need no rule of their
-own — the second key's checkbox then stands outside its part and stops
-(`section-checkbox-missing`), so nothing lands by a guess.
+section nor stops, and `## <heading> %%s1%% %%s3%%` or
+`- [x] <label> %%s1%% %%s3%%` stays `s1`'s line while `s3`'s own heading and
+checkbox still count. Two expected keys need no rule of their own: an
+expected key typed in front of the rendered one names the line, and the
+checkbox rules below do the rest. In place of `s1`'s heading,
+`## <heading> %%s3%% %%s1%%` is another heading of `s3` (`duplicate-group`,
+the items under it are `s3`'s), so `s1`'s heading is gone and its checkbox
+stands outside its part; in place of `s1`'s checkbox,
+`- [x] <label> %%s3%% %%s1%%` is `s3`'s checkbox under another section, and
+`s1` has none. Each key left without its checkbox in its own part stops
+(`section-checkbox-missing`): `s1` in the first case, `s1` and `s3` in the
+second.
 
 **The divider is a boundary that holds no items.** `%%review%%` on a heading
 ends the part before it; a checkbox line between the divider and the next

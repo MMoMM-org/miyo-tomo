@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -102,6 +102,15 @@ PREVIEW_PROBLEMS = {
                                "never lands inside one of the user's own sections; print `headings` as a numbered "
                                "list and ask: Which number, or 0 Abort? (as above)."),
     "set-exists": "- `set-exists` → say an instruction set for this review waits for Hashi and is not applied yet; nothing is delivered. Stop.",
+    # spec 046 T5.5: the section stops and the choice refusal (T5.6 adds the per-section choice dialogue)
+    "section-stops": ("- `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, "
+                      "`block-in-review-section` or `landing-off-limits` → per entry of `sections` with a `stop`: "
+                      "name the section `<section heading>` (step 5) of its `key` and say why: its heading is not in "
+                      "the target note, is there more than once, Tomo's earlier block in it is broken, the block was "
+                      "moved under `block_at.heading`, the block sits inside the \"Tomo Review\" section, or it would "
+                      "land in an off-limits section. Nothing is delivered; stop."),
+    "choice-invalid": ("- `choice-invalid` → say the choice for each key in `choices_invalid` answers no stop of that "
+                       "section; stop."),
 }
 PREVIEW_NOTICES = {
     "heading-renamed": "- `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.",
@@ -110,6 +119,15 @@ PREVIEW_NOTICES = {
                         "holds Templater code; the readable instructions say to run Templater after the move."),
     "template_unmergeable": "- `template_unmergeable` → a plain note is built instead.",
     "unlanded-items": "- `unlanded-items` → `unlanded` kept items are under a heading the parser does not know and do not land.",
+    # spec 046 T5.5: the section notices (T5.6 owns their dialogue wording)
+    "block-replaced": ("- `block-replaced` → per entry of `sections` with this notice: Tomo's earlier block in that "
+                       "section is replaced; edits inside the block are replaced, text outside it is kept."),
+    "block-moved-confirmed": "- `block-moved-confirmed` → that block is replaced where it sits now.",
+    "review-section-kept": ("- `review-section-kept` → the earlier \"Tomo Review\" section gets nothing new and stays "
+                            "as it is."),
+    "section-dropped": ("- `section-dropped` → per entry of `dropped`: the section `<section heading>` of its `key` is "
+                        "left out, with `added` items of the user's own."),
+    "section-empty": "- `section-empty` → per key in `empty`: the section `<section heading>` receives nothing.",
 }
 
 
@@ -272,8 +290,8 @@ def test_deliver_branches_on_status_then_problems_or_failed_step():
             "`paths.note` when set, and \"Next: review and apply the instruction set in Hashi, or by hand with the "
             "readable instructions.\"") in text
     assert ("- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; "
-            "stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs` or `anchor-needed` → the two lines "
-            "below. Any other → the step 7 lines; nothing was written.") in text
+            "stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs`, `anchor-needed` or `choices-needed` "
+            "→ the lines below. Any other → the step 7 lines; nothing was written.") in text
     assert ("- `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with "
             "unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then "
             "run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` "
@@ -368,3 +386,11 @@ def test_drop_writes_the_set_before_the_readable_peer_so_a_late_failure_is_parti
 
 def test_status_is_never_called_by_the_skill():
     assert "review-instructions.py status" not in _text(SKILL)
+
+
+def test_the_preview_prints_each_sections_lines_and_deliver_routes_choices_needed():
+    """Spec 046 T5.5 (F4-AC6): the `ok` line prints `sections`; `choices-needed` reruns the preview."""
+    assert ("then per entry of `sections` the section `<section heading>` (step 5) of its `key`, its `mode` and its "
+            "`lines` in a fenced block.") in _section("7. Preview")
+    assert ("- `choices-needed` → say the stopped delivery was begun with section choices that are asked again: "
+            "rerun `preview` of step 7 and branch by its list.") in _section("8. Deliver")

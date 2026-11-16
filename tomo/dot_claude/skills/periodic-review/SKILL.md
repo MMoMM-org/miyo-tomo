@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.5
+# version: 0.2.6
 
 Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -201,13 +201,20 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
   - `user-heading-collision` with `mode` `insert` or `new-note` before any heading pick → say a heading of the user's with the same name is never replaced and the review never lands inside one of the user's own sections; print `headings` as a numbered list and ask: Which number, or 0 Abort? (as above).
   - `set-exists` → say an instruction set for this review waits for Hashi and is not applied yet; nothing is delivered. Stop.
   - `set-withdrawn` → say an earlier Drop emptied the instruction set but did not finish (its readable file may still list the actions); nothing is delivered. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
-- `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result. Then one line for `mode` `replace`, per entry of `notices` and per flag set:
+  - `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, `block-in-review-section` or `landing-off-limits` → per entry of `sections` with a `stop`: name the section `<section heading>` (step 5) of its `key` and say why: its heading is not in the target note, is there more than once, Tomo's earlier block in it is broken, the block was moved under `block_at.heading`, the block sits inside the "Tomo Review" section, or it would land in an off-limits section. Nothing is delivered; stop.
+  - `choice-invalid` → say the choice for each key in `choices_invalid` answers no stop of that section; stop.
+- `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result, then per entry of `sections` the section `<section heading>` (step 5) of its `key`, its `mode` and its `lines` in a fenced block. Then one line for `mode` `replace`, per entry of `notices` and per flag set:
   - `mode` `replace` → the note already holds Tomo's review section; it is replaced, not added to.
   - `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.
   - `target_appeared` true → the target note was created since Pass 1; the plan targets it instead of a new note.
   - `variant_missing` or `templater_hint` → the template's Tomo variant is gone, or the template holds Templater code; the readable instructions say to run Templater after the move.
   - `template_unmergeable` → a plain note is built instead.
   - `unlanded-items` → `unlanded` kept items are under a heading the parser does not know and do not land.
+  - `block-replaced` → per entry of `sections` with this notice: Tomo's earlier block in that section is replaced; edits inside the block are replaced, text outside it is kept.
+  - `block-moved-confirmed` → that block is replaced where it sits now.
+  - `review-section-kept` → the earlier "Tomo Review" section gets nothing new and stays as it is.
+  - `section-dropped` → per entry of `dropped`: the section `<section heading>` of its `key` is left out, with `added` items of the user's own.
+  - `section-empty` → per key in `empty`: the section `<section heading>` receives nothing.
 
   Then ask `1 Deliver · 2 Abort` and end the turn. Say in one line before it that a change is made by editing the document and running `/review` again. Deliver → step 8. Abort → stop; nothing is written, the document stays open.
 
@@ -219,9 +226,10 @@ python3 scripts/review-instructions.py deliver --stem <stem>
 
 Add `--place-anchor "<heading>"` when a heading was chosen in step 7. Branch on `status` first:
 - `delivered` or `resumed` → report `target`, `place`, `paths.set_json`, `paths.set_md` and `paths.note` when set, and "Next: review and apply the instruction set in Hashi, or by hand with the readable instructions." Then the step 7 notice lines for `notices` and `target_appeared`.
-- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs` or `anchor-needed` → the two lines below. Any other → the step 7 lines; nothing was written.
+- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs`, `anchor-needed` or `choices-needed` → the lines below. Any other → the step 7 lines; nothing was written.
   - `replan-differs` → say the vault changed since the stopped delivery: the target note or its place is not what the first attempt wrote for; nothing more was written, and Resume would refuse again. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
   - `anchor-needed` → say the stopped delivery used a chosen heading that is asked again: print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` of step 7 with that heading as `--place-anchor`, keep it for this step and branch on the rerun by the step 7 list. 0 → stop.
+  - `choices-needed` → say the stopped delivery was begun with section choices that are asked again: rerun `preview` of step 7 and branch by its list.
 - `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` `changed-since-read` or `unknown` → say the document was edited, or is open with unsaved edits, since the preview: save it and run `/review` again; the payloads in `paths` already written count as done, and the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at `failed_step`; nothing more was written; the next `/review` offers Resume or Drop. Stop.
 - `not-found` → as in step 6.
 

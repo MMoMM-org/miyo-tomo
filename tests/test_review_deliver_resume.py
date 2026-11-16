@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_deliver_resume.py — a resume never writes a set that contradicts what the first attempt delivered
 (fix #258; spec 045 SDD Error Handling rows `replan-differs` and `anchor-needed`; PRD F5-AC10).
 
@@ -385,8 +385,8 @@ ANCHOR_LINE = ("- `anchor-needed` → say the stopped delivery used a chosen hea
 def test_the_skill_says_what_a_differing_replan_means_and_offers_drop():
     text = _section("8. Deliver")
     assert REPLAN_LINE in text
-    assert "`replan-differs` or `anchor-needed` → the two lines below." in text
-    assert text.index("`replan-differs` or `anchor-needed`") < text.index("Any other → the step 7 lines")
+    assert "`replan-differs`, `anchor-needed` or `choices-needed` → the lines below." in text      # 046 T5.5
+    assert text.index("`replan-differs`, `anchor-needed`") < text.index("Any other → the step 7 lines")
 
 
 def test_the_skill_asks_the_heading_again_on_anchor_needed():

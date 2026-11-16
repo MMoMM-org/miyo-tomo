@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t5_4_section_set.py — composing the instruction set of a mapped delivery (046 T5.4).
 
 PRD F4-AC1; SDD ADR-12 ("ids I01…In in a fixed order: sections in mapping order, then Tomo Review"),
@@ -14,7 +14,8 @@ Integration Points data_flow, the Hashi kind order. The approved review is built
   a new one), and never when its part is refused (a plan problem: the set stays empty);
 - an existing note's INSERT and REPLACE blocks count their escapes in `escaped_lines`, once, also when the
   sections are planned twice (a new "Tomo Review" re-plans with `review_at`);
-- a new note stays one `move_note`;
+- a new note stays one `move_note`; an empty section gets no marker pair spliced into it (`lands` is shared
+  with `compose`), so a re-run finds no block for it and plans a first insert;
 - every composed set validates against Tomo's schemas through the T5.3 test-only v4 candidate.
 
 All data is synthetic.
@@ -191,3 +192,20 @@ def test_a_new_note_stays_one_move_note():
     p = plan()
     assert [(a["id"], a["action"]) for a in p.actions] == [("I01", "move_note")]
     assert p.actions[0]["destination"] == TARGET
+
+
+def test_a_new_notes_empty_section_gets_no_marker_pair():
+    empty = approved(ROWS, {**ITEMS, "s1": []})
+    p = plan(review=empty)
+    assert modes(p)["s1"] == "insert"
+    lines = p.note_text.split("\n")
+    assert not any(rsp.start_marker("s1", PERIOD) in x or rsp.end_marker("s1", PERIOD) in x for x in lines)
+    assert rsp.start_marker("s4", PERIOD) in lines and rsp.end_marker("s4", PERIOD) in lines   # s4 still spliced
+    assert p.escaped_lines == 0
+    note = p.note_text.split("---\n", 2)[2]
+    still = plan(review=empty, target_text=note)
+    assert modes(still)["s1"] == "insert" and start("s1") not in [a.get("start_marker") for a in still.actions]
+    assert [v for _, _, v in kinds(still)] == [start("s4"), HEADING]   # s1 empty: nothing for it
+    filled = plan(target_text=note)
+    assert modes(filled)["s1"] == "insert"                              # no block found: a first delivery
+    assert kinds(filled)[0] == ("I01", "insert_under_marker", "Highlights")

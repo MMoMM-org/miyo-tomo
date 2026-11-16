@@ -1,5 +1,5 @@
 # review_section_set.py — the mapped sections of one /review delivery as a set, and the actions they compose.
-# version: 0.1.0
+# version: 0.1.1
 """Plan, route and compose the mapped sections of a ``/review`` delivery (spec 046 T5.2, T5.4; PRD
 F4-AC1, F4-AC5, F2-AC12; SDD ADR-12).
 
@@ -14,7 +14,8 @@ sub-parts: analysis rows and routed sections in mapping order, headings display-
 ``insert`` or ``replace`` and whose block holds lines, in mapping order, then the "Tomo Review" action
 when there is one; ids ``I01…In`` dense over the emitted actions. ``landed_escapes`` counts the
 escapes of the blocks that land as their own block (``insert`` and ``replace``; ``insert`` only for a
-new note, whose text is spliced from inserts).
+new note, whose text is spliced from inserts). ``lands`` is the one test of both: a section with no lines
+lands in neither, so a new note gets no empty marker pair.
 
 Imports ``review_section_plan``, never ``review_actions`` or ``review_new_note``. No Kado, no clock, no
 file I/O.
@@ -96,7 +97,8 @@ def review_parts(rows: Sequence[dict], plans: Sequence[rsp.SectionPlan], items: 
     return parts, escaped
 
 
-def _lands(plan: rsp.SectionPlan, modes: Sequence[str] = LANDING) -> bool:
+def lands(plan: rsp.SectionPlan, modes: Sequence[str] = LANDING) -> bool:
+    """Whether ``plan`` lands as its own block: its mode is in ``modes`` and its block holds lines."""
     return plan.mode in modes and bool(plan.lines)
 
 
@@ -104,14 +106,14 @@ def landed_escapes(plans: Sequence[rsp.SectionPlan], new_note: bool) -> int:
     """The escapes of the blocks that land as their own block: ``insert`` (spliced) for a new note, ``insert`` and
     ``replace`` (their actions) for an existing one."""
     modes = (rsp.INSERT,) if new_note else LANDING
-    return sum(p.escaped_lines for p in plans if _lands(p, modes))
+    return sum(p.escaped_lines for p in plans if lands(p, modes))
 
 
 def compose(plans: Sequence[rsp.SectionPlan], target_path: str, review_action: Optional[dict] = None) -> List[dict]:
     """The existing note's actions: every landing section in ``plans``' order, then ``review_action`` (given without
     an id); ids dense."""
     actions = [p.action(action_id(n), target_path)
-               for n, p in enumerate((p for p in plans if _lands(p)), start=1)]
+               for n, p in enumerate((p for p in plans if lands(p)), start=1)]
     if review_action is not None:
         actions.append({"id": action_id(len(actions) + 1), **review_action})
     return actions

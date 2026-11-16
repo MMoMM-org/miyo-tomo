@@ -35,10 +35,19 @@ setup only, never of the order of the items dict or of the choices dict,
 so two runs over the same inputs produce byte-identical sets.
 
 An empty section (no item lines) emits no action in either mode (F4-AC1:
-"one action per kept non-empty section"): a first delivery writes no empty
-marker pair into the user's note, and a re-run leaves an earlier block as
-it is instead of emptying it — the same rule as `review-section-kept` for
-"Tomo Review". Removing an earlier block is the user's edit.
+"one action per kept non-empty section"; F3-AC5: "that section receives
+nothing"): a first delivery writes no empty marker pair into the user's
+note, and a re-run leaves an earlier block as it is instead of emptying it
+— the same rule as `review-section-kept` for "Tomo Review". Removing an
+earlier block is the user's edit. The rule holds for both paths through one
+predicate, `lands` (mode in the given modes and the block holds lines):
+`compose` uses it for an existing note's actions, `landed_escapes` for the
+escapes, and `review_actions._templated_note` for the blocks spliced into a
+new note (modes `insert` only). A new note therefore carries no empty marker
+pair either, and the next run finds no block for that section: it plans a
+first `insert` once the section has items, nothing while it stays empty.
+One predicate, not three filters, because the new-note splice once tested
+the mode alone and wrote an empty pair the other two paths did not count.
 
 The alternative — an id fixed per mapping position, leaving gaps where a
 section stopped — was rejected. It would make a section's id stable across

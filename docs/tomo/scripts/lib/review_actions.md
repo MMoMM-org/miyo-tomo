@@ -198,6 +198,11 @@ also when "Tomo Review" itself emits nothing (`review-section-kept`, or no
 content for a new one), because a section's block does not depend on it.
 A refused "Tomo Review" part (a plan problem) leaves the set empty: the
 delivery is refused as a whole, as in spec 045.
+
+Which sections land — on an existing note as actions, on a new note as
+spliced blocks — is one rule, `review_section_set.lands`: an empty section
+lands on neither (docs/tomo/scripts/lib/review_section_set.md, "WHY Ids Are
+Dense Over the Emitted Actions").
 Hashi's `move_note` refuses when source and destination both exist
 (`moveNote.ts:71`), which is the "the user created the note in the meantime"
 guard of F6-AC4; Tomo's side of it is choosing the existing note at delivery

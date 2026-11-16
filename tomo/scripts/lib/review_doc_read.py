@@ -1,5 +1,5 @@
 # review_doc_read.py — the one reader of the /review document for Pass 2: path, note read, parse with pass1_links.
-# version: 0.1.3
+# version: 0.1.4
 """Read the edited review document back for ``parse``, ``preview`` and ``deliver`` (spec 045).
 
 ``doc_path_of(meta, override)`` is the path a Pass 2 command reads: the
@@ -7,8 +7,9 @@ caller's ``--doc-path`` or ``meta.json``'s ``doc_path``; None when neither
 names one. ``read_document(vault, doc_path, meta)`` reads the note through
 Kado and parses it with ``review_doc_parse.parse_document``, handing it the
 ``pass1_links`` map and the ``pass1_counts`` total of ``meta`` (every integer
-value: group and section keys alike) so ``edited`` and ``deleted`` are computed
-one way for every command. It returns a
+value: group and section keys alike) and its ``pass1_sections`` list (the
+section grammar, spec 046 T4.3) so ``edited``, ``deleted`` and the sections
+are read one way for every command. It returns a
 ``DocRead`` — the path, the text, Kado's ``modified`` stamp (the guard for
 the delivered mark) and the ``ParsedDoc`` — or None when nothing is at the
 path. A refused key or a dead connection raises ``review_vault.Stopped``
@@ -57,4 +58,5 @@ def read_document(vault, doc_path: str, meta: Optional[dict]) -> Optional[DocRea
     total = sum(n for n in counts.values() if isinstance(n, int))
     modified = note.get("modified")
     return DocRead(doc_path, text, modified if isinstance(modified, int) else None,
-                   rdp.parse_document(text, pass1_links=pass1, pass1_total=total))
+                   rdp.parse_document(text, pass1_links=pass1, pass1_total=total,
+                                      pass1_sections=meta.get("pass1_sections")))

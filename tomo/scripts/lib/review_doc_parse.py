@@ -1,5 +1,5 @@
-# review_doc_parse.py — the edited review document of /review read back: Approved line, items by id, user items.
-# version: 0.3.2
+# review_doc_parse.py — the edited review document of /review read back: Approved line, sections, items by id.
+# version: 0.4.0
 """Parse the review document after the user edited it (spec 045, T3.7, PRD F5, ADR-9, ADR-13).
 
 ``parse_document`` reads the text of ``<period> Review.md`` and returns a
@@ -27,6 +27,20 @@ items); ``approved_review`` is the in-process ApprovedReview record with
 the kept items' text for Phase 4 (never a file); ``public_items`` is the
 same without text, for stdout.
 
+With ``pass1_sections`` (meta.json's ``[{key, count, empty}]``, spec 046
+ADR-11) the parser also reads the user's mapped sections: a ``## `` heading
+carrying an expected ``%%sN%%`` is section ``sN`` (its items' group is the
+key), a heading carrying ``%%review%%`` is the divider (a part boundary that
+holds no items), and a column-0 checkbox line carrying an expected
+``%%sN%%`` is that section's checkbox, matched before an item start and
+never an item. ``sections`` is ``{key: True | False | None}``; a checkbox
+missing, broken, outside its part or doubled is ``section-checkbox-missing``
+with one ``SectionProblem`` per key (the key, the document's heading text,
+the line to restore). An unticked section lands nothing (``approved_review``,
+``nothing_to_deliver``), the user's items in it too; ``section_counts`` gives
+per key the box, Tomo's kept / unticked, the user's ticked ``added`` and
+``empty``. Without ``pass1_sections`` the grammar is spec 045's unchanged.
+
 No Kado, no file I/O. Needs PyYAML.
 
 Design notes: docs/tomo/scripts/lib/review_doc_parse.md
@@ -38,6 +52,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 from lib import review_doc as rd
+from lib import review_sections as rs
 from lib.review_md import DONE_MARK_RE
 
 TOMO, USER = "tomo", "user"
@@ -47,6 +62,7 @@ UNKNOWN_GROUP = "unknown-group"
 ITEM_OUTSIDE_GROUP = "item-outside-group"
 DUPLICATE_GROUP = "duplicate-group"
 FRONTMATTER_BROKEN = "frontmatter-broken"
+SECTION_CHECKBOX_MISSING = "section-checkbox-missing"
 
 _FENCE = "---"
 _BOM = "\ufeff"
@@ -55,6 +71,8 @@ _HEADING = re.compile(r"^## (.*?)[\s#]*$")
 _APPROVED = re.compile(r"^- \[([ xX])\] Approved\s*$")
 _LINK = re.compile(r"\[\[([^\]|#]+)")
 _TRAILING_DONE_MARK = re.compile(DONE_MARK_RE.pattern + r"\s*$")
+_SECTION_ID = re.compile(r"%%(s\d{1,3})%%")
+_SECTION_KEY = re.compile(r"^s\d{1,3}$")
 
 
 def _without_done_mark(line: str) -> str:
@@ -91,6 +109,17 @@ class Item:
 
 
 @dataclass
+class SectionProblem:
+    key: str
+    heading: Optional[str]             # the document's heading text without the id; None when the heading is gone
+    restore: str                       # the checkbox line as Pass 1 rendered it
+
+    def public(self) -> dict:
+        """What stdout may carry: the key and the restore line; never the heading text."""
+        return {"key": self.key, "restore": self.restore}
+
+
+@dataclass
 class ParsedDoc:
     frontmatter: dict
     approved: bool
@@ -98,6 +127,12 @@ class ParsedDoc:
     warnings: List[str]
     deleted: int                       # Pass 1 ids the document no longer carries
     group_order: List[str]
+    sections: Dict[str, Optional[bool]] = field(default_factory=dict)   # expected key -> ticked / unticked / missing
+    section_problems: List[SectionProblem] = field(default_factory=list)
+
+    def lands(self, item: Item) -> bool:
+        """A kept item outside a section, or in a ticked one; an unticked or missing section lands nothing."""
+        return item.kept and self.sections.get(item.group, True) is True
 
     def groups(self) -> Dict[str, List[Item]]:
         """Items per group in rendering order; ``unknown`` last when a heading matched no label."""
@@ -115,8 +150,20 @@ class ParsedDoc:
             "added": sum(1 for it in self.items if it.origin == USER and it.kept),
         }
 
+    def section_counts(self) -> Dict[str, dict]:
+        """Per expected key: the box, Tomo's kept / unticked, the user's ticked items, and whether a ticked
+        section receives nothing."""
+        out: Dict[str, dict] = {}
+        for key, ticked in self.sections.items():
+            mine = [it for it in self.items if it.group == key]
+            kept = sum(1 for it in mine if it.origin == TOMO and it.kept)
+            added = sum(1 for it in mine if it.origin == USER and it.kept)
+            out[key] = {"ticked": ticked, "kept": kept, "unticked": sum(1 for it in mine if it.origin == TOMO) - kept,
+                        "added": added, "empty": ticked is True and not (kept or added)}
+        return out
+
     def nothing_to_deliver(self) -> bool:
-        return not any(it.kept for it in self.items)
+        return not any(self.lands(it) for it in self.items)
 
     def public_items(self) -> Dict[str, List[dict]]:
         return {group: [it.public() for it in items] for group, items in self.groups().items()}
@@ -128,7 +175,7 @@ class ParsedDoc:
             **extra,
             "period": front.get("review_period"), "kind": front.get("review_kind"),
             "language": front.get("review_language"), "approved": self.approved,
-            "groups": {group: [it.record() for it in items if it.kept] for group, items in self.groups().items()},
+            "groups": {group: [it.record() for it in items if self.lands(it)] for group, items in self.groups().items()},
             "counts": self.counts(), "warnings": list(self.warnings),
         }
 
@@ -179,7 +226,59 @@ def _strip_trailing_blanks(lines: List[str]) -> List[str]:
     return lines
 
 
-def _parse_body(lines: Iterable[str], warnings: List[str]) -> tuple:
+class _Sections:
+    """The section side of one parse: the expected keys, the headings and checkboxes found."""
+
+    def __init__(self, expected: Dict[str, bool]):
+        self.expected = expected                        # key -> rendered empty
+        self.headings: Dict[str, str] = {}
+        self.boxes: Dict[str, bool] = {}
+        self.stray: Set[str] = set()
+
+    def key_of(self, text: str) -> Optional[str]:
+        match = _SECTION_ID.search(text)
+        return match.group(1) if match and match.group(1) in self.expected else None
+
+    def checkbox(self, key: str, group: Optional[str], box: str) -> None:
+        if group == key and key not in self.boxes:
+            self.boxes[key] = box.lower() == "x"
+        else:
+            self.stray.add(key)                         # outside its part, or a second one
+
+    def state(self) -> Dict[str, Optional[bool]]:
+        """Each expected key's box; None when its checkbox is missing or not the only one in its part."""
+        return {key: None if key in self.stray else self.boxes.get(key) for key in self.expected}
+
+    def problems(self, language: str) -> List[SectionProblem]:
+        take = rd.labels(language)["take"]
+        return [SectionProblem(key, self.headings.get(key), f"- [{' ' if empty else 'x'}] {take} %%{key}%%")
+                for key, empty in self.expected.items() if key not in self.boxes or key in self.stray]
+
+
+def _expected(pass1_sections: Any) -> Optional[Dict[str, bool]]:
+    """``{key: empty}`` of meta.json's ``pass1_sections``; None (spec 045's grammar) unless it is a list."""
+    if not isinstance(pass1_sections, list):
+        return None
+    return {str(s["key"]): bool(s.get("empty")) for s in pass1_sections
+            if isinstance(s, dict) and isinstance(s.get("key"), str) and _SECTION_KEY.match(s["key"])}
+
+
+def _section_heading(text: str, sections: Optional[_Sections], order: List[str], warnings: List[str]) -> tuple:
+    """``(True, group)`` for a section heading (the key) or the divider (None); ``(False, None)`` otherwise."""
+    if sections is None:
+        return False, None
+    key = sections.key_of(text)
+    if key is not None:
+        if key in order:
+            _warn(warnings, DUPLICATE_GROUP)
+        else:
+            order.append(key)
+        sections.headings.setdefault(key, " ".join(_SECTION_ID.sub("", text).split()))
+        return True, key
+    return (True, None) if rs.REVIEW_ID in text else (False, None)
+
+
+def _parse_body(lines: Iterable[str], warnings: List[str], sections: Optional[_Sections] = None) -> tuple:
     """``(approved or None, items, group order)`` from the body lines by the column-0 grammar."""
     labels = rd.group_labels()
     approved: Optional[bool] = None
@@ -196,6 +295,10 @@ def _parse_body(lines: Iterable[str], warnings: List[str]) -> tuple:
             current = None
             continue
         heading = _HEADING.match(line)
+        part, part_group = _section_heading(heading.group(1), sections, order, warnings) if heading else (False, None)
+        if part:
+            group, current = part_group, None
+            continue
         if heading:
             group = labels.get(heading.group(1))
             if group is None:
@@ -208,6 +311,11 @@ def _parse_body(lines: Iterable[str], warnings: List[str]) -> tuple:
             current = None
             continue
         start = _ITEM.match(line)
+        box_key = sections.key_of(start.group(2) or "") if start and sections is not None else None
+        if box_key is not None:
+            sections.checkbox(box_key, group, start.group(1))
+            current = None
+            continue
         if start:
             if group is None:
                 _warn(warnings, ITEM_OUTSIDE_GROUP)
@@ -233,15 +341,24 @@ def _warn(warnings: List[str], warning: str) -> None:
 # --- the entry points ------------------------------------------------------------------------
 
 def parse_document(text: str, pass1_links: Optional[Dict[str, List[str]]] = None,
-                   pass1_total: Optional[int] = None) -> ParsedDoc:
+                   pass1_total: Optional[int] = None, pass1_sections: Any = None) -> ParsedDoc:
     """Parse the document text. ``pass1_links`` is the id → link stems map of Pass 1 (``edited`` and
-    ``deleted`` come from it); ``pass1_total`` alone gives ``deleted`` by count when the map is missing."""
+    ``deleted`` come from it); ``pass1_total`` alone gives ``deleted`` by count when the map is missing;
+    ``pass1_sections`` (meta.json's list) turns the section grammar on."""
     warnings: List[str] = []
     without_bom = text[len(_BOM):] if text.startswith(_BOM) else text
     front, body = _split_frontmatter(without_bom.splitlines())
     if not _is_review(front):
         _warn(warnings, FRONTMATTER_BROKEN)
-    approved, items, order = _parse_body(body, warnings)
+    expected = _expected(pass1_sections)
+    sections = _Sections(expected) if expected is not None else None
+    approved, items, order = _parse_body(body, warnings, sections)
+    problems: List[SectionProblem] = []
+    if sections is not None:
+        language = front.get("review_language") if _is_review(front) else None
+        problems = sections.problems(language if isinstance(language, str) else "en")
+        if problems:
+            _warn(warnings, SECTION_CHECKBOX_MISSING)
     if approved is None:
         _warn(warnings, APPROVED_MISSING)
     reference = pass1_links or {}
@@ -251,7 +368,8 @@ def parse_document(text: str, pass1_links: Optional[Dict[str, List[str]]] = None
     seen = {it.id for it in items if it.origin == TOMO}
     deleted = len(set(reference) - seen) if reference else max(0, (pass1_total or 0) - len(seen))
     warnings.sort()
-    return ParsedDoc(front if isinstance(front, dict) else {}, bool(approved), items, warnings, deleted, order)
+    return ParsedDoc(front if isinstance(front, dict) else {}, bool(approved), items, warnings, deleted, order,
+                     sections.state() if sections is not None else {}, problems)
 
 
 def link_stems(text: str) -> Dict[str, List[str]]:

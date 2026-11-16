@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.7
+# version: 0.2.8
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -96,9 +96,9 @@ def test_cli_parse_preview_and_deliver_parse_through_one_reader_with_pass1_links
     seen: list = []
     real = rdp.parse_document
 
-    def spy(text, pass1_links=None, pass1_total=None):
-        seen.append(pass1_links)
-        return real(text, pass1_links=pass1_links, pass1_total=pass1_total)
+    def spy(text, pass1_links=None, pass1_total=None, pass1_sections=None):
+        seen.append((pass1_links, pass1_sections))
+        return real(text, pass1_links=pass1_links, pass1_total=pass1_total, pass1_sections=pass1_sections)
 
     monkeypatch.setattr(rdp, "parse_document", spy)
     monkeypatch.setattr(doc_mod, "KadoClient", fake)
@@ -106,7 +106,8 @@ def test_cli_parse_preview_and_deliver_parse_through_one_reader_with_pass1_links
     capsys.readouterr()
     assert run(ins, monkeypatch, capsys, ["preview", "--stem", STEM], fake)[1]["status"] == "ok"
     assert run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)[1]["status"] == "delivered"
-    assert seen == [expected, expected, expected]
+    sections = meta_of(instance).get("pass1_sections")              # None: spec 045's grammar (046 T4.3)
+    assert seen == [(expected, sections)] * 3
     # the reader is the lib's, not a private copy in either script
     assert not hasattr(doc_mod, "_read_document")
     assert doc_mod.read_document is rdr.read_document and ins.read_document is rdr.read_document

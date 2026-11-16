@@ -253,3 +253,91 @@ still read, so the user is told what to fix without losing their edits.
 A document that is not at its path at all is `review-doc.py parse`'s
 `not-found` — the user renamed or moved it beyond recognition (SDD Error
 Handling); the parser never sees it.
+
+## WHY Sections Are Read Only When meta.json Expects Them (spec 046, ADR-11)
+
+With a template mapping the document carries the user's own sections (spec
+046 T4.2): `## <heading> %%sN%%`, the section checkbox `- [x] <label>
+%%sN%%` (`- [ ]` when the section is empty), an italic landing line, then the
+items with their global `%%tN%%` ids; the "Tomo Review" part starts with the
+divider `## <review heading> %%review%%`. `review-doc.py write` stores the
+expected keys as `pass1_sections` (`[{key, count, empty}]`) in `meta.json`
+only with a mapping; `review_doc_read` hands that list to `parse_document`.
+
+**No `pass1_sections`, no section grammar.** Without the list the parser is
+spec 045's, line for line: a heading with `%%s1%%` is a heading that matches
+no label (`unknown-group`), a checkbox line with `%%s1%%` is the user's item.
+A spec 045 document never carries those ids (Tomo strips `%%` from item
+text), so this changes nothing for one; a document whose `meta.json` lost the
+list degrades to the renamed-heading case (warned, the section items
+unlanded) instead of guessing a mapping. The golden in
+`tests/fixtures/046-t4-3-unmapped-parse-golden/` pins the unmapped parse.
+
+**The key on the heading names the section, not the heading text.** The id
+is searched anywhere on a `## ` line, so a heading the user retyped keeps its
+section, and a user section named like a group label ("Done", "Erledigt")
+is the section, never group `done` — ids beat labels (ADR-11). Only an
+expected key counts: a heading carrying a key `meta.json` does not list (the
+user typed or copied one) is an ordinary heading, read by its label as
+before, so an unknown key is `unknown-group` with its items kept under
+`unknown` — the same answer as a renamed heading, and no new way to land
+text Tomo cannot place. A second heading with the same key continues that
+section, like a heading rendered twice (`duplicate-group`).
+
+**The divider is a boundary that holds no items.** `%%review%%` on a heading
+ends the part before it; a checkbox line between the divider and the next
+heading belongs to no group and section, so it is filed under `unknown` with
+`item-outside-group`, exactly like a line above the first heading. The
+divider's text is not compared (it is the setup's heading).
+
+**The section checkbox is matched before `_ITEM`.** A column-0 checkbox line
+carrying an expected `%%sN%%` is the checkbox of section `N`, whatever its
+label says — the user may retype the label, and label matching is what a
+section named "Done" would break. It is not an item and never counts. It is
+valid only inside its own part (after the heading with the same key, before
+the next heading) and only once per key; where it stands inside the part
+does not matter, so an item the user moved above it still belongs to the
+section. Everything else is one stop, `section-checkbox-missing`, for the key
+it concerns:
+
+- no checkbox line for an expected key — deleted, or broken so it is no
+  longer a column-0 checkbox carrying the id (indented, `-[x]`, `%%s1%`,
+  the id dropped);
+- a checkbox line for a key outside that key's part — under another
+  section, under a group, under the divider, above the first heading, or
+  with its own heading gone;
+- a second checkbox line for a key.
+
+Each is a document whose section state the parser cannot read without
+guessing: the column-0 grammar would otherwise file a deleted checkbox's
+items under the heading above, or read two boxes of one section that
+disagree. Delivering nothing is the only answer that never lands a section
+the user dropped (F3-AC6). The stop names the key and the line to restore:
+`- [x] <label> %%sN%%` in the document's language (`take` of `review_doc`'s
+table; English when the frontmatter is broken), `- [ ]` when Pass 1 rendered
+the section empty (`pass1_sections[].empty`), so restoring it puts the
+document back exactly as rendered. The in-process record also carries the
+document's heading text for the key (without the id; None when the heading
+is gone) so the preview can name the section; the public form carries only
+the key and the restore line, which hold no user text.
+
+**The landing line is no structure.** It is italic text at column 0; outside
+an item it is skipped like the title and the callout, as rendered (it
+follows the checkbox, which ends no item and starts none).
+
+## WHY an Unticked Section Drops Everything in It (F3-AC4, F3-AC5, Rule 7)
+
+`ParsedDoc.sections` is `{key: True | False | None}` for every expected key
+(ticked, unticked, missing); items in a section carry the key as their
+group. An unticked section lands nothing: `approved_review` and
+`nothing_to_deliver` leave out every item of a section that is not ticked —
+Tomo's and the user's own alike, whatever their boxes say (Rule 7). The
+user's own items are the ones without a fresh `%%tN%%` id (`origin: user`,
+as spec 045 tells them apart); `section_counts` gives, per expected key,
+the box (`ticked`), Tomo's `kept` / `unticked`, the user's ticked items
+(`added` — the ones an unticked section drops with it, for
+`section-dropped`), and `empty`: ticked but with no ticked item at all (all
+unticked or deleted, or never any — `section-empty`). `counts()` keeps its
+four spec 045 numbers by the item boxes, so the engagement KPI and the
+unmapped report do not change meaning; the preview's wording of the two
+notices is `review-instructions.py`'s (Phase 5).

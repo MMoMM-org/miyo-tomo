@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.6.0
+# version: 0.6.1
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (``read.json``) and the model wrote its proposals
@@ -39,7 +39,7 @@ Output: one JSON object on stdout, ASCII-escaped.
            items {group: [{id?, origin tomo|user, kept, edited}]},
            counts {kept, unticked, deleted, added},
            warnings [approved-line-missing | unknown-group | item-outside-group | duplicate-group |
-                     frontmatter-broken]
+                     frontmatter-broken | section-checkbox-missing]
          | status not-found, stem, doc_path?        (no meta.json and no --doc-path, or nothing at the path)
          | status stopped, error {kind kado-unreachable|kado-auth, detail}
     replace: status needs-confirm, stem, doc_path   (neither flag: nothing written, no Kado call)

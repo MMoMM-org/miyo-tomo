@@ -1,0 +1,4440 @@
+{
+  "month/approved": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "month/approved-missing": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": [
+        "approved-line-missing"
+      ]
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "approved-line-missing"
+    ]
+  },
+  "month/as-rendered": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "month/done-mark": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "month/duplicate-heading": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 1,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          },
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "noch einer"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": [
+        "duplicate-group"
+      ]
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "noch einer"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "duplicate-group"
+    ]
+  },
+  "month/id-copied": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 1,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          },
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": []
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "Tax filed ([[2026-03-24]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "month/id-dropped": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 1,
+        "deleted": 1,
+        "kept": 4,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": []
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 1,
+      "kept": 4,
+      "unticked": 0
+    },
+    "deleted": 1,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "month/item-above-first-heading": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 1,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "unknown": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "oben ohne Gruppe"
+          }
+        ],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": [
+        "item-outside-group"
+      ]
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly",
+      "unknown"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "oben ohne Gruppe"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "unknown": [
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "item-outside-group"
+    ]
+  },
+  "month/renamed-heading": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "unknown": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": [
+        "unknown-group"
+      ]
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly",
+      "unknown"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "unknown": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "unknown-group"
+    ]
+  },
+  "month/section-lookalikes": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 3,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "Use this section %%s1%%"
+          },
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Tax filed ([[2026-03-24]])"
+          }
+        ],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "unknown": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "mine %%s1%%"
+          },
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "under the divider"
+          }
+        ],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": [
+        "unknown-group"
+      ]
+    },
+    "counts": {
+      "added": 3,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly",
+      "unknown"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "Use this section %%s1%%"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      },
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": false,
+        "lines": [
+          "*Lands: before \"Goals\" (level 3)*"
+        ],
+        "origin": "user",
+        "text": "Use this section %%s1%%"
+      },
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "mine %%s1%%"
+      },
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "under the divider"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        },
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "unknown": [
+        {
+          "edited": false,
+          "kept": false,
+          "origin": "user"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "unknown-group"
+    ]
+  },
+  "month/unticked-item": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 4,
+        "unticked": 1
+      },
+      "groups": {
+        "done": [],
+        "growth": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "New note on X ([[2026-03-10]])"
+          }
+        ],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 16 of 31 days (31 days in the period)"
+          }
+        ],
+        "not_in_weekly": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Missing from the weekly ([[2026-03-02]])"
+          }
+        ],
+        "open": [],
+        "themes": [],
+        "weekly_only": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Only the weekly says so ([[2026-W13]])"
+          }
+        ]
+      },
+      "kind": "month",
+      "language": "en",
+      "period": "2026-03",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 4,
+      "unticked": 1
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "month",
+      "review_language": "en",
+      "review_period": "2026-03",
+      "review_stem": "2026-03_review",
+      "review_target": "Calendar/303 Monthly/2026-03.md",
+      "review_target_exists": false,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "weekly_only",
+      "not_in_weekly"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": false,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Tax filed ([[2026-03-24]])"
+      },
+      {
+        "edited": false,
+        "group": "growth",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "New note on X ([[2026-03-10]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 16 of 31 days (31 days in the period)"
+      },
+      {
+        "edited": false,
+        "group": "weekly_only",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Only the weekly says so ([[2026-W13]])"
+      },
+      {
+        "edited": false,
+        "group": "not_in_weekly",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Missing from the weekly ([[2026-03-02]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": false,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "not_in_weekly": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [],
+      "themes": [],
+      "weekly_only": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "week/approved": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "week/approved-missing": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": [
+        "approved-line-missing"
+      ]
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "approved-line-missing"
+    ]
+  },
+  "week/as-rendered": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "week/done-mark": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "week/duplicate-heading": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 1,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          },
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "noch einer"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": [
+        "duplicate-group"
+      ]
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "noch einer"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "duplicate-group"
+    ]
+  },
+  "week/id-copied": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 1,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          },
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": []
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "week/id-dropped": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 1,
+        "deleted": 1,
+        "kept": 4,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "user",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": []
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 1,
+      "kept": 4,
+      "unticked": 0
+    },
+    "deleted": 1,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": null,
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "user",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  },
+  "week/item-above-first-heading": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 1,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ],
+        "unknown": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "oben ohne Gruppe"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": [
+        "item-outside-group"
+      ]
+    },
+    "counts": {
+      "added": 1,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "unknown"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "oben ohne Gruppe"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "unknown": [
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ]
+    },
+    "warnings": [
+      "item-outside-group"
+    ]
+  },
+  "week/renamed-heading": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ],
+        "unknown": [
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": [
+        "unknown-group"
+      ]
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "unknown"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "unknown": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": [
+      "unknown-group"
+    ]
+  },
+  "week/section-lookalikes": {
+    "approved": false,
+    "approved_review": {
+      "approved": false,
+      "counts": {
+        "added": 3,
+        "deleted": 0,
+        "kept": 5,
+        "unticked": 0
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "Use this section %%s1%%"
+          },
+          {
+            "edited": false,
+            "id": "t1",
+            "lines": [
+              "  \\# keine Überschrift",
+              "  \\- [ ] kein Kasten"
+            ],
+            "origin": "tomo",
+            "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+          },
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ],
+        "unknown": [
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "mine %%s1%%"
+          },
+          {
+            "edited": false,
+            "id": null,
+            "lines": [],
+            "origin": "user",
+            "text": "under the divider"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": [
+        "unknown-group"
+      ]
+    },
+    "counts": {
+      "added": 3,
+      "deleted": 0,
+      "kept": 5,
+      "unticked": 0
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits",
+      "unknown"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "Use this section %%s1%%"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": true,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      },
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": false,
+        "lines": [
+          "*Lands: before \"Goals\" (level 3)*"
+        ],
+        "origin": "user",
+        "text": "Use this section %%s1%%"
+      },
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "mine %%s1%%"
+      },
+      {
+        "edited": false,
+        "group": "unknown",
+        "id": null,
+        "kept": true,
+        "lines": [],
+        "origin": "user",
+        "text": "under the divider"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        },
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": true,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "unknown": [
+        {
+          "edited": false,
+          "kept": false,
+          "origin": "user"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        },
+        {
+          "edited": false,
+          "kept": true,
+          "origin": "user"
+        }
+      ]
+    },
+    "warnings": [
+      "unknown-group"
+    ]
+  },
+  "week/unticked-item": {
+    "approved": true,
+    "approved_review": {
+      "approved": true,
+      "counts": {
+        "added": 0,
+        "deleted": 0,
+        "kept": 4,
+        "unticked": 1
+      },
+      "groups": {
+        "done": [
+          {
+            "edited": false,
+            "id": "t2",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Steuer abgeschickt ([[2026-03-25]])"
+          }
+        ],
+        "growth": [],
+        "habits": [
+          {
+            "edited": false,
+            "id": "t5",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+          }
+        ],
+        "open": [
+          {
+            "edited": false,
+            "id": "t3",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Vermieter antworten ([[2026-03-27]])"
+          }
+        ],
+        "themes": [
+          {
+            "edited": false,
+            "id": "t4",
+            "lines": [],
+            "origin": "tomo",
+            "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+          }
+        ]
+      },
+      "kind": "week",
+      "language": "de",
+      "period": "2026-W13",
+      "warnings": []
+    },
+    "counts": {
+      "added": 0,
+      "deleted": 0,
+      "kept": 4,
+      "unticked": 1
+    },
+    "deleted": 0,
+    "frontmatter": {
+      "review_kind": "week",
+      "review_language": "de",
+      "review_period": "2026-W13",
+      "review_stem": "2026-W13_review",
+      "review_target": "Calendar/302 Weekly/2026-W13.md",
+      "review_target_exists": true,
+      "tomo": {
+        "doc_type": "review",
+        "run_id": "r-golden",
+        "state": "pending-approval",
+        "updated_at": "<normalised>"
+      }
+    },
+    "group_order": [
+      "done",
+      "open",
+      "themes",
+      "growth",
+      "habits"
+    ],
+    "items": [
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t1",
+        "kept": false,
+        "lines": [
+          "  \\# keine Überschrift",
+          "  \\- [ ] kein Kasten"
+        ],
+        "origin": "tomo",
+        "text": "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+      },
+      {
+        "edited": false,
+        "group": "done",
+        "id": "t2",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Steuer abgeschickt ([[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "open",
+        "id": "t3",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Vermieter antworten ([[2026-03-27]])"
+      },
+      {
+        "edited": false,
+        "group": "themes",
+        "id": "t4",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Schlaf ([[2026-03-23]], [[2026-03-25]])"
+      },
+      {
+        "edited": false,
+        "group": "habits",
+        "id": "t5",
+        "kept": true,
+        "lines": [],
+        "origin": "tomo",
+        "text": "Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28)"
+      }
+    ],
+    "nothing_to_deliver": false,
+    "public_items": {
+      "done": [
+        {
+          "edited": false,
+          "id": "t1",
+          "kept": false,
+          "origin": "tomo"
+        },
+        {
+          "edited": false,
+          "id": "t2",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "growth": [],
+      "habits": [
+        {
+          "edited": false,
+          "id": "t5",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "open": [
+        {
+          "edited": false,
+          "id": "t3",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ],
+      "themes": [
+        {
+          "edited": false,
+          "id": "t4",
+          "kept": true,
+          "origin": "tomo"
+        }
+      ]
+    },
+    "warnings": []
+  }
+}

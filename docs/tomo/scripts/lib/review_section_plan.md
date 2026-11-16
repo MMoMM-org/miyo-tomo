@@ -14,10 +14,15 @@
 already past the size guide (463 lines). The section planner is a second
 concern with its own rules — marker pairs, home ranges, the off-limits
 landing, the Tomo Review range — and T5.2/T5.4 compose its plans with the
-Tomo Review plan. It reuses the Hashi mirror that `review_actions.py` owns
+Tomo Review plan. It reuses the Hashi mirror in `review_hashi_text.py`
 (`JS_WS`, `fenced_mask`, `hashi_headings`, `bare`, `split_lines`,
 `marker_index`, `item_lines`) instead of copying it: one parse, so the two
-planners can never disagree about where a heading or a marker is.
+planners can never disagree about where a heading or a marker is. The
+mirror lived in `review_actions.py` until spec 046 T5.2; it moved out
+because this module and `review_actions` imported each other and both were
+at their size limits (docs/tomo/scripts/lib/review_hashi_text.md, "WHY a
+Module of Its Own"). This module imports `review_hashi_text`, never
+`review_actions`.
 
 ## WHY Tomo Mirrors Hashi's Parse and Stops Instead of Writing Blind
 
@@ -59,7 +64,7 @@ The mirror uses `JS_WS` so Tomo counts the same lines Hashi will.
 
 ## WHY Item Lines Are Escaped Against Markers
 
-Item lines run through `review_actions.item_lines` (ids stripped,
+Item lines run through `review_hashi_text.item_lines` (ids stripped,
 `neutralised`, bullet and continuation prefix). A prefixed line can never
 equal a marker line, but it can contain one — an item quoting an earlier
 block — and step 3b would then call the next run's block broken. So every
@@ -119,7 +124,7 @@ Hashi runs every `insert_under_marker` before `replace_section`
 (`planner.ts` `KIND_ORDER`). A section inserted inside the Tomo Review
 range is wiped by that set's own Tomo Review replace. The range is the
 heading above the spec 045 marker of this period, as `review_actions`
-finds it (`marker_index`), to the next heading of the same or a higher
+finds it (`review_hashi_text.marker_index`), to the next heading of the same or a higher
 level. An insertion point strictly after that heading line and up to the
 line after the range lands inside it; an insertion at the heading line
 lands above it. For a new Tomo Review the caller passes its planned
@@ -150,8 +155,9 @@ where it now sits; the preview names that (`block-moved-confirmed`).
 
 A new note is built by Tomo, not by Hashi: the set holds one `move_note`
 and the note text already carries every block. `plan_new_note` still runs
-`plan_section` on the text `review_actions` chose by spec 045's Templater
-rule (the `_tomo` variant, else the template as it is), so a new note and
+`plan_section` on the text `review_new_note.template_choice` chose by spec
+045's Templater rule (the `_tomo` variant, else the template as it is), so
+a new note and
 an existing note answer "where does this section go" by one rule, and the
 block Tomo splices is the block the next run finds with both markers. The
 splice index is `SectionPlan.insert_at` — the line Hashi's `before` /

@@ -411,6 +411,8 @@ tomo/
         ├── review_setup_rows.py                 # NEW (spec 046 T2.2): setup-input row refusals, ids, rows-file evidence
         ├── review_sections.py                   # NEW
         ├── review_section_plan.py               # NEW
+        ├── review_hashi_text.py                 # NEW (spec 046 T5.2): the Hashi-parse mirror and item lines, split out of review_actions
+        ├── review_new_note.py                   # NEW (spec 046 T5.2): new-note text (template choice, splice, stamp), split out of review_actions
         ├── review_children.py                   # NEW
         ├── review_read_parts.py                 # NEW (spec 046 T3.4): read*.json layout, quarter split per month, loader
         ├── period.py                            # MODIFY: QUARTER, Q token, months(), parsing
@@ -445,6 +447,8 @@ docs/tomo/
     ├── review_setup_rows.md                     # NEW (T2.2)
     ├── review_sections.md                       # NEW
     ├── review_section_plan.md                   # NEW
+    ├── review_hashi_text.md                     # NEW (T5.2)
+    ├── review_new_note.md                       # NEW (T5.2)
     ├── review_children.md                       # NEW
     └── review_read_parts.md                     # NEW (T3.4)
 ```

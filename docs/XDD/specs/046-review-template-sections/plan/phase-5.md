@@ -79,7 +79,7 @@ Delivers each kept section into the user's note as a marked block, replaces it o
   4. Validate: `test_review_instructions.py`, `test_review_deliver*.py` (resume, rerun, report) green; `review-instructions.py` ≤ 540 lines and no new top-level function besides the flag parsing; ruff clean.
   5. Success: every stop asks before writing, and no review gets stuck `[ref: PRD/F4-AC6, F5-AC4, F3-AC4 preview line]`
 
-- [ ] **T5.6 Skill steps 7 and 8: preview and per-section choices** `[activity: prompt-authoring]`
+- [x] **T5.6 Skill steps 7 and 8: preview and per-section choices** `[activity: prompt-authoring]`
 
   1. Prime: SKILL.md steps 7-8 (163-205); WHY doc; `tests/test_review_skill_pass2.py` `[ref: SDD/User Interface & UX; ADR-12]`
   2. Test: pins for: wording each stop with its choices in the review language, passing the choices as flags on `deliver`, the replace sentence, the dropped/empty lines, `review-section-kept`, a fresh delivery offered after `exists`.
@@ -88,5 +88,7 @@ Delivers each kept section into the user's note as a marked block, replaces it o
   5. Success: the user decides every ambiguous case in the existing Deliver step `[ref: PRD/F4-AC4, F4-AC6]`
 
 - [ ] **T5.7 Phase Validation** `[activity: validate]`
+
+  - Notes from T5.6: SKILL.md 0.2.9, 34,626 bytes; advisory nits for #259 or the close-out: the step 7 stop bullet is one ~1,100-character sentence (split into sub-bullets, "per stopped section named on a line, using only the choices that line listed"; re-pin `QUESTION` / `STOPS_HEAD`); one half of a negative pin in `test_046_t5_6_skill_choices.py` checks its own constant (tautology).
 
   - Run all Phase 5 tests and the full suite: GREEN, no named exception. If the sibling Hashi checkout already carries v4 (`tests/review_deliver_helpers.py:38-40`), name which tests that affects instead of skipping them. Drift check against the Complex Logic algorithm. WHY-first order (git log) and no eval-gated file changed. Lint clean.

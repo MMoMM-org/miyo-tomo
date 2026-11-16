@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t5_5_delivery_choices.py — Pass 2 of a mapped review: section stops, choices, notices (spec 046 T5.5).
 
 SDD Internal API `review-instructions.py preview|deliver --stem <stem> [--section-choice <key>=skip|review ...]
@@ -18,7 +18,9 @@ against the guarded fake. Mechanisms a mutation falsifies:
 - the flag parser's exit 2 (`test_a_malformed_or_doubled_choice_is_a_bad_invocation`);
 - `nothing-to-deliver` on a plan without actions (`test_every_section_skipped_and_nothing_for_tomo_review`);
 - the section notices and `section_counts` (`test_a_rerun_replaces_the_block_and_says_so`,
-  `test_dropped_and_empty_sections_are_named_with_the_users_own_count`).
+  `test_dropped_and_empty_sections_are_named_with_the_users_own_count`);
+- `report` naming each section's configured placement, not Hashi's
+  (`test_the_preview_names_each_sections_configured_placement`).
 
 All data is synthetic.
 """
@@ -52,6 +54,7 @@ NOTE = ("# 2026-W13\n### Planning\nplan text\n\n## Notes\nnote text\n\n## In my 
 S4_START, S4_END = "%% tomo:s4 2026-W13 %%", "%% /tomo:s4 2026-W13 %%"
 S4_BLOCK = f"{S4_START}\n- alt\n{S4_END}\n"
 APPROVE = ("- [ ] Approved", "- [x] Approved")
+PLACED = {"s1": "end", "s3": "before", "s4": "under"}       # WEEK_ROWS' placements into the note
 S4_LINE = "- Notiz zu X ([[2026-03-24]])"
 
 
@@ -102,16 +105,32 @@ def test_the_preview_lists_every_section_with_lines_mode_and_lines(script, inst,
     s4 = by_key(out)["s4"]
     assert s4["mode"] == "insert" and s4["lines"] == [S4_LINE] and s4["notices"] == []
     assert "stop" not in s4 and "choices" not in s4
+    assert all(s["placement"] == PLACED[s["key"]] for s in out["sections"]), out["sections"]
     assert "unlanded-items" not in out["notices"], "kept section items land in their block"
     _, out, _ = cli(ins, monkeypatch, capsys, fake, "deliver", "--stem", STEM)
     assert out["status"] == "delivered", out
     assert [s["key"] for s in out["sections"]] == ["s1", "s4"] and "lines" not in out["sections"][0]
+    assert all(s["placement"] == PLACED[s["key"]] for s in out["sections"]), out["sections"]
     assert "Notiz zu X" not in json.dumps(out), "deliver prints no item text"
     doc = set_json(fake)
     assert [(a["id"], a["action"]) for a in doc["actions"]] == [
         ("I01", "insert_under_marker"), ("I02", "insert_under_marker"), ("I03", "insert_under_marker")]
     for schema in SCHEMAS:
         assert schema_errors(doc, schema) == []
+
+
+def test_the_preview_names_each_sections_configured_placement(script, inst, ins, monkeypatch, capsys):
+    props = {**WEEK_PROPS, "sections": [*WEEK_PROPS["sections"], section("s3", item("Plan B", "2026-03-24"))]}
+    fake = approved(script, inst, monkeypatch, capsys, props=props)
+    _, out, _ = cli(ins, monkeypatch, capsys, fake, "preview", "--stem", STEM)
+    assert out["problems"] == [], out
+    assert {s["key"]: s["placement"] for s in out["sections"]} == PLACED, "before / under / end, as configured"
+    assert [s["mode"] for s in out["sections"]] == ["insert"] * 3
+    _, out, _ = cli(ins, monkeypatch, capsys, fake, "deliver", "--stem", STEM)
+    assert out["status"] == "delivered", out
+    assert {s["key"]: s["placement"] for s in out["sections"]} == PLACED
+    hashi = {s["key"]: s["placement"] for s in meta(inst)["delivered_plan"]["sections"]}
+    assert hashi == {"s1": "inside", "s3": "before", "s4": "after"}, "the record keeps Hashi's placement"
 
 
 def test_dropped_and_empty_sections_are_named_with_the_users_own_count(script, inst, ins, monkeypatch, capsys):
@@ -144,10 +163,11 @@ def test_a_missing_heading_stops_the_whole_delivery_before_any_write(script, ins
     assert out["status"] == "ok" and out["problems"] == ["section-missing"], out
     s4 = by_key(out)["s4"]
     assert s4["stop"] == "section-missing" and s4["choices"] == ["skip", "review"] and s4["mode"] == "missing"
+    assert s4["placement"] == "under"
     before = dict(fake.files)
     _, out, _ = cli(ins, monkeypatch, capsys, fake, "deliver", "--stem", STEM)
     assert out["status"] == "refused" and out["problems"] == ["section-missing"], out
-    assert by_key(out)["s4"]["choices"] == ["skip", "review"]
+    assert by_key(out)["s4"]["choices"] == ["skip", "review"] and by_key(out)["s4"]["placement"] == "under"
     assert writes(fake) == [] and fake.files == before
     assert meta(inst)["steps_done"] == [] and "delivered_plan" not in meta(inst)
 
@@ -164,9 +184,11 @@ def test_skip_leaves_the_section_out_and_review_routes_it(script, inst, ins, mon
     fake = approved(script, inst, monkeypatch, capsys, note=NOTE.replace("## Notes\nnote text\n\n", ""))
     _, out, _ = cli(ins, monkeypatch, capsys, fake, "preview", "--stem", STEM, "--section-choice", "s4=review")
     assert out["problems"] == [] and by_key(out)["s4"]["mode"] == "review", out
+    assert by_key(out)["s4"]["placement"] == "under", "routed: still the configured placement"
     assert "Notiz zu X" in out["section_md"], "routed into Tomo Review"
     _, out, _ = cli(ins, monkeypatch, capsys, fake, "deliver", "--stem", STEM, "--section-choice", "s4=skip")
     assert out["status"] == "delivered", out
+    assert by_key(out)["s4"]["mode"] == "skip" and by_key(out)["s4"]["placement"] == "under"
     doc = set_json(fake)
     assert [a["id"] for a in doc["actions"]] == ["I01", "I02"], "dense ids without s4"
     assert not any("Notiz zu X" in a["content"] for a in doc["actions"])
@@ -219,6 +241,7 @@ def test_a_rerun_replaces_the_block_and_says_so(script, inst, ins, monkeypatch, 
     assert out["problems"] == [] and out["notices"] == ["block-replaced"], out
     s4 = by_key(out)["s4"]
     assert s4["mode"] == "replace" and s4["notices"] == ["block-replaced"] and s4["scope_level"] == 2
+    assert s4["placement"] == "under", "a replace has no Hashi placement, but the configured one is named"
 
 
 @pytest.mark.parametrize(("stop", "choices"), [
@@ -228,13 +251,14 @@ def test_every_section_stop_refuses_with_its_offered_choices(stop, choices):
     from lib import review_actions as ra
     from lib import review_delivery as rdl
     from lib import review_section_plan as rsp
-    p = rsp.SectionPlan("s4", stop, S4_START, S4_END, lines=["- x"])
+    p = rsp.SectionPlan("s4", stop, S4_START, S4_END, lines=["- x"], placement="under")
     p.offers = choices
     plan = ra.ReviewPlan("insert", TARGET, False, [], {}, sections=[p], actions=[{"id": "I01"}])
     problems, _ = rdl.classify(plan)
     assert problems == [rsp.STOPS[stop]] and rsp.STOPS[stop] in rdl.REFUSING
     assert rdl.section_report(plan, {}, {}, lines=False)["sections"] == [
-        {"key": "s4", "mode": stop, "notices": [], "stop": rsp.STOPS[stop], "choices": list(choices)}]
+        {"key": "s4", "mode": stop, "placement": "under", "notices": [], "stop": rsp.STOPS[stop],
+         "choices": list(choices)}]
 
 
 def test_a_stop_of_a_section_without_lines_refuses_nothing():

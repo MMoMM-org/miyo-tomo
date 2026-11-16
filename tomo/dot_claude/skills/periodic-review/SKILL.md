@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.6
+# version: 0.2.7
 
 Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -203,7 +203,7 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
   - `set-withdrawn` → say an earlier Drop emptied the instruction set but did not finish (its readable file may still list the actions); nothing is delivered. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
   - `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, `block-in-review-section` or `landing-off-limits` → per entry of `sections` with a `stop`: name the section `<section heading>` (step 5) of its `key` and say why: its heading is not in the target note, is there more than once, Tomo's earlier block in it is broken, the block was moved under `block_at.heading`, the block sits inside the "Tomo Review" section, or it would land in an off-limits section. Nothing is delivered; stop.
   - `choice-invalid` → say the choice for each key in `choices_invalid` answers no stop of that section; stop.
-- `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result, then per entry of `sections` the section `<section heading>` (step 5) of its `key`, its `mode` and its `lines` in a fenced block. Then one line for `mode` `replace`, per entry of `notices` and per flag set:
+- `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result, then per entry of `sections` the section `<section heading>` (step 5) of its `key`, its `placement`, its `mode` and its `lines` in a fenced block. Then one line for `mode` `replace`, per entry of `notices` and per flag set:
   - `mode` `replace` → the note already holds Tomo's review section; it is replaced, not added to.
   - `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.
   - `target_appeared` true → the target note was created since Pass 1; the plan targets it instead of a new note.

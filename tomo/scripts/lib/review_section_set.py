@@ -1,5 +1,5 @@
 # review_section_set.py — the mapped sections of one /review delivery as a set, and the actions they compose.
-# version: 0.2.0
+# version: 0.2.1
 """Plan, route and compose the mapped sections of a ``/review`` delivery (spec 046 T5.2, T5.4; PRD
 F4-AC1, F4-AC5, F2-AC12; SDD ADR-12).
 
@@ -17,9 +17,9 @@ escapes of the blocks that land as their own block (``insert`` and ``replace``; 
 new note, whose text is spliced from inserts). ``lands`` is the one test of both: a section with no lines
 lands in neither, so a new note gets no empty marker pair.
 
-What the delivery reads besides the actions (T5.5): ``report`` — per section with lines its key, mode,
-notices, scope level, a stop with the choices it offers and where a moved block sits, ``lines`` on request;
-``record`` — ``{key, mode, placement, scope_level}`` per section with lines, keys and enums only; ``untaken``
+What the delivery reads besides the actions (T5.5): ``report`` — per section with lines its key, mode, the
+row's configured placement, notices, scope level, a stop with its choices, where a moved block sits, ``lines`` on
+request; ``record`` — ``{key, mode, placement (Hashi's), scope_level}`` per section with lines, enums; ``untaken``
 — the keys of the user's choices no plan took; ``dropped`` / ``empty`` read the parsed document's
 ``section_counts``; ``names`` and ``fields`` are the problem and notice names and the output fields of all that.
 
@@ -68,7 +68,8 @@ def plan_new_note(rows: Sequence[dict], text: Optional[str], period: str, items:
         key = str(r["id"])
         routed = rsp.SKIP if (choices or {}).get(key) == rsp.SKIP else rsp.REVIEW   # answers only a stop
         if text is None:
-            p = rsp.SectionPlan(key, routed, rsp.start_marker(key, period), rsp.end_marker(key, period))
+            p = rsp.SectionPlan(key, routed, rsp.start_marker(key, period), rsp.end_marker(key, period),
+                                placement=r["placement"])
             p.lines, p.escaped_lines = rsp.block_lines(items.get(key) or [])
         else:
             p = rsp.plan_section(r, text, period, items.get(key) or [], choice=routed, off_limits=off_limits)
@@ -133,7 +134,7 @@ def report(plans: Sequence[rsp.SectionPlan], *, lines: bool) -> List[dict]:
     for p in plans:
         if not p.lines:
             continue
-        entry: Dict[str, object] = {"key": p.key, "mode": p.mode, "notices": list(p.notices)}
+        entry: Dict[str, object] = {"key": p.key, "mode": p.mode, "placement": p.placement, "notices": list(p.notices)}
         if p.scope is not None:
             entry["scope_level"] = p.scope["level"]
         if p.stop is not None:

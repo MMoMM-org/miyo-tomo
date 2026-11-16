@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -389,8 +389,9 @@ def test_status_is_never_called_by_the_skill():
 
 
 def test_the_preview_prints_each_sections_lines_and_deliver_routes_choices_needed():
-    """Spec 046 T5.5 (F4-AC6): the `ok` line prints `sections`; `choices-needed` reruns the preview."""
-    assert ("then per entry of `sections` the section `<section heading>` (step 5) of its `key`, its `mode` and its "
-            "`lines` in a fenced block.") in _section("7. Preview")
+    """Spec 046 T5.5 (F4-AC6): the `ok` line prints `sections` with each placement; `choices-needed` reruns
+    the preview."""
+    assert ("then per entry of `sections` the section `<section heading>` (step 5) of its `key`, its `placement`, "
+            "its `mode` and its `lines` in a fenced block.") in _section("7. Preview")
     assert ("- `choices-needed` → say the stopped delivery was begun with section choices that are asked again: "
             "rerun `preview` of step 7 and branch by its list.") in _section("8. Deliver")

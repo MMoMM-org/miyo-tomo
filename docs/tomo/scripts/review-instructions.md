@@ -342,7 +342,8 @@ two flags) are a bad invocation, exit 2: they are the skill's mistakes, not
 the vault's state.
 
 Each stop's output carries `sections` — per section with lines, mapping
-order: `key`, `mode`, `notices`, `scope_level` for a scoped replace, and for
+order: `key`, `mode`, `placement` (the row's configured `before`, `under`
+or `end`, whatever the mode), `notices`, `scope_level` for a scoped replace, and for
 a stop `stop` and the `choices` it offers (`block_at` for a moved block:
 the heading it sits under, note text like `headings`) — and `preview` adds
 each section's `lines`, the block as it lands (F4-AC6; item text, printed on

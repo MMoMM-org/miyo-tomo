@@ -163,7 +163,7 @@ group.
 
 `review-instructions.py` needs three readings of `ReviewPlan.sections`
 besides the actions: `report` — the per-section output (`key`, `mode`,
-`notices`, `scope_level`, a stop with its `offers` as `choices` and
+`placement`, `notices`, `scope_level`, a stop with its `offers` as `choices` and
 `block_at`, and in `preview` the block's `lines`) for every section whose
 block holds lines; `record` — `delivered_plan.sections`, `{key, mode,
 placement, scope_level}` for every section whose block holds lines, keys
@@ -171,6 +171,11 @@ and enums only; `untaken` — the keys of the user's choices no plan took (no
 such section, or the choice answered no stop of it). They live here because
 this module owns the set of section plans and `lands`, the one test of
 "holds lines"; `review_delivery` calls them and stays below its size line.
+`report`'s `placement` is the row's configured one (`before`, `under`,
+`end`), carried on `SectionPlan.placement`; the preview lists it per section
+(F4-AC6). It is not `hashi_placement`, which only an insert has (None for a
+replace, a stop, a skip or a routed section) and which `record` keeps
+unchanged. Both are enums, so naming the placement costs no privacy.
 A section without lines is left out of both (the dropped and empty notices
 name it): it gets no action and no id whatever its mode, so a heading of it
 removed between a stop and the resume changes nothing the resume writes and

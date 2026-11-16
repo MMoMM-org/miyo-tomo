@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.3.0
+# version: 0.3.1
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13; spec 046 ADR-12: section stops, choices).
 
@@ -74,8 +74,8 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     choice-invalid; a malformed or doubled choice exits 2; a plan without an action is nothing-to-deliver.
     drop refuses already-applied on any applied action (no partial withdrawal); its set read answers absent only
     on NOT_FOUND, any other Kado failure stops the run; a refused guard on the set write is set-changed.
-    Nothing of the document or a note reaches stdout except preview's section_md and sections.lines; stderr names
-    problem classes only.
+    Nothing of the document or a note reaches stdout except preview's section_md and sections.lines, a moved
+    block's sections.block_at.heading and the headings list; stderr names problem classes only.
 
 Exit codes:
     0 — output usable (every status)

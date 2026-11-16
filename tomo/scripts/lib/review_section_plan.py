@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.5.0
+# version: 0.5.1
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -67,6 +67,7 @@ class SectionPlan:
     escaped_lines: int = 0
     anchor: Optional[str] = None                          # the mapped heading as Hashi reads it
     hashi_placement: Optional[str] = None
+    placement: Optional[str] = None                       # the row's configured placement: before | under | end
     scope: Optional[Dict[str, object]] = None
     block_at: Optional[Dict[str, object]] = None          # a moved block: the heading it sits under (None: preamble)
     insert_at: Optional[int] = None                       # an insert: the line index Hashi inserts at
@@ -201,7 +202,7 @@ def plan_section(row: dict, note_text: str, period: str, items: Sequence[dict], 
     if placement not in HASHI_PLACEMENT:
         raise ValueError(f"not a placement into a note: {placement}")
     key = str(row["id"])
-    plan = SectionPlan(key, INSERT, start_marker(key, period), end_marker(key, period))
+    plan = SectionPlan(key, INSERT, start_marker(key, period), end_marker(key, period), placement=placement)
     plan.lines, plan.escaped_lines = block_lines(items)
     note = _Note.read(note_text)
     starts, ends = note.markers(plan.start_marker), note.markers(plan.end_marker)

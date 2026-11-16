@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -252,7 +252,7 @@ def test_the_notice_set_is_derived():
 
 def test_every_problem_constant_of_review_actions_is_classified():
     refusing, notices, ra = _delivery_vocabulary()
-    not_problems = {ra.INSERT, ra.REPLACE, ra.NEW_NOTE, ra.NOTE_DOC_TYPE, ra.NOTE_STATE, ra.WIRE_TYPE}
+    not_problems = {ra.INSERT, ra.REPLACE, ra.NEW_NOTE, ra.WIRE_TYPE}
     tokens = {value for name, value in vars(ra).items()
               if name.isupper() and isinstance(value, str) and re.fullmatch(r"[a-z]+(?:-[a-z]+)+", value)}
     unclassified = sorted(tokens - not_problems - set(refusing) - set(notices))

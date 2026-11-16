@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.3
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -14,11 +14,15 @@ note is built from a list whose indexes are the line numbers the assertions name
 - item lines escaped against marker text; JS trimEnd vs Python rstrip (U+0085, U+FEFF)
 - every applied plan through a reference splice (Hashi's documented semantics): every character outside
   the markers unchanged
+- the import direction after the spec 046 T5.2 split: review_actions -> review_new_note ->
+  review_section_plan -> review_hashi_text, never back (static, and each module imported alone)
 
 All data is synthetic.
 """
 from __future__ import annotations
 
+import ast
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -28,7 +32,7 @@ import pytest
 TESTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TESTS_DIR.parent / "tomo" / "scripts"))
 
-from lib import review_actions as ra  # noqa: E402
+from lib import review_hashi_text as rht  # noqa: E402
 from lib import review_section_plan as rsp  # noqa: E402
 
 WEEK, MONTH = "2026-W13", "2026-03"
@@ -69,7 +73,7 @@ def plan(r: dict, lines: List[str], period=WEEK, items=ITEMS, **kw) -> rsp.Secti
 # --- the reference splice: Hashi's documented semantics, written independently ----------------
 
 def _hashi_heading(lines, value):
-    return next((h for h in ra.hashi_headings(lines) if h[2] == value), None)
+    return next((h for h in rht.hashi_headings(lines) if h[2] == value), None)
 
 
 def hashi_apply(text: str, action: dict) -> str:
@@ -85,16 +89,16 @@ def hashi_apply(text: str, action: dict) -> str:
         elif action["placement"] == "after":
             at = head[0] + 1
         else:
-            nxt = next((h for h in ra.hashi_headings(lines) if h[0] > head[0] and h[1] <= head[1]), None)
+            nxt = next((h for h in rht.hashi_headings(lines) if h[0] > head[0] and h[1] <= head[1]), None)
             at = nxt[0] if nxt else len(lines)
         at = max(0, min(at, len(body)))
         body[at:at] = action["content"].split("\n")
         return "\n".join(body) + ("\n" if trailing else "")
     assert action["action"] == "replace_between_markers"
-    fenced = ra.fenced_mask(lines)
+    fenced = rht.fenced_mask(lines)
 
     def is_marker(i, m):
-        return not fenced[i] and lines[i].rstrip(ra.JS_WS) == m
+        return not fenced[i] and lines[i].rstrip(rht.JS_WS) == m
     starts = [i for i in range(len(lines)) if is_marker(i, action["start_marker"])]
     assert len(starts) == 1, "start marker not found or duplicated"
     ends = [i for i in range(len(lines)) if is_marker(i, action["end_marker"])]
@@ -102,7 +106,7 @@ def hashi_apply(text: str, action: dict) -> str:
     assert after and len(ends) == 1, "end marker missing, duplicated or out of order"
     s, e = starts[0], after[0]
     if "scope" in action:
-        heads = ra.hashi_headings(lines)
+        heads = rht.hashi_headings(lines)
         scope = next((h for h in heads if h[2] == action["scope"]["heading"] and h[1] == action["scope"]["level"]),
                      None)
         assert scope is not None, "scope heading not found"
@@ -115,8 +119,8 @@ def hashi_apply(text: str, action: dict) -> str:
 
 def _marker_index(lines: List[str], marker: str) -> int:
     """The one unfenced line equal to ``marker`` after JavaScript's trimEnd."""
-    fenced = ra.fenced_mask(lines)
-    found = [i for i, ln in enumerate(lines) if not fenced[i] and ln.rstrip(ra.JS_WS) == marker]
+    fenced = rht.fenced_mask(lines)
+    found = [i for i, ln in enumerate(lines) if not fenced[i] and ln.rstrip(rht.JS_WS) == marker]
     assert len(found) == 1, f"marker {marker!r} found {len(found)} times"
     return found[0]
 
@@ -345,7 +349,7 @@ def test_layout_a_block_straddling_a_heading_is_broken():
 
 
 def _with_review(extra: List[str]) -> List[str]:
-    return ["# W13", "## A", "a text", "## Tomo Review", ra.marker_line(WEEK), "### Erledigt", "- x", *extra,
+    return ["# W13", "## A", "a text", "## Tomo Review", rht.marker_line(WEEK), "### Erledigt", "- x", *extra,
             "## C", "c text"]
 
 
@@ -471,7 +475,7 @@ def test_moved_into_the_preamble_is_never_replaced():
 
 
 def test_before_home_passes_over_a_tomo_review_directly_above():
-    lines = ["## Above", start(), "- old", end(), "## Tomo Review", ra.marker_line(WEEK), "### Erledigt", "- x",
+    lines = ["## Above", start(), "- old", end(), "## Tomo Review", rht.marker_line(WEEK), "### Erledigt", "- x",
              "## Planning"]
     p, _ = applied(row("s1", "Planning", 2, None, "before"), lines)
     assert p.mode == "replace" and p.scope is None
@@ -540,3 +544,40 @@ def test_heading_with_closing_hashes_is_anchored_by_hashis_text():
 
 def test_crlf_heading_is_no_heading_for_hashi():
     assert plan(row("s1", "A", 2), ["## A\r", "text"]).mode == "missing"
+
+
+# --- the import direction (spec 046 T5.2 split) -------------------------------------------------
+
+LIB = TESTS_DIR.parent / "tomo" / "scripts" / "lib"
+# module -> the review modules it must never import (directly)
+FORBIDDEN = {
+    "review_hashi_text": {"review_actions", "review_new_note", "review_section_plan"},
+    "review_section_plan": {"review_actions", "review_new_note"},
+    "review_new_note": {"review_actions"},
+}
+
+
+def _lib_imports(module: str) -> set:
+    tree = ast.parse((LIB / f"{module}.py").read_text(encoding="utf-8"))
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "lib":
+            found.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("lib."):
+            found.add(node.module.split(".", 1)[1])
+        elif isinstance(node, ast.Import):
+            found.update(a.name.split(".", 1)[1] for a in node.names if a.name.startswith("lib."))
+    return found
+
+
+@pytest.mark.parametrize("module", sorted(FORBIDDEN))
+def test_a_lower_review_module_never_imports_a_higher_one(module):
+    assert not _lib_imports(module) & FORBIDDEN[module], _lib_imports(module) & FORBIDDEN[module]
+
+
+@pytest.mark.parametrize("order", [("review_section_plan", "review_actions"), ("review_actions", "review_section_plan"),
+                                   ("review_new_note", "review_actions"), ("review_hashi_text", "review_actions")])
+def test_each_review_module_imports_alone_in_a_fresh_interpreter(order):
+    code = f"import sys; sys.path.insert(0, {str(LIB.parent)!r}); " + "; ".join(f"from lib import {m}" for m in order)
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr

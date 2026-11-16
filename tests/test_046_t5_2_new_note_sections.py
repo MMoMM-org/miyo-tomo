@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_046_t5_2_new_note_sections.py — new notes, analysis rows and the "Tomo Review" interplay (046 T5.2).
 
 PRD F4-AC5, F2-AC12, F2-AC7; SDD Runtime View / Complex Logic "New note", the off-limits landing
@@ -40,6 +40,7 @@ from lib import review_actions as ra  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
+from lib import review_new_note as rnn  # noqa: E402
 from lib import review_section_plan as rsp  # noqa: E402
 from lib import review_sections as rs  # noqa: E402
 from review_deliver_helpers import SCHEMAS, schema_errors  # noqa: E402
@@ -92,7 +93,7 @@ def mapped(rows=ROWS, **kw):
 def plan(review=None, target_text=None, template=None, rows=ROWS, choices=None, **kw) -> ra.ReviewPlan:
     s = kw.pop("setup", None) or mapped(rows)
     return ra.build_review_plan(review or approved(rows), s, ra.Target(TARGET, target_text),
-                                template if template is not None else ra.Template(raw=TEMPLATE_TEXT),
+                                template if template is not None else rnn.Template(raw=TEMPLATE_TEXT),
                                 choices=choices, run_id="r-test", generated=GENERATED, **kw)
 
 
@@ -145,22 +146,22 @@ def test_a_heading_the_new_note_lacks_routes_and_never_leaves_a_marker():
 
 def test_a_heading_held_twice_by_the_template_routes():
     twice = TEMPLATE_TEXT + "## Highlights\n"
-    p = plan(template=ra.Template(raw=twice))
+    p = plan(template=rnn.Template(raw=twice))
     assert modes(p)["s1"] == "review" and "### Highlights" in body(p)
 
 
 def test_a_heading_only_inside_templater_code_routes_and_the_variant_comes_first():
     raw = TEMPLATE_TEXT.replace("## Plans\n", "<%*\n## Plans\n%>\n")
-    p = plan(template=ra.Template(raw=raw))
+    p = plan(template=rnn.Template(raw=raw))
     assert modes(p)["s4"] == "review" and p.templater_hint is True
     assert "### Plans" in body(p) and not any("tomo:s4" in ln for ln in body(p))
-    variant = plan(template=ra.Template(raw=raw, variant=TEMPLATE_TEXT),
+    variant = plan(template=rnn.Template(raw=raw, variant=TEMPLATE_TEXT),
                    setup=mapped(template_variant="t_week_tomo.md"))
     assert modes(variant)["s4"] == "insert" and variant.templater_hint is False
 
 
 def test_a_plain_note_routes_every_section_placed_in_the_note():
-    p = plan(template=ra.Template())
+    p = plan(template=rnn.Template())
     assert modes(p) == {"s1": "review", "s3": "review", "s4": "review"}
     heads = [ln for ln in body(p) if ln.startswith("### ")]
     assert heads == ["### Highlights", "### Energy and Sleep", "### Gone", "### Plans", "### Erledigt",

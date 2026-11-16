@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.8
+# version: 0.2.9
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -114,6 +114,7 @@ from lib import review_actions as ra  # noqa: E402
 from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
+from lib import review_new_note as rnn  # noqa: E402
 from lib.kado_client import (  # noqa: E402
     KadoClient, KadoError, KadoNotFoundError,
 )
@@ -243,11 +244,11 @@ def _target(vault: Vault, setup: rc.ReviewSetup, period_name: str) -> ra.Target:
     return ra.locate_target(candidates, texts, elsewhere)
 
 
-def _template(vault: Vault, setup: rc.ReviewSetup, target: ra.Target) -> Optional[ra.Template]:
+def _template(vault: Vault, setup: rc.ReviewSetup, target: ra.Target) -> Optional[rnn.Template]:
     if target.text is not None:
         return None
     raw_path, variant_path = rdl.template_paths(setup)
-    return ra.Template(raw=_note(vault, raw_path) if raw_path else None,
+    return rnn.Template(raw=_note(vault, raw_path) if raw_path else None,
                        variant=_note(vault, variant_path) if variant_path else None)
 
 

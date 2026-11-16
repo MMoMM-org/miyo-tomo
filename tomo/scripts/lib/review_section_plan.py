@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.2.1
+# version: 0.3.0
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -23,9 +23,9 @@ the routed keys for Pass 1. ``plan_existing`` plans the rows of an existing note
 the "Tomo Review" sub-parts: analysis rows and routed sections in mapping order, headings
 display-neutralised.
 
-The note is read as Hashi reads it (``review_actions``: ``split_lines``, ``fenced_mask``,
+The note is read as Hashi reads it (``review_hashi_text``: ``split_lines``, ``fenced_mask``,
 ``hashi_headings``, ``JS_WS``); markers are unfenced lines equal to the marker after JavaScript's
-``trimEnd``. No Kado, no clock, no file I/O.
+``trimEnd``. Imports ``review_hashi_text``, never ``review_actions``. No Kado, no clock, no file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_section_plan.md
 """
@@ -35,7 +35,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from lib import review_actions as ra
+from lib import review_hashi_text as rht
 from lib.review_sections import REVIEW as ANALYSIS, display_heading
 from lib.template_syntax import templater_inner_line_indexes
 from lib.review_mapping import HeadingKey, TemplateHeading, landing_off_limits, row_key
@@ -103,11 +103,11 @@ class SectionPlan:
 
 
 def block_lines(items: Sequence[dict]) -> Tuple[List[str], int]:
-    """``(lines, escapes)``: every item through ``review_actions.item_lines``, marker text escaped."""
+    """``(lines, escapes)``: every item through ``review_hashi_text.item_lines``, marker text escaped."""
     out: List[str] = []
     escaped = 0
     for item in items:
-        lines, count = ra.item_lines(item)
+        lines, count = rht.item_lines(item)
         escaped += count
         for line in lines:
             safe = _MARKER_TEXT_RE.sub(r"\1\\:", line)
@@ -122,13 +122,13 @@ def block_lines(items: Sequence[dict]) -> Tuple[List[str], int]:
 class _Note:
     lines: List[str]
     fenced: List[bool]
-    heads: ra.Headings
+    heads: rht.Headings
     keyed: List[TemplateHeading]          # per heading: the identity review_mapping gives a template heading
 
     @classmethod
     def read(cls, text: str) -> "_Note":
-        lines = ra.split_lines(text)[0]
-        heads = ra.hashi_headings(lines)
+        lines = rht.split_lines(text)[0]
+        heads = rht.hashi_headings(lines)
         keyed: List[TemplateHeading] = []
         stack: List[Tuple[Optional[HeadingKey], int]] = []
         seen: Dict[Tuple[str, int, Optional[str]], int] = {}
@@ -137,14 +137,14 @@ class _Note:
                 stack.pop()
             parent = stack[-1][0].heading if stack and stack[-1][0] else None
             if level == 1:                         # never a row: occurrence 0, and no ancestor of anyone
-                keyed.append(TemplateHeading(HeadingKey(ra.bare(text_), 1, None, 0), index + 1))
+                keyed.append(TemplateHeading(HeadingKey(rht.bare(text_), 1, None, 0), index + 1))
                 stack.append((None, 1))
                 continue
-            seen[(ra.bare(text_), level, parent)] = n = seen.get((ra.bare(text_), level, parent), 0) + 1
-            key = HeadingKey(ra.bare(text_), level, parent, n)
+            seen[(rht.bare(text_), level, parent)] = n = seen.get((rht.bare(text_), level, parent), 0) + 1
+            key = HeadingKey(rht.bare(text_), level, parent, n)
             keyed.append(TemplateHeading(key, index + 1, tuple(k for k, _ in stack if k)))
             stack.append((key, level))
-        return cls(lines, ra.fenced_mask(lines), heads, keyed)
+        return cls(lines, rht.fenced_mask(lines), heads, keyed)
 
     def line(self, n: int) -> int:
         return self.heads[n][0]
@@ -163,12 +163,12 @@ class _Note:
         return next((n for n, h in enumerate(self.heads) if h[2] == text and h[1] == level), None)
 
     def find(self, key: HeadingKey) -> Optional[int]:
-        want = HeadingKey(ra.bare(key.heading or ""), key.level,
-                          ra.bare(key.parent) if key.parent else None, key.occurrence)
+        want = HeadingKey(rht.bare(key.heading or ""), key.level,
+                          rht.bare(key.parent) if key.parent else None, key.occurrence)
         return next((n for n, k in enumerate(self.keyed) if k.key == want), None)
 
     def markers(self, marker: str) -> List[int]:
-        return [i for i, ln in enumerate(self.lines) if not self.fenced[i] and ln.rstrip(ra.JS_WS) == marker]
+        return [i for i, ln in enumerate(self.lines) if not self.fenced[i] and ln.rstrip(rht.JS_WS) == marker]
 
     def copies(self, marker: str) -> int:
         """Lines holding ``marker`` anywhere: fenced, indented, quoted or inside other text included."""
@@ -179,7 +179,7 @@ class _Note:
 
     def review_range(self, period: str) -> Optional[Tuple[int, int]]:
         """The existing "Tomo Review" section: the heading above its spec 045 marker, to its range end."""
-        at = ra.marker_index(self.lines, ra.marker_line(period))
+        at = rht.marker_index(self.lines, rht.marker_line(period))
         n = self.above(at) if at is not None else None
         return None if n is None else (self.line(n), self.range_end(n))
 
@@ -273,7 +273,7 @@ def place_off_limits(note_text: str, anchor: str, placement: str, off_limits: Se
     """The off-limits row covering where spec 045's "Tomo Review" lands (``before`` / ``inside`` the first heading
     that is ``anchor`` with or without closing hashes); None when nothing covers it or the anchor is absent."""
     note = _Note.read(note_text)
-    n = next((i for i, h in enumerate(note.heads) if ra.bare(h[2]) == ra.bare(anchor)), None)
+    n = next((i for i, h in enumerate(note.heads) if rht.bare(h[2]) == rht.bare(anchor)), None)
     if n is None:
         return None
     p = note.line(n) if _SPEC045_PLACEMENT[placement] == "before" else note.range_end(n) + 1
@@ -311,7 +311,7 @@ def plan_new_note(rows: Sequence[dict], text: Optional[str], period: str, items:
     out = []
     for r in _placed(rows):
         key = str(r["id"])
-        routed = SKIP if (choices or {}).get(key) == SKIP else REVIEW
+        routed = SKIP if (choices or {}).get(key) == SKIP else REVIEW    # answers only a stop; an INSERT inserts
         if text is None:
             p = SectionPlan(key, routed, start_marker(key, period), end_marker(key, period))
             p.lines, p.escaped_lines = block_lines(items.get(key) or [])

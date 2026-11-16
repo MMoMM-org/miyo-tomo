@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.4
+# version: 0.4.5
 r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -37,7 +37,7 @@ The mirror is exact to ECMAScript, pinned as `test_hashi_mirror_*`: Hashi splits
 and its `.` matches no line terminator, so a CRLF line or one holding U+2028/U+2029 is no
 heading (`place-missing`, no anchor Hashi cannot resolve); its `\s` and `trim()` share one set
 (WhiteSpace U+0009/000B/000C/FEFF + Zs, LineTerminator U+000A/000D/2028/2029) that Python's
-`\s`/`strip()` do not (they add U+001C-001F and U+0085, lack U+FEFF), so `ra.JS_WS` is that set
+`\s`/`strip()` do not (they add U+001C-001F and U+0085, lack U+FEFF), so `rht.JS_WS` is that set
 and is compared with `unicodedata`. V8 22 oracle, `/^(#{1,6})\s+(.*)$/` then `.trim()`:
 `## Woche\r` → no heading; `## Wo che` → no heading; `##﻿Woche` → `Woche`;
 `## Woche` → `Woche`; `##　Woche　` → `Woche`; `##\u0085Woche` → no heading;
@@ -66,6 +66,8 @@ from lib import review_actions as ra  # noqa: E402
 from lib import review_config as rc  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
+from lib import review_hashi_text as rht  # noqa: E402
+from lib import review_new_note as rnn  # noqa: E402
 from lib.period import ISO, Period  # noqa: E402
 from test_review_doc import INBOX, WEEKLY, _doc_input  # noqa: E402
 from review_deliver_helpers import SCHEMA_PARAMS, schema_errors  # noqa: E402
@@ -130,7 +132,7 @@ def hashi_section_body(text: str, heading: str) -> list[str]:
     return lines[i + 1:end]
 
 
-# ECMAScript `\s` / `String.prototype.trim`, spelled here independently of ra.JS_WS: the V8 scan of
+# ECMAScript `\s` / `String.prototype.trim`, spelled here independently of rht.JS_WS: the V8 scan of
 # every code point `/\s/` matches (see the docstring).
 ES_WS = "\t\n\v\f\r   " + "".join(chr(c) for c in range(0x2000, 0x200B)) + "    　﻿"
 ES_LINE_TERMINATORS = "\n\r  "
@@ -283,8 +285,8 @@ def test_actions_an_indented_marker_copy_is_not_the_marker():
     p = plan(target_text=NOTE.replace("text der Woche", f"- mein Punkt\n{indented}"))
     assert p.mode == "insert" and p.problems == [] and p.actions[0]["action"] == "insert_under_marker"
     # the real marker is matched with trailing whitespace, never with leading
-    assert ra.marker_index([f"{MARKER}  \t"], MARKER) == 0
-    assert ra.marker_index([f" {MARKER}"], MARKER) is None
+    assert rht.marker_index([f"{MARKER}  \t"], MARKER) == 0
+    assert rht.marker_index([f" {MARKER}"], MARKER) is None
 
 
 def test_actions_a_marker_with_no_heading_above_it_is_place_missing():
@@ -354,7 +356,7 @@ def test_actions_fences_toggle_as_hashi_toggles_them():
 
 def test_hashi_mirror_a_crlf_target_has_no_heading_to_hashi_and_is_place_missing():
     crlf = NOTE.replace("\n", "\r\n")
-    assert hashi_headings(crlf) == [] and ra.hashi_headings(crlf.split("\n")) == []
+    assert hashi_headings(crlf) == [] and rht.hashi_headings(crlf.split("\n")) == []
     p = plan(target_text=crlf)
     assert p.mode == "insert" and p.problems == ["place-missing"] and p.headings == [] and p.actions == []
     # the marker is Tomo's own match and still found on a CRLF line; with no heading above it to Hashi
@@ -363,7 +365,7 @@ def test_hashi_mirror_a_crlf_target_has_no_heading_to_hashi_and_is_place_missing
     assert p.mode == "replace" and p.problems == ["place-missing"] and p.actions == []
     assert p.place == {"anchor": None, "placement": "replace", "level": None} and p.headings == []
     # a lone CR is a line terminator to Hashi's `.` as well: the text group ends before it
-    assert ra.hashi_headings(["## Woche\r", "##\r", "## \r"]) == [(1, 2, ""), (2, 2, "")]
+    assert rht.hashi_headings(["## Woche\r", "##\r", "## \r"]) == [(1, 2, ""), (2, 2, "")]
 
 
 @pytest.mark.parametrize("terminator", [" ", " "])
@@ -377,14 +379,14 @@ def test_hashi_mirror_a_heading_line_holding_a_js_line_terminator_is_no_heading(
 
 def test_hashi_mirror_js_ws_is_ecmascripts_whitespace_set():
     zs = {chr(c) for c in range(0x110000) if unicodedata.category(chr(c)) == "Zs"}
-    assert set(ra.JS_WS) == zs | set("\t\v\f﻿") | set("\n\r  ")
-    assert len(ra.JS_WS) == len(set(ra.JS_WS))
-    assert set(ra.JS_WS) == set(ES_WS)                         # the test's own spelling agrees
+    assert set(rht.JS_WS) == zs | set("\t\v\f﻿") | set("\n\r  ")
+    assert len(rht.JS_WS) == len(set(rht.JS_WS))
+    assert set(rht.JS_WS) == set(ES_WS)                         # the test's own spelling agrees
     # the three characters that separate the two languages, each on the ECMAScript side
-    assert "﻿" in ra.JS_WS and not "﻿".isspace()
-    assert "\x85" not in ra.JS_WS and "\x85".isspace()
-    assert "\x1c" not in ra.JS_WS and "\x1c".isspace()
-    assert "᠎" not in ra.JS_WS                          # Cf since Unicode 6.3, not Zs
+    assert "﻿" in rht.JS_WS and not "﻿".isspace()
+    assert "\x85" not in rht.JS_WS and "\x85".isspace()
+    assert "\x1c" not in rht.JS_WS and "\x1c".isspace()
+    assert "᠎" not in rht.JS_WS                          # Cf since Unicode 6.3, not Zs
 
 
 def test_hashi_mirror_a_bom_after_the_hashes_is_whitespace_and_trimmed():
@@ -394,18 +396,18 @@ def test_hashi_mirror_a_bom_after_the_hashes_is_whitespace_and_trimmed():
     assert p.problems == [] and p.actions[0]["anchor"]["value"] == "Woche"
     assert p.place == {"anchor": "Woche", "placement": "inside", "level": 3}
     # NBSP and the ideographic space are Zs: whitespace to both regexes
-    assert ra.hashi_headings(["## Woche ", "##　Woche　"]) == [(0, 2, "Woche"), (1, 2, "Woche")]
+    assert rht.hashi_headings(["## Woche ", "##　Woche　"]) == [(0, 2, "Woche"), (1, 2, "Woche")]
     # tab, VT and FF are WhiteSpace too
-    assert ra.hashi_headings(["##\tWoche\t", "##\v\fWoche"]) == [(0, 2, "Woche"), (1, 2, "Woche")]
+    assert rht.hashi_headings(["##\tWoche\t", "##\v\fWoche"]) == [(0, 2, "Woche"), (1, 2, "Woche")]
     # and a BOM opens a fence line to Hashi, so the heading inside is no anchor
-    assert ra.fenced_mask(["﻿```", "## x", "```"]) == [True, True, True]
+    assert rht.fenced_mask(["﻿```", "## x", "```"]) == [True, True, True]
 
 
 @pytest.mark.parametrize("char", ["\x85", "\x1c", "᠎"])
 def test_hashi_mirror_characters_outside_ecmascripts_set_are_text(char):
     # after the hashes it is not the required whitespace: no heading
-    assert ra.hashi_headings([f"##{char}Woche"]) == [] and hashi_headings(f"##{char}Woche") == []
-    assert ra.hashi_headings([f"## {char}Woche"]) == [(0, 2, f"{char}Woche")]
+    assert rht.hashi_headings([f"##{char}Woche"]) == [] and hashi_headings(f"##{char}Woche") == []
+    assert rht.hashi_headings([f"## {char}Woche"]) == [(0, 2, f"{char}Woche")]
     # trailing, it is kept in the text: Hashi resolves `Woche<char>`, never `Woche`, and whatever the
     # plan emits for a bare `Woche` anchor (tolerant match, exact emission) is the text Hashi resolves
     note = NOTE.replace("## Woche\n", f"## Woche{char}\n", 1)
@@ -416,7 +418,7 @@ def test_hashi_mirror_characters_outside_ecmascripts_set_are_text(char):
     assert all(hashi_resolves(note, a["anchor"]["value"]) == (2, 2, f"Woche{char}") for a in p.actions)
     assert p.problems == [] or (p.problems == ["place-missing"] and p.headings == [PERIOD, f"Woche{char}", OWN])
     # and it does not open a fence
-    assert ra.fenced_mask([f"{char}```", "## x"]) == [False, False]
+    assert rht.fenced_mask([f"{char}```", "## x"]) == [False, False]
 
 
 # ---------------------------------------------------------------- target lookup
@@ -495,7 +497,7 @@ def frontmatter_of(text: str) -> dict:
 
 def test_actions_new_note_from_the_template_variant():
     p = plan(target_text=None, setup=setup(template="t_week.md", template_variant="t_week_tomo.md"),
-             template=ra.Template(raw=RAW_TEMPLATE, variant=VARIANT))
+             template=rnn.Template(raw=RAW_TEMPLATE, variant=VARIANT))
     assert p.mode == "new-note" and p.problems == []
     assert p.templater_hint is False and p.variant_missing is False
     [action] = p.actions
@@ -510,19 +512,19 @@ def test_actions_new_note_from_the_template_variant():
 
 
 def test_actions_new_note_is_stamped_rendered_note_pending_move_with_a_stable_block():
-    p = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw=VARIANT))
+    p = plan(target_text=None, setup=setup(template="t_week.md"), template=rnn.Template(raw=VARIANT))
     tomo = frontmatter_of(p.note_text)["tomo"]
     assert (tomo["doc_type"], tomo["state"], tomo["run_id"], tomo["updated_at"]) == \
         ("rendered-note", "pending-move", "r-test", GENERATED)
     assert frontmatter_of(p.note_text)["tags"] == "weekly"                 # the template's own keys stay
-    again = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw=VARIANT))
+    again = plan(target_text=None, setup=setup(template="t_week.md"), template=rnn.Template(raw=VARIANT))
     assert again.note_text == p.note_text
     plain = plan(target_text=None)                                        # no frontmatter → a fresh block
     assert frontmatter_of(plain.note_text)["tomo"]["state"] == "pending-move"
 
 
 def test_actions_new_note_from_a_raw_templater_template_sets_the_hint():
-    p = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw=RAW_TEMPLATE))
+    p = plan(target_text=None, setup=setup(template="t_week.md"), template=rnn.Template(raw=RAW_TEMPLATE))
     assert p.templater_hint is True and p.variant_missing is False
     assert "<% tp.file.title %>" in p.note_text and p.section_md in p.note_text
     assert p.preview()["templater_hint"] is True and "variant_missing" not in p.preview()
@@ -530,20 +532,20 @@ def test_actions_new_note_from_a_raw_templater_template_sets_the_hint():
 
 def test_actions_new_note_with_a_vanished_variant_falls_back_to_raw():
     p = plan(target_text=None, setup=setup(template="t_week.md", template_variant="t_week_tomo.md"),
-             template=ra.Template(raw=RAW_TEMPLATE, variant=None))
+             template=rnn.Template(raw=RAW_TEMPLATE, variant=None))
     assert p.variant_missing is True and p.templater_hint is True and "<%" in p.note_text
     assert p.preview()["variant_missing"] is True
 
 
 def test_actions_new_note_inside_appends_at_the_end_of_the_anchors_section():
     p = plan(target_text=None, setup=setup(anchor="Woche", placement="inside", template="t_week.md"),
-             template=ra.Template(raw=VARIANT))
+             template=rnn.Template(raw=VARIANT))
     body = p.note_text.split("---\n", 2)[2]
     assert body == f"# {PERIOD}\n\n## Woche\n\n{p.section_md}\n## In my own words\n\n"
     assert p.section_md.startswith(f"### {HEADING}\n")
     # inside the last section: appended at the end of the note
     p = plan(target_text=None, setup=setup(anchor=OWN, placement="inside", own_sections=[], template="t_week.md"),
-             template=ra.Template(raw=VARIANT))
+             template=rnn.Template(raw=VARIANT))
     assert p.note_text.split("---\n", 2)[2] == f"# {PERIOD}\n\n## Woche\n\n## In my own words\n\n{p.section_md}\n"
 
 
@@ -558,12 +560,12 @@ def test_actions_new_note_plain_when_there_is_no_template():
 def test_actions_new_note_keeps_the_templates_final_newline_byte_for_byte():
     head, body_end = f"# {PERIOD}\n\n## Woche\n\n", "## In my own words"
     for tail in ("", "\n", "\n\n"):
-        p = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw=head + body_end + tail))
+        p = plan(target_text=None, setup=setup(template="t_week.md"), template=rnn.Template(raw=head + body_end + tail))
         assert p.problems == []
         assert p.note_text.split("---\n", 2)[2] == f"{head}{p.section_md}\n{body_end}{tail}"
     # inside the last section of a template without a final newline: the section's own newline is the last byte
     p = plan(target_text=None, setup=setup(anchor=OWN, placement="inside", own_sections=[], template="t_week.md"),
-             template=ra.Template(raw=head + body_end))
+             template=rnn.Template(raw=head + body_end))
     assert p.note_text.split("---\n", 2)[2] == f"{head}{body_end}\n{p.section_md}"
 
 
@@ -573,8 +575,8 @@ TOMO_TEMPLATE = f"---\ntags: weekly\ntomo:\n  foo: 1\n---\n# {PERIOD}\n\n## Woch
 @pytest.mark.parametrize("which", ["raw", "variant"])
 def test_actions_new_note_template_with_a_tomo_block_falls_back_to_the_plain_note(which):
     kw = dict(setup=setup(template="t_week.md", template_variant="t_week_tomo.md"))
-    template = ra.Template(raw=TOMO_TEMPLATE, variant=None) if which == "raw" \
-        else ra.Template(raw=RAW_TEMPLATE, variant=TOMO_TEMPLATE)
+    template = rnn.Template(raw=TOMO_TEMPLATE, variant=None) if which == "raw" \
+        else rnn.Template(raw=RAW_TEMPLATE, variant=TOMO_TEMPLATE)
     p = plan(target_text=None, template=template, **kw)
     assert p.mode == "new-note" and p.problems == []
     assert p.template_unmergeable == "Frontmatter already carries a top-level 'tomo:' key."
@@ -592,14 +594,14 @@ def test_actions_new_note_template_with_a_tomo_block_falls_back_to_the_plain_not
 
 def test_actions_new_note_template_with_an_unclosed_frontmatter_fence_falls_back_to_the_plain_note():
     unclosed = f"---\ntags: weekly\n# {PERIOD}\n\n## Woche\n\n## In my own words\n"
-    p = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw=unclosed))
+    p = plan(target_text=None, setup=setup(template="t_week.md"), template=rnn.Template(raw=unclosed))
     assert p.problems == [] and p.template_unmergeable == "Leading frontmatter fence is unclosed."
     assert p.note_text == plan(target_text=None).note_text and p.actions[0]["action"] == "move_note"
     assert p.preview()["template_unmergeable"] == "Leading frontmatter fence is unclosed."
 
 
 def test_actions_new_note_template_without_the_anchor_is_place_missing():
-    p = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw="# T\n\n## Nur das\n"))
+    p = plan(target_text=None, setup=setup(template="t_week.md"), template=rnn.Template(raw="# T\n\n## Nur das\n"))
     assert p.problems == ["place-missing"] and p.headings == ["T", "Nur das"]
     assert p.actions == [] and p.note_text is None
 
@@ -717,7 +719,7 @@ def test_actions_an_unapproved_gateless_or_empty_review_emits_nothing():
 @pytest.mark.parametrize("schema", SCHEMA_PARAMS)
 def test_actions_every_set_validates_against_both_schemas(mode, schema):
     p = {"insert": lambda: plan(), "replace": lambda: plan(target_text=landed_note()),
-         "new-note": lambda: plan(target_text=None, template=ra.Template(raw=RAW_TEMPLATE))}[mode]()
+         "new-note": lambda: plan(target_text=None, template=rnn.Template(raw=RAW_TEMPLATE))}[mode]()
     assert p.mode == mode and len(p.actions) == 1
     doc = instruction_set(p)
     assert doc["schema_version"] == "3" and doc["type"] == "tomo-instructions"

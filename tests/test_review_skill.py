@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.9
+# version: 0.2.10
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.1"), (SKILL, "0.2.4")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.2.5")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -251,8 +251,8 @@ def test_a_withheld_request_ends_the_run_after_the_listed_reviews():
 
 def test_after_the_list_the_request_routes_by_kind_and_setup():
     text = _section("1. Start")
-    assert ("- `setup` → step 2 for `week`, then for `month`, then for `quarter` when `setup.quarter` is "
-            "`present`, each starting from `current.<kind>`; then stop.") in text
+    assert ("- `setup` → step 2 for `week`, then for `month`, then for `quarter`, each starting from "
+            "`current.<kind>`; then stop.") in text
     assert ("- `week`, `month` or `quarter` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the "
             "`start` call above (skip the open reviews already handled) and continue here.") in text
     assert "- Otherwise → step 3." in text
@@ -482,7 +482,7 @@ def test_every_advice_of_the_read_script_has_its_line():
 
 def test_the_model_reads_read_json_and_the_language_and_writes_proposals_json_only():
     text = _section("5. Propose and write the document")
-    assert ("Read `tomo-tmp/review/<stem>/read.json` and `config/vault-config.yaml`; `<language>` is the value of "
+    assert ("Read `read_path` of step 4 and `config/vault-config.yaml`; `<language>` is the value of "
             "`review.language` in the config file.") in text
     assert "Write `tomo-tmp/review/<stem>/proposals.json`:" in text
     assert '{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": [' in text

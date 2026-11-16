@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_skill_sections.py — spec 046 T2.3: the setup step's mapping table in the periodic-review skill.
 
 The dialogue is model behaviour; these pins prove that each criterion has its imperative in
@@ -305,17 +305,10 @@ def test_the_quarter_runs_the_same_setup_step():
     assert SETUP_KINDS in _setup()
 
 
-def test_a_quarter_request_sets_up_and_reads_nothing():
-    """Reading a quarter is Phase 3: after its setup a quarter request stops before step 3."""
-    start = _section("1. Start")
-    line = ("- `quarter` → say in one line that the quarter setup is saved and that Tomo cannot review a quarter "
-            "yet; stop, nothing is read.")
-    assert line in start
-    assert start.index("`setup.<kind>` `missing`") < start.index(line) < start.index("- Otherwise → step 3.")
-
-
-def test_review_setup_includes_a_saved_quarter():
-    assert ("- `setup` → step 2 for `week`, then for `month`, then for `quarter` when `setup.quarter` is `present`, "
+def test_review_setup_includes_the_quarter():
+    """Spec 046 T4.5: the quarter is walked like the week and the month; the set-up quarter request goes on to
+    step 3 (tests/test_046_t4_5_skill_quarter.py)."""
+    assert ("- `setup` → step 2 for `week`, then for `month`, then for `quarter`, "
             "each starting from `current.<kind>`; then stop.") in _section("1. Start")
 
 

@@ -1,14 +1,14 @@
 ---
 name: periodic-review
-description: MUST BE USED when the user runs /review, or asks for a weekly or monthly review of their periodic notes (the last finished week or month, a named period such as 2026-W13 or 2026-03, an @-picked weekly or monthly note), to continue, deliver or drop an open review, or to set up or change the review setup (/review setup). NOT for inbox triage (/inbox) and NOT for a single note from a template (/note).
+description: MUST BE USED when the user runs /review, or asks for a weekly, monthly or quarterly review of their periodic notes (the last finished week, month or quarter, a named period such as 2026-W13, 2026-03 or 2026-Q1, an @-picked periodic note), to continue, deliver or drop an open review, or to set up or change the review setup (/review setup). NOT for inbox triage (/inbox) and NOT for a single note from a template (/note).
 user-invocable: true
 allowed-tools: Read, Write, Bash
-argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked weekly or monthly note, or nothing"
+argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.4
+# version: 0.2.5
 
-Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
+Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
 ## Rules
 
@@ -18,7 +18,7 @@ Review one finished week or month with the user: Pass 1 writes a review document
 - Every question is plain text in the visible reply: first the content, copied from the Read or Bash result, then the question, numbered on one line as `1 First · 2 Second` as the last line. Then end the turn.
 - The next user message is the answer: a typed number or option word; when it is unclear, ask again in plain text.
 - Show the `error`, `expected`, `example` and `errors` of a script verbatim, and the `hints` of step 2 and the `problems` of step 4; never paraphrase them. Every other `problems` entry, `warnings` entry and `notices` entry is said by the line its step gives it; without one, verbatim.
-- Never quote `read.json`, a daily note, a journal answer or a tracker value in your reply; print the scripts' reports and `section_md` only.
+- Never quote `read*.json`, a daily note, a journal answer or a tracker value in your reply; print the scripts' reports and `section_md` only.
 - Never say a folder is empty or a note does not exist: `kado-none`, `kado_empty` and an empty result may mean the Kado key cannot read the folder; say so.
 - On Abort at any question, run no further script and write nothing; say in one line what stays as it is.
 - Ask in the language the user writes in.
@@ -52,9 +52,8 @@ Continue with the next entry, then with the new request, after each one ends wit
 `request` is null (`request_withheld` `open-reviews`) → there is no new request: say in one line that a bare `/review` starts no new period while a review is listed, and that `/review <period>` (`2026-W13`, `2026-03`) or `/review month` names one; end the run after the last entry.
 
 Then the new request, by `request.kind`:
-- `setup` → step 2 for `week`, then for `month`, then for `quarter` when `setup.quarter` is `present`, each starting from `current.<kind>`; then stop.
+- `setup` → step 2 for `week`, then for `month`, then for `quarter`, each starting from `current.<kind>`; then stop.
 - `week`, `month` or `quarter` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the `start` call above (skip the open reviews already handled) and continue here.
-- `quarter` → say in one line that the quarter setup is saved and that Tomo cannot review a quarter yet; stop, nothing is read.
 - Otherwise → step 3.
 
 ## 2. Setup
@@ -125,11 +124,11 @@ python3 scripts/review-read.py --period <period> --kind <kind> --stem <stem>
 Branch on `status` first:
 - `stopped` with `error` → the stopped rule. `stopped` with `problems` → show them verbatim (`setup-missing`, `setup-invalid` with `errors`, `daily-not-configured`, `dailies-not-read`) and the `report` when present, and stop; nothing is written. Never read `nothing_to_review` from a `stopped` output.
 - `ok` with `nothing_to_review` true → say that no daily note of the period holds content and name the days of `report.days`; when `advice` holds `check-key-access`, add that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders. Stop; nothing is written.
-- `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `advice` holds `check-key-access`, say that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders; the user checks its access. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Then step 5.
+- `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes`, `monthly_status` and `monthly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `advice` holds `check-key-access`, say that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders; the user checks its access. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Then step 5.
 
 ## 5. Propose and write the document
 
-Read `tomo-tmp/review/<stem>/read.json` and `config/vault-config.yaml`; `<language>` is the value of `review.language` in the config file.
+Read `read_path` of step 4 and `config/vault-config.yaml`; `<language>` is the value of `review.language` in the config file. A quarter: then read each file of `read_parts` in the listed order, one Read call after the other; in this step `read.json` means all these files together. Write `proposals.json` only after the last part.
 
 Write `tomo-tmp/review/<stem>/proposals.json`:
 
@@ -139,6 +138,7 @@ Write `tomo-tmp/review/<stem>/proposals.json`:
 
 - Every item is in `<language>`; its `sources` name the notes of `read.json` it rests on, at least one a daily of the period (for `weekly_only` a weekly note of the period). A second line of `text` becomes a continuation line of the item.
 - `done`: what happened and got done; `open`: what stayed open; `themes`: a theme found on at least two days; `growth`: what the `growth` lists of `read.json` show; `weekly_only` and `not_in_weekly` (month only, when `read.json` holds `weekly`): what the `only_in_weekly_links` and `dailies_not_in_weekly` lists show. Leave out a group with nothing to propose.
+- Quarter (when `read.json` holds `monthly`, `report.monthly_status` `found`): `monthly_only` and `not_in_monthly` are what `only_in_monthly_links`, `dailies_not_in_monthly` and the `month_text` of the `monthly` entries show; a `monthly_only` item's sources name a `monthly` note; a section item carries `"mark": "monthly_only"` or `"mark": "not_in_monthly"` as a month's carries its marks.
 - Habits are computed by the script: never propose them. Never propose text for the user's own sections other than the `sections` of `read.json`.
 - `read.json` holds `sections` → add `"sections": [{"key": "<key>", "items": [{"text": "<reminder>", "sources": ["<path or stem from read.json>"]}]}]` beside `groups`: one entry per `sections` entry with something to propose, its `key` copied; no other key.
 - A section's items are what its `description` and `keywords` ask for in the period's notes, whatever group they would fit. Each is a reminder of what happened or will need to happen, with its sources; never finished review text, never a judgement. At most `cap` items: merge findings that say the same, keeping the sources of each.

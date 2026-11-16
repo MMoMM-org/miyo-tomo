@@ -1,5 +1,5 @@
 # review_read_parts.py — the read*.json files of a period read: one read.json, or a quarter's index and month parts.
-# version: 0.1.0
+# version: 0.1.1
 """The layout of what /review's reading step leaves for the model (spec 046 T3.4; ADR-7).
 
 ``files_of(result, rule)`` turns a ``read_period`` result into the files to
@@ -17,7 +17,7 @@ first), writes the parts and then the index, and returns the paths in
 ``files`` order. ``load(stage)`` gives back the one result: ``read.json`` as
 it is, or the index joined with its parts in order. ``ReadFilesMissing``: no
 read file; ``ReadFilesInvalid``: both layouts, an unreadable or mismatched
-part, an unsafe part name. ``stage_files(stage)`` lists the read files present.
+part, an unsafe or repeated part name. ``stage_files(stage)`` lists the read files present.
 
 Design notes: docs/tomo/scripts/lib/review_read_parts.md
 """
@@ -37,7 +37,7 @@ INDEX_FILE = "read-index.json"
 PARTS_KEY = "parts"
 MONTH_KEY = "month"
 SPLIT_KEYS = ("days", "weekly", "monthly")
-_PART_RE = re.compile(r"^read-(\d{4}-\d{2})\.json$")
+_PART_RE = re.compile(r"read-(\d{4}-\d{2})\.json")
 _WEEK_RE = re.compile(r"^(\d{4})-W(\d{2})$")
 
 
@@ -120,7 +120,7 @@ def stage_files(stage: Path) -> List[Path]:
     """The read files present in ``stage``: the index first, then the parts, then ``read.json``."""
     if not stage.is_dir():
         return []
-    parts = sorted(p for p in stage.iterdir() if _PART_RE.match(p.name))
+    parts = sorted(p for p in stage.iterdir() if _PART_RE.fullmatch(p.name))
     return [p for p in (stage / INDEX_FILE,) if p.exists()] + parts + [
         p for p in (stage / READ_FILE,) if p.exists()]
 
@@ -153,8 +153,10 @@ def _part_names(index: dict) -> List[str]:
     names = index.pop(PARTS_KEY, None)
     if not isinstance(names, list) or not names:
         raise ReadFilesInvalid("read-index.json has no part list")
-    if not all(isinstance(n, str) and _PART_RE.match(n) for n in names):
+    if not all(isinstance(n, str) and _PART_RE.fullmatch(n) for n in names):
         raise ReadFilesInvalid("read-index.json names a part that is not read-YYYY-MM.json")
+    if len(set(names)) != len(names):
+        raise ReadFilesInvalid("read-index.json names a part twice")
     return names
 
 
@@ -164,7 +166,7 @@ def _join(stage: Path, index: dict) -> dict:
         if not (stage / name).is_file():
             raise ReadFilesInvalid(f"{name} is listed but missing")
         part = _object(stage / name)
-        if part.pop(MONTH_KEY, None) != _PART_RE.match(name).group(1):
+        if part.pop(MONTH_KEY, None) != _PART_RE.fullmatch(name).group(1):
             raise ReadFilesInvalid(f"{name} holds another month")
         for key in SPLIT_KEYS:
             if key in part:

@@ -544,6 +544,10 @@ spells per kind; a quarter then reads each `read_parts` entry, one Read call eac
   (docs/tomo/scripts/review-doc.md). A missing or broken part is `read-invalid`, which step 5 already shows and stops
   on.
 
+**Size.** The quarter branch, the quarter keys, the setup and step 1 changes and the wider descriptions took
+the skill from 31,122 to 31,600 characters (+478, `wc -c`; 243 lines before and after) at 0.2.5. No `STRICT`
+block: no quarter run has been observed yet.
+
 ## Why the Review Language Is Read From the Config File
 
 WHY: The proposals must be in the review language of the setup (F4-AC5) and `proposals.json` names it, but no script

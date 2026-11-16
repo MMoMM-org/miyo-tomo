@@ -28,6 +28,17 @@ step is undone; a delivery begun with a picked heading is resumed without
 Refuses a Re-Plan That Differs From the Record" and "WHY a Picked Anchor Is
 Recorded as a Flag") — never handed to `classify`, listed in `REFUSING` so the
 one pin test and the skill's coverage test name them with the others.
+`SECTION_CHECKBOX_MISSING` (`section-checkbox-missing`, spec 046 T4.4) is the
+parser's warning for a section checkbox it cannot read (deleted, broken,
+moved out of its part, doubled; docs/tomo/scripts/lib/review_doc_parse.md).
+`lib/review_actions._gate` refuses it right after `approved-line-missing`
+and before `not-approved`: both are documents whose state the parser cannot
+read without guessing, and a guessed section state could land a section the
+user dropped (F3-AC6). It sits in `REFUSING` so `preview` and `deliver`
+stop on it and the skill's coverage test demands its stop line. Only the
+gate stops a heading that carries another expected key first
+(`## <heading> %%s3%% %%s1%%`): the parser files the items under `s3`,
+which may be ticked, and only the warning keeps them from landing.
 
 ## WHY `second_set` Takes Whether the Set at the Path Is Applied (T6.1 fix round)
 

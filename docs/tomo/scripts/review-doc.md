@@ -52,6 +52,17 @@ second gain: `tomo-tmp` holds no extra content file beyond those ADR-9
 already accounts for, and nothing has to delete it on a rewrite. One
 `kado-read note` is the whole cost of a `parse`.
 
+A mapped document (meta.json `pass1_sections`) adds `section_problems` and
+`section_counts` (spec 046 T4.4). `section_problems` is
+`SectionProblem.public()` per broken checkbox — the key and the line to
+restore, never the document's heading text, which may hold the user's
+words (CON-3); the skill names the section by the configured row's heading
+and gives the restore line, so the user can repair the document without
+Tomo quoting it. `section_counts` is per key `{ticked, kept, unticked,
+added, empty}`, the numbers the later `section-dropped` / `section-empty`
+notices are said from. An unmapped document's output has neither key, so
+spec 045's stdout is unchanged.
+
 ## WHY `edited` Comes From `pass1_links` in `meta.json`
 
 `write` stores, per Tomo item id, the ordered list of `[[stem]]` source

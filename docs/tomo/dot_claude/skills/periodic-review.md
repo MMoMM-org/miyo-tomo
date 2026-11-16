@@ -447,6 +447,66 @@ one link to a daily inside the period (F4-AC3). It writes them to `proposals.jso
 second refusal ends the run — looping on a schema the model cannot satisfy would burn the user's time. The model
 proposes only Tomo's own section, never text for the sections the setup names as the user's own (F4-AC7).
 
+## Why Pass 1 Proposes by Section in the Same Model Pass (Spec 046 ADR-1, F1)
+
+WHY: with a mapping, `read.json` carries `sections` — one SectionDefinition per configured row (`key`, heading,
+level, parent, description, keywords, groups, cap; `analysis: true` on an analysis row). ADR-1 keeps the one
+existing model pass: the model reads one file and writes `proposals.json` with `sections: [{key, items}]` beside
+the unchanged `groups`. The step adds one bullet per rule the scripts cannot enforce, and nothing for the rules they
+can — those the rewrite-once loop below covers.
+
+- **The key is copied, never invented.** One entry per `read.json` entry with something to propose, `key` copied
+  from it. A key the read did not carry is refused `unknown-section`, a second entry `duplicate-section`
+  (`lib/review_sections.check`); the bullet says it so the first write is usually the last.
+- **What a section receives follows its description and keywords (F1-AC2).** The fixed spec 045 groups are not the
+  frame: a section that asks what to start or stop doing, or what will be challenging next month, receives items
+  for that when the notes hold matching material. The bullet says "whatever group they would fit" because a model
+  that sorted by group first would leave such a section empty.
+- **Reminders, not finished text (F1-AC3, F1-AC4).** A section is the user's own words in their note; Tomo
+  reminds them of what happened or will need to happen, with the source, and leaves the judgement to them. A
+  forward-looking section gets the same: a reminder drawn from what the period shows, never an invented goal.
+- **The cap by merging (F1-AC5).** `cap` is in the definition; over it the script refuses `over-cap (<key>)`. The
+  bullet says how to stay under it — merge findings that say the same and keep each one's sources — so a merge does
+  not drop the evidence the user checks.
+- **One place per item, the rest in the groups (F1-AC6, F1-AC7).** A finding goes to the section it fits best, or
+  else to its group; never twice. `double-placement` refuses only the detectable cases (same normalised text, or
+  same sources and first line), so the bullet carries the rule for the rest.
+- **Analysis rows as overviews (F2-AC12).** An analysis row sits on a heading whose content is automatic (habits,
+  trackers); its items land in the "Tomo Review" part as an overview of what the values show, not a day-by-day
+  list. The description alone does not say that reliably — the setup's model wrote it, and the user may correct it
+  to anything — and since T4.2 the placement is read from the config, not from `read.json`. So `review-read.py`
+  marks the row `analysis: true` (docs/tomo/scripts/review-read.md) and the bullet branches on the flag. The habits
+  rule still holds: the habit lines are computed; an analysis item is the model's reading of them.
+- **Marks stay on the items (F1-AC9).** A month's section item that only the weekly notes hold, or that they left
+  out, carries the group name as `mark`, its sources as for that group; the script refuses a mark the kind does not
+  have (`mark-not-allowed`). The quarter's marks come with its branch (T4.5).
+- **Own sections.** The spec 045 line "never propose text for the user's own sections" now says "other than the
+  `sections` of `read.json`": a mapped section is the user's too, and without the carve-out a literal model leaves
+  every section empty.
+
+**The rewrite-once loop names each new refusal's fix.** `write` refuses a section error as `proposals-invalid`
+with `"<pointer>: <error>"` strings. "Rewrite once" stays (a second refusal stops; looping on a schema the model
+cannot satisfy burns the user's time), and one line maps each error to its fix in the entry the pointer names, so
+the one rewrite is aimed: `unknown-section` / `duplicate-section` → each `read.json` key once; `over-cap` → merge
+to the cap; `double-placement` → remove the item the pointer names (the check names the later one); `mark-not-allowed`
+→ drop the mark. `sections-changed` is not the model's error: the setup's rows changed after the read, so the
+definitions in `read.json` are stale. The answer is to read the period again (step 4) — the new read carries the
+current rows — once; a second `sections-changed` is shown and stops, because then the config changes under the run.
+
+**Sections in the report.** `write`'s `counts` carry the section keys next to the groups and `rejected` names
+`section` for a section item. Keys (`s1`) mean nothing to the user, so the report names a section by the `heading`
+of the configured row with that `id`, read from `config/vault-config.yaml` (the file step 5 already reads for the
+language) — never from `read.json`, which the privacy rule keeps out of the reply, and which `write` has deleted.
+
+**The Pass 2 stop for a missing section checkbox (F3-AC6, Rule 7).** `review-doc.py parse` warns
+`section-checkbox-missing` and prints `section_problems` (`key`, `restore`; no heading text, CON-3), and the plan's
+gate refuses the same warning on `preview` and `deliver` (docs/tomo/scripts/lib/review_delivery.md). Step 6 names
+each section by the configured heading of its key and gives the restore line verbatim — the user restores it under
+the heading and runs `/review` again — and stops after the warnings: a delivery the parser cannot read without
+guessing lands nothing. Step 7 reaches the token only when `parse` did not run first (a Resume goes straight to
+`deliver`); the preview output carries no `section_problems`, so the line runs `parse` for them and says the step 6
+line rather than adding the keys to the Pass 2 script's output.
+
 ## Why the Review Language Is Read From the Config File
 
 WHY: The proposals must be in the review language of the setup (F4-AC5) and `proposals.json` names it, but no script

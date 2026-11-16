@@ -161,8 +161,14 @@ does not.
 lines land in the note, and that is the document and delivery steps' (which
 read the rows from the config themselves), not the model's. Analysis rows
 (placement `review`, F2-AC12) are included like every other row — the model
-still writes their items under their `key`; only the landing differs, and
-that is decided later from the config row.
+still writes their items under their `key`; the landing is decided later
+from the config row. They carry one extra key, `analysis: true` (spec 046
+T4.4), and only they do: the model writes an analysis row's items as an
+overview of what the period's values show, and nothing else in the
+definition tells it which row is one — the description is free text the
+user may correct to anything. A flag rather than `placement` keeps where a
+section lands out of the model's file; absent rather than `false` on the
+other rows keeps their definitions as T3.3 wrote them.
 
 Without a mapping (no template configured, or no rows stored for it) there
 is no `sections` key at all, not an empty list: CON-2 keeps the unmapped

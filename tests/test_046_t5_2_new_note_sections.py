@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_046_t5_2_new_note_sections.py — new notes, analysis rows and the "Tomo Review" interplay (046 T5.2).
 
 PRD F4-AC5, F2-AC12, F2-AC7; SDD Runtime View / Complex Logic "New note", the off-limits landing
@@ -22,6 +22,7 @@ ParsedDoc.approved_review(). Mechanisms pinned:
 - `review-section-kept` when a re-run leaves nothing for an earlier "Tomo Review" section;
 - configured section keys are not `unlanded`; `nothing-to-deliver` counts sections;
 - Pass 1: `review-doc.py write` marks the routed parts of a new note, landing line and divider.
+- Pass 1: a template read Kado refuses (auth) or cannot answer stops the write; no document written.
 
 All data is synthetic.
 """
@@ -43,6 +44,7 @@ from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_new_note as rnn  # noqa: E402
 from lib import review_section_plan as rsp  # noqa: E402
 from lib import review_sections as rs  # noqa: E402
+from lib.kado_client import KadoAuthError, KadoConnectionError  # noqa: E402
 from review_deliver_helpers import SCHEMAS, schema_errors  # noqa: E402
 from review_fake_vault import ReviewFakeVault  # noqa: E402
 from test_046_t4_2_doc_sections import (  # noqa: E402
@@ -378,3 +380,19 @@ def test_a_spliced_blocks_escape_is_counted_in_a_new_notes_preview_once_also_whe
     again = plan(review=review, rows=rows, template=rnn.Template(raw=unmergeable))
     assert again.template_unmergeable and modes(again) == {"s1": "review"}
     assert again.preview()["escaped_lines"] == 1
+
+
+@pytest.mark.parametrize("error, kind", [(KadoAuthError("denied"), "kado-auth"),
+                                         (KadoConnectionError("lost"), "kado-unreachable")])
+def test_pass1_stops_when_kado_cannot_read_the_new_notes_template(script, inst, monkeypatch, capsys, error, kind):
+    """`route_new_note` reads the template through `_read`: an auth or connection error stops the write with
+    the Kado kind, and no review document is written."""
+    rows = [row("s1", "Highlights", "end")]
+    map_config(inst, rows, trackers=False)
+    props = {"language": "de", "groups": {}, "sections": [section("s1", item("a", "2026-03-24"))]}
+    fake = ReviewFakeVault({TEMPLATE: TEMPLATE_TEXT})
+    fake.fail[("read_note", TEMPLATE)] = error
+    _, out, fake = write(script, monkeypatch, capsys, inst, week_read(sections=definitions_of(rows)), props, fake)
+    assert out["status"] == "stopped" and out["error"]["kind"] == kind, out
+    assert ("read_note", TEMPLATE) in fake.events
+    assert not [p for p in fake.writes if p.endswith(" Review.md")]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.7
+# version: 0.1.8
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -102,6 +102,8 @@ PREVIEW_PROBLEMS = {
                                "never lands inside one of the user's own sections; print `headings` as a numbered "
                                "list and ask: Which number, or 0 Abort? (as above)."),
     "set-exists": "- `set-exists` → say an instruction set for this review waits for Hashi and is not applied yet; nothing is delivered. Stop.",
+    # spec 046 T5.7: the "Tomo Review" place itself off limits (tests/test_046_t5_7_place_off_limits.py)
+    "place-landing-off-limits": ("- `landing-off-limits` with no entry of `sections` carrying a `stop` → say that the \"Tomo Review\" section, placed at `place.anchor`, would land in an off-limits section, that the place is changed with `/review setup`, and that nothing is delivered; stop."),
     # spec 046 T5.5 lines, T5.6 dialogue (tests/test_046_t5_6_skill_choices.py pins the sub-bullets)
     "section-stops": ("- `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, "
                       "`block-in-review-section` or `landing-off-limits` with no other problem in `problems` → print "
@@ -238,7 +240,7 @@ def _delivery_vocabulary():
 
 # Tokens a Pass 2 bullet names that are statuses, keys or modes, never a problem of the plan or of drop.
 NOT_PROBLEM_TOKENS = {"ok", "problems", "stopped", "not-found", "refused", "status", "mode", "error", "headings",
-                      "insert", "replace", "new-note"}
+                      "insert", "replace", "new-note", "sections", "stop"}
 
 
 def _problem_bullets(*headings: str) -> set[str]:

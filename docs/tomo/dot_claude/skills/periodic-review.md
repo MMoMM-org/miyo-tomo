@@ -751,6 +751,20 @@ the question, so the user reads what lands before deciding what does not. The st
   and must stay. Drop is not offered: it would write a withdrawn set over the earlier set and leave the review
   unlisted with nothing delivered.
 
+### Why the "Tomo Review" Place Landing Off Limits Has Its Own Line (Spec 046 T5.7)
+
+WHY: `landing-off-limits` is two things. Per section it is a stop on a `sections[]` entry (`stop`, empty `choices`).
+It is also a plan-level problem for the "Tomo Review" section itself: `lib/review_actions._insertion` (a new "Tomo
+Review" would land in an off-limits section) and `_existing_note` (`review_off_limits`, an earlier one sits in one).
+Then no `sections[]` entry carries a `stop`, and the stop bullet, which speaks per entry with a `stop`, would say
+nothing and ask a question with nothing to choose. So a line of its own comes before the stop bullet: the "Tomo
+Review" section, placed at `place.anchor` (the only place field both cases carry; `placement` is `replace` on a
+re-run), would land in an off-limits section; the place is changed with `/review setup`; nothing is delivered (Rule 4:
+no choice moves Tomo's text into an off-limits section). The drift check of T5.7 found the gap
+(`tests/test_046_t5_7_place_off_limits.py` pins the script's output and the line). When a section stop stands beside
+the plan-level problem, the stop bullet applies and names the sections only; the place problem is then reported by the
+rerun after the section choices.
+
 ## Why the Heading Pick Is Offered Once for a Collision (Third T5.2 Fix Round)
 
 WHY: `user-heading-collision` with `mode` `insert` has two causes in `lib/review_actions._existing_note`, and only

@@ -55,7 +55,7 @@ Delivers each kept section into the user's note as a marked block, replaces it o
   4. Validate: `test_review_instructions.py`, `test_review_deliver*.py` green; `review_actions.py` ≤ 500 lines (move helpers to `review_section_plan` if not); ruff clean.
   5. Success: new notes and script-only sections get their material in the right place `[ref: PRD/F4-AC5, F2-AC12]`
 
-- [ ] **T5.3 Readable instructions and the test-only schema** `[activity: backend-api]` `[parallel: true]`
+- [x] **T5.3 Readable instructions and the test-only schema** `[activity: backend-api]` `[parallel: true]`
 
   1. Prime: `lib/render_md.py` (`insert_under_marker` 312, `replace_section` 336); `tests/review_deliver_helpers.py:36-40` (`SCHEMAS`, the sibling Hashi checkout); the handoff fragment in `solution.md` Integration Points `[ref: SDD/Integration Points; ADR-5]`
   2. Test: `render_md` shows per section the copy-ready block, heading, placement and, for a replace, both marker lines and the scope; a test-only schema `tests/fixtures/instructions-v4-candidate.schema.json` (the vendored copy plus the handoff `$def`, built by a helper so it tracks the vendored file) validates a set with `replace_between_markers`, and the helpers used by Phase 5 tests validate new-action sets against it while sets without the new action keep validating against the committed schemas.
@@ -67,7 +67,7 @@ Delivers each kept section into the user's note as a marked block, replaces it o
 
   1. Prime: `lib/review_actions.py` (`ACTION_ID` 60, `build_review_plan`); `lib/review_state.py` (`SECTION_ACTIONS` 83, `all_applied`/`any_applied` 123-131, `review_state` steps 185-209); T5.1, T5.2 outputs `[ref: SDD/Architecture Decisions; ADR-12]`
   2. Test: ids `I01…In` in mapping order then "Tomo Review", independent of which sections had stops and of dict order (two runs byte-identical); one action per kept non-empty section plus "Tomo Review" when anything is left; `SECTION_ACTIONS` includes the new kind; `review_state` reports a set with I01 applied and I02 failed as partly applied (not delivered) — what `start`/status show for it; validated against the T5.3 test-only schema.
-  3. Implement: composition in `review_actions.py`, `review_state.py`; WHY docs first; version bumps.
+  3. Implement: composition in `review_actions.py`, `review_state.py`; WHY docs first; version bumps. Notes from T5.3: the test-only schema is built in memory by `candidate_schema()` in `tests/review_deliver_helpers.py` (not a committed `tests/fixtures/instructions-v4-candidate.schema.json`; `write_candidate_schema(tmp_path)` writes it on request) and keeps `schema_version` const "3" until T6.1; `schema_errors` switches to it only for a set carrying `replace_between_markers`, so validate the composed sets through that helper; render_md renders the new action in the `tag_handler_updates` bucket; advisory nits: the scope sentence "level N or higher" reads better as "level N or above (N or fewer `#`)" (pinned in test_046_t5_3_readable_sections.py), and `schema_errors` assumes dict actions.
   4. Validate: tests green; `review_actions.py` ≤ 500 lines; ruff clean.
   5. Success: the set carries every kept section in a stable order `[ref: PRD/F4-AC1]`
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.6.3
+# version: 0.6.4
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (``read.json``; a quarter's ``read-index.json`` and
@@ -222,7 +222,8 @@ def _write_meta(stage: Path, inp: rd.DocInput, counts: dict, doc_path: str, text
 
 
 def _resolve(args: argparse.Namespace, read: dict) -> Tuple[dict, rc.ReviewSetup, Period, str]:
-    """``(config, setup, period, doc_path)`` of the stem's ``read.json``, without a Kado call."""
+    """``(config, setup, period, doc_path)`` of the stem's read (``read.json``, or a quarter's index and parts
+    joined by ``review_read_parts.load``), without a Kado call."""
     kind = str((read.get("period") or {}).get("kind"))
     config, setup = _setup(args, kind, args.today)
     try:

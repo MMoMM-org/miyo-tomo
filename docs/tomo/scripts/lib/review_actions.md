@@ -302,3 +302,15 @@ the planner uses, so the list the resume offers is the list the first pick
 offered; a plain note (no template) has none. A plan that always carried
 `headings` was rejected: `preview` prints them only on a place problem (SDD
 Interface `headings?`), and the privacy allowlist names them for that case.
+
+## WHY `_gate` Refuses `section-checkbox-missing` (spec 046, F3-AC6)
+
+`_gate` refuses a document with `section-checkbox-missing` the way it refuses
+a missing Approved line. A broken section checkbox makes that section's state
+unknowable, and the parser's column-0 grammar may then file the section's
+items under another key (the `%%s3%% %%s1%%` case); delivering nothing is the
+only safe outcome. The check sits after `approved-line-missing` and before
+`not-approved`, so a document that cannot be read is named as such before the
+Approved line is judged. The loop is line-neutral on purpose:
+`review_actions.py` is over its size guide, so the refusal extends the
+existing tuple instead of adding a branch.

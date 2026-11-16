@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.8
+# version: 0.2.9
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.1"), (SKILL, "0.2.3")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.1"), (SKILL, "0.2.4")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -486,7 +486,8 @@ def test_the_model_reads_read_json_and_the_language_and_writes_proposals_json_on
             "`review.language` in the config file.") in text
     assert "Write `tomo-tmp/review/<stem>/proposals.json`:" in text
     assert '{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": [' in text
-    assert "Habits are computed by the script: never propose them. Never propose text for the user's own sections." in text
+    assert ("Habits are computed by the script: never propose them. Never propose text for the user's own sections "
+            "other than the `sections` of `read.json`.") in text
     assert "at least one a daily of the period (for `weekly_only` a weekly note of the period)" in text
     assert "python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<stem>/proposals.json" in text
 
@@ -540,5 +541,6 @@ def test_write_statuses_hand_listed_here_are_the_scripts():
 def test_pass_1_ends_the_turn_with_the_document_report():
     text = _section("5. Propose and write the document")
     assert ("- `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, "
-            "`counts` per group and every `rejected` item with its `group`, `index` and `reason`. Then say: edit "
+            "`counts` per group and per section (by `<section heading>`), and every `rejected` item with its "
+            "`group` or `section`, `index` and `reason`. Then say: edit "
             "the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.") in text

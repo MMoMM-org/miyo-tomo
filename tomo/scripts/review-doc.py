@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.6.1
+# version: 0.6.2
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (``read.json``) and the model wrote its proposals
@@ -39,7 +39,9 @@ Output: one JSON object on stdout, ASCII-escaped.
            items {group: [{id?, origin tomo|user, kept, edited}]},
            counts {kept, unticked, deleted, added},
            warnings [approved-line-missing | unknown-group | item-outside-group | duplicate-group |
-                     frontmatter-broken | section-checkbox-missing]
+                     frontmatter-broken | section-checkbox-missing],
+           section_problems? [{key, restore}], section_counts? {key: {ticked, kept, unticked, added, empty}}
+           (both only for a mapped document)
          | status not-found, stem, doc_path?        (no meta.json and no --doc-path, or nothing at the path)
          | status stopped, error {kind kado-unreachable|kado-auth, detail}
     replace: status needs-confirm, stem, doc_path   (neither flag: nothing written, no Kado call)
@@ -303,9 +305,13 @@ def parse_document(args: argparse.Namespace) -> dict:
     if read is None:
         return {"status": "not-found", "stem": args.stem, "doc_path": doc_path}
     parsed = read.parsed
-    return {"status": "ok", "stem": args.stem, "doc_path": doc_path, "approved": parsed.approved,
-            "nothing_to_deliver": parsed.nothing_to_deliver(), "items": parsed.public_items(),
-            "counts": parsed.counts(), "warnings": parsed.warnings}
+    out = {"status": "ok", "stem": args.stem, "doc_path": doc_path, "approved": parsed.approved,
+           "nothing_to_deliver": parsed.nothing_to_deliver(), "items": parsed.public_items(),
+           "counts": parsed.counts(), "warnings": parsed.warnings}
+    if parsed.sections:                         # a mapped document only: spec 045's output stays as it was
+        out["section_problems"] = [problem.public() for problem in parsed.section_problems]
+        out["section_counts"] = parsed.section_counts()
+    return out
 
 
 # ---------------------------------------------------------------- replace

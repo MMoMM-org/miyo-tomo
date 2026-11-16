@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.2.0
+# version: 0.2.1
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -55,7 +55,7 @@ from lib.kado_client import KadoConcurrencyError, KadoError, KadoToolError
 from lib.note_io import atomic_write_text
 from lib.note_meta import META_FILE
 from lib.render_md import render_instructions_md
-from lib.review_doc_parse import APPROVED_MISSING
+from lib.review_doc_parse import APPROVED_MISSING, SECTION_CHECKBOX_MISSING
 from lib.staged_delivery import stable_block
 from lib.wire_version import wire_schema_version
 
@@ -67,8 +67,9 @@ ALREADY_APPLIED = "already-applied"
 REPLAN_DIFFERS = "replan-differs"
 ANCHOR_NEEDED = "anchor-needed"
 TEMPLATER_HINT, VARIANT_MISSING, TEMPLATE_UNMERGEABLE = "templater_hint", "variant_missing", "template_unmergeable"
-REFUSING = (ra.NOT_APPROVED, APPROVED_MISSING, ra.NOTHING_TO_DELIVER, ra.PLACE_MISSING, ra.PLACE_TOO_DEEP,
-            ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED, REPLAN_DIFFERS, ANCHOR_NEEDED)
+REFUSING = (ra.NOT_APPROVED, APPROVED_MISSING, SECTION_CHECKBOX_MISSING, ra.NOTHING_TO_DELIVER, ra.PLACE_MISSING,
+            ra.PLACE_TOO_DEEP, ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED, REPLAN_DIFFERS,
+            ANCHOR_NEEDED)
 NOTICES = (ra.HEADING_RENAMED, ra.UNLANDED_ITEMS, VARIANT_MISSING, TEMPLATER_HINT, TEMPLATE_UNMERGEABLE)
 INSTRUCTIONS_SUFFIX = "_instructions"
 DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes

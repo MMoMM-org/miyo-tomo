@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -527,7 +527,8 @@ def _compact(data) -> str:
 
 def test_a_mapped_week_carries_the_section_definitions_keyed_by_row_id(mod, instance, monkeypatch, capsys):
     """F1-AC1: the definitions reach the model in read.json; key = the row id, the SectionDefinition fields only,
-    defaults filled, the analysis row (placement review) included, the rows' order kept."""
+    defaults filled, the analysis row (placement review) included and alone marked analysis (046 T4.4), the
+    rows' order kept."""
     _map_week(instance)
     code, out, _ = _week(mod, monkeypatch, capsys, week_vault())
     assert code == 0 and out["status"] == "ok"
@@ -536,7 +537,7 @@ def test_a_mapped_week_carries_the_section_definitions_keyed_by_row_id(mod, inst
         {"key": "s1", "heading": "Wins", "level": 2, "parent": None, "description": "What went well this week",
          "keywords": ["win"], "groups": ["done"], "cap": 5},
         {"key": "s7", "heading": "Patterns", "level": 3, "parent": "Reflections",
-         "description": "Recurring themes across days", "keywords": [], "groups": [], "cap": 8},
+         "description": "Recurring themes across days", "keywords": [], "groups": [], "cap": 8, "analysis": True},
     ]
     assert "sections" not in out and "sections" not in out["report"], "definitions are for the model's file only"
 

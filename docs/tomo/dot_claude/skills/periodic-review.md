@@ -507,6 +507,12 @@ guessing lands nothing. Step 7 reaches the token only when `parse` did not run f
 `deliver`); the preview output carries no `section_problems`, so the line runs `parse` for them and says the step 6
 line rather than adding the keys to the Pass 2 script's output.
 
+**Size.** Proposing by section, the rewrite fixes, `sections-changed` and the two stop lines grew the skill from
+28,885 to 31,122 characters (+2,237, `wc -c`; 233 → 243 lines) at 0.2.4 — about twice ADR-1's estimate of 1,000
+for the whole Pass 1 side, because each rule the scripts cannot check needs its own imperative and the config path
+of `<section heading>` is spelled out once. The trim is #259. No `STRICT` block: no run has shown a deviation in
+these steps yet.
+
 ## Why the Review Language Is Read From the Config File
 
 WHY: The proposals must be in the review language of the setup (F4-AC5) and `proposals.json` names it, but no script

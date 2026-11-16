@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read*.json for the model, the per-day report on stdout.
-# version: 0.3.1
+# version: 0.3.2
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13; spec 046 T3.3, T3.4).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -46,7 +46,7 @@ read.json: period, days, growth, open_tasks, not_read, report; a month adds
     weekly, only_in_weekly_links, dailies_not_in_weekly; a quarter adds weekly,
     monthly, only_in_monthly_links, dailies_not_in_monthly; with mapped rows
     for the configured template also sections [{key (= row id), heading, level,
-    parent, description, keywords, groups, cap}], analysis rows included.
+    parent, description, keywords, groups, cap, analysis? (true on an analysis row only)}].
     Written compact (separators ",", ":"), ASCII-escaped. A quarter's read is
     split: read-index.json holds every key but days, weekly and monthly, plus
     parts [file names]; read-<YYYY-MM>.json holds month and that month's
@@ -93,6 +93,7 @@ from lib import review_read_parts as parts  # noqa: E402
 from lib.review_day import day_settings  # noqa: E402
 from lib.review_pacer import ADVICE_RAISE_LIMIT, ReviewPacer  # noqa: E402
 from lib.review_period import read_period, sources_from_config  # noqa: E402
+from lib.review_sections import REVIEW as ANALYSIS_PLACEMENT  # noqa: E402
 from lib.review_state import STEM_SUFFIX, safe_stem  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
@@ -190,8 +191,10 @@ def _read(period: Period, sources, settings: dict) -> dict:
 
 
 def section_definitions(setup) -> List[dict]:
-    """The SectionDefinition of each mapped row: ``key`` is the row ``id``; where a row lands is not the model's."""
-    return [{"key": row["id"], **{name: row[name] for name in DEFINITION_FIELDS}} for row in setup.sections]
+    """The SectionDefinition of each mapped row: ``key`` is the row ``id``; where a row lands is not the model's,
+    only an analysis row says it is one (``analysis: true``)."""
+    return [{"key": row["id"], **{name: row[name] for name in DEFINITION_FIELDS},
+             **({"analysis": True} if row.get("placement") == ANALYSIS_PLACEMENT else {})} for row in setup.sections]
 
 
 def _measure(result: dict, files: dict) -> dict:

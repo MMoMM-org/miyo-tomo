@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.4.2
+# version: 0.4.3
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -51,7 +51,7 @@ from lib import review_config as rc
 from lib import review_doc as rd
 from lib import review_md
 from lib.doc_frontmatter import FrontmatterMergeError, build_tomo_block, merge_tomo_block_into_markdown
-from lib.review_doc_parse import APPROVED_MISSING
+from lib.review_doc_parse import APPROVED_MISSING, SECTION_CHECKBOX_MISSING
 from lib.review_vault import TEMPLATER_MARK
 from lib.wire_version import wire_schema_version
 
@@ -314,8 +314,8 @@ def _insertion(plan: ReviewPlan, setup: rc.ReviewSetup, anchor: str, headings: H
 # --- the plan ----------------------------------------------------------------------------
 
 def _gate(review: dict, groups: list) -> Optional[str]:
-    if APPROVED_MISSING in (review.get("warnings") or []):
-        return APPROVED_MISSING
+    for unreadable in (w for w in (APPROVED_MISSING, SECTION_CHECKBOX_MISSING) if w in (review.get("warnings") or ())):
+        return unreadable                       # a document the parser cannot read without guessing
     if not review.get("approved"):
         return NOT_APPROVED
     if not groups:

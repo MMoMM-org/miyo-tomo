@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.3
+# version: 0.2.4
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -139,7 +139,13 @@ Write `tomo-tmp/review/<stem>/proposals.json`:
 
 - Every item is in `<language>`; its `sources` name the notes of `read.json` it rests on, at least one a daily of the period (for `weekly_only` a weekly note of the period). A second line of `text` becomes a continuation line of the item.
 - `done`: what happened and got done; `open`: what stayed open; `themes`: a theme found on at least two days; `growth`: what the `growth` lists of `read.json` show; `weekly_only` and `not_in_weekly` (month only, when `read.json` holds `weekly`): what the `only_in_weekly_links` and `dailies_not_in_weekly` lists show. Leave out a group with nothing to propose.
-- Habits are computed by the script: never propose them. Never propose text for the user's own sections.
+- Habits are computed by the script: never propose them. Never propose text for the user's own sections other than the `sections` of `read.json`.
+- `read.json` holds `sections` → add `"sections": [{"key": "<key>", "items": [{"text": "<reminder>", "sources": ["<path or stem from read.json>"]}]}]` beside `groups`: one entry per `sections` entry with something to propose, its `key` copied; no other key.
+- A section's items are what its `description` and `keywords` ask for in the period's notes, whatever group they would fit. Each is a reminder of what happened or will need to happen, with its sources; never finished review text, never a judgement. At most `cap` items: merge findings that say the same, keeping the sources of each.
+- Each finding goes in one place: the section it fits best, else its group; never in a second section or a group as well.
+- A `sections` entry with `analysis` true → items that sum up what the period's values for it show, each an overview, never one item per day.
+- Month: a section item that only the weekly notes hold, or that they left out, carries `"mark": "weekly_only"` or `"mark": "not_in_weekly"`; its sources as for that group.
+- `<section heading>` of a key is the `heading` of the row with that `id` under `review.<weekly|monthly|quarterly>.sections` (the kind's) in `config/vault-config.yaml`.
 
 Then run:
 
@@ -150,10 +156,12 @@ python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<s
 Branch on `status` first:
 - `stopped` → the stopped rule; `problems` `kado-write-failed` → say nothing was written and stop.
 - `refused` with `proposals-invalid` → show `errors` verbatim, rewrite `proposals.json` once and rerun `write`; a second `proposals-invalid` → show it and stop.
+  In the rewrite, fix each `errors` entry in the item or entry its pointer names: `unknown-section` or `duplicate-section` → each `read.json` key once, no other; `over-cap (<key>)` → merge that section's items down to its `cap`; `double-placement` → remove that item; `mark-not-allowed` → drop its `mark`.
 - `refused` with `doc-name-taken` → say `doc_path` is a note that is not Tomo's review document and nothing was overwritten; stop.
 - `refused` with `review-exists` → say Tomo's review document for the period already exists at `doc_path` and that replacing it discards the user's edits in it; ask `1 Replace · 2 Keep it`. Replace → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` and branch on its `status` by this list, `replaced` as `written`. Keep it → run `python3 scripts/review-doc.py replace --stem <stem> --abort` and say in one line that the document is kept.
+- `refused` with `sections-changed` → say the section setup changed since the read; run step 4 again, once, and continue there; a second `sections-changed` → show it and stop.
 - `refused` with any other problem (`read-missing`, `read-invalid`, `setup-missing`, `setup-invalid`, `inbox-not-configured`) → show `problems` and `errors` verbatim and stop.
-- `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, `counts` per group and every `rejected` item with its `group`, `index` and `reason`. Then say: edit the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.
+- `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, `counts` per group and per section (by `<section heading>`), and every `rejected` item with its `group` or `section`, `index` and `reason`. Then say: edit the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.
 
 ## 6. Continue an open review
 
@@ -170,6 +178,7 @@ Branch on `status` first:
   - `duplicate-group` → the second heading of that name is ignored.
   - `frontmatter-broken` → the document's frontmatter could not be read; the period is taken from the stage.
   - `item-outside-group` → an item above the first heading; it is filed under an unknown group and does not land.
+  - `section-checkbox-missing` → per entry of `section_problems`: the checkbox line of the section `<section heading>` (step 5) of its `key` is missing or broken; restore the line `restore`, verbatim, under that heading and run `/review` again. Stop after the warnings; nothing is delivered.
 
   Then: `approved` false → say the document is not approved yet and name the box `- [ ] Approved`; stop, nothing is delivered. `nothing_to_deliver` true → say nothing is ticked and ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop. Otherwise → step 7.
 
@@ -184,6 +193,7 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
 - `ok` with a non-empty `problems` → one line per problem:
   - `not-approved` → name the box `- [ ] Approved`; stop.
   - `approved-line-missing` → say the Approved line is missing; restore `- [ ] Approved` at the line start and tick it; stop.
+  - `section-checkbox-missing` → run `python3 scripts/review-doc.py parse --stem <stem>` and say its `section-checkbox-missing` line of step 6; stop.
   - `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.
   - `place-missing`, `place-too-deep` or `user-heading-collision` with `mode` `replace` → say what is wrong with the heading above the Tomo marker in the target note: there is none (`place-missing`); it is one of the user's own sections, or an earlier heading of the same name stands above it (`user-heading-collision`); it is too deep to replace under, the review heading would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop.
   - `user-heading-collision` with `mode` `insert` or `new-note` after a heading pick (the rerun with `--place-anchor`) → say the target note holds a heading that clashes with the review: one named like the review heading, or the picked heading is one of the user's own sections; the user renames or removes the clashing heading in Obsidian. Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop. Never print `headings` or ask for a number a second time.

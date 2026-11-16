@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -35,8 +35,8 @@ def test_every_parse_warning_has_a_plain_language_line():
     from lib import review_doc_parse as rdp  # the scripts put tomo/scripts on sys.path
 
     warnings = {rdp.APPROVED_MISSING, rdp.UNKNOWN_GROUP, rdp.ITEM_OUTSIDE_GROUP, rdp.DUPLICATE_GROUP,
-                rdp.FRONTMATTER_BROKEN}
-    assert len(warnings) == 5
+                rdp.FRONTMATTER_BROKEN, rdp.SECTION_CHECKBOX_MISSING}
+    assert len(warnings) == 6
     text = _section("6. Continue an open review")
     lines = {
         "approved-line-missing": "- `approved-line-missing` → the Approved line is missing; restore `- [ ] Approved` at column 0 and tick it.",
@@ -44,6 +44,10 @@ def test_every_parse_warning_has_a_plain_language_line():
         "duplicate-group": "- `duplicate-group` → the second heading of that name is ignored.",
         "frontmatter-broken": "- `frontmatter-broken` → the document's frontmatter could not be read; the period is taken from the stage.",
         "item-outside-group": "- `item-outside-group` → an item above the first heading; it is filed under an unknown group and does not land.",
+        "section-checkbox-missing": ("- `section-checkbox-missing` → per entry of `section_problems`: the checkbox line "
+                                     "of the section `<section heading>` (step 5) of its `key` is missing or broken; "
+                                     "restore the line `restore`, verbatim, under that heading and run `/review` "
+                                     "again. Stop after the warnings; nothing is delivered."),
     }
     assert set(lines) == warnings
     for name, line in lines.items():
@@ -72,6 +76,8 @@ PREVIEW_PROBLEMS = {
     "not-approved": "- `not-approved` → name the box `- [ ] Approved`; stop.",
     "approved-line-missing": ("- `approved-line-missing` → say the Approved line is missing; restore `- [ ] Approved` "
                               "at the line start and tick it; stop."),
+    "section-checkbox-missing": ("- `section-checkbox-missing` → run `python3 scripts/review-doc.py parse --stem <stem>` "
+                                 "and say its `section-checkbox-missing` line of step 6; stop."),
     "nothing-to-deliver": "- `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.",
     "replace-mode": ("- `place-missing`, `place-too-deep` or `user-heading-collision` with `mode` `replace` → say what "
                      "is wrong with the heading above the Tomo marker in the target note: there is none "

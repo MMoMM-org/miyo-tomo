@@ -11,7 +11,7 @@
 ## WHY a Module of Its Own
 
 `review_actions.py` plans the one "Tomo Review" section of spec 045 and is
-already past the size guide (463 lines). The section planner is a second
+past the size guide when the section planner was added (463 lines then; 413 since the splits). The section planner is a second
 concern with its own rules — marker pairs, home ranges, the off-limits
 landing, the Tomo Review range — and T5.2/T5.4 compose its plans with the
 Tomo Review plan. It reuses the Hashi mirror in `review_hashi_text.py`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t5_3_readable_sections.py — the readable instructions of a /review section delivery.
 
 Spec 046 T5.3 (PRD F4-AC7): a user without Hashi applies each section by hand. The first delivery is spec 045's
@@ -70,7 +70,7 @@ def test_replace_names_both_markers_and_the_scope():
         "- [ ] Applied",
         "- **Target:** [[2026-W13]]",
         f"- **Scope:** the section under the level-4 heading `{HEADING}`, down to the next heading of "
-        "level 4 or higher",
+        "level 4 or above (4 or fewer `#`)",
         f"- **Start marker line:** `{START}`",
         f"- **End marker line:** `{END}`",
         "- **Where:** every line between these two marker lines is replaced; both marker lines and all "

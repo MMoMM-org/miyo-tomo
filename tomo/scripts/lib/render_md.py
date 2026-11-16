@@ -1,4 +1,4 @@
-# version: 0.38.0
+# version: 0.38.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -366,7 +366,7 @@ def _render_action_md(
             level = scope.get("level")
             title = f"Replace Tomo's block under {heading}"
             where_scope = (f"the section under the level-{level} heading {heading}, down to the next "
-                           f"heading of level {level} or higher")
+                           f"heading of level {level} or above ({level} or fewer `#`)")
         else:
             title = f"Replace Tomo's block {start}"
             where_scope = "the whole note"

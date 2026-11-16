@@ -15,9 +15,10 @@ one note text — and reached its 350-line limit at T5.2. The set-level
 steps sat at its end: plan every row (`plan_existing`, `plan_new_note`),
 name the routed keys for Pass 1 (`routed_keys`), build the "Tomo Review"
 sub-parts (`review_parts`), splice a new note's blocks (`splice_blocks`).
-T5.4 adds one more set-level step — composing the actions — and T5.5 still
-adds helpers to `review_section_plan`. So the set-level steps moved here
-and the composition joined them; the per-section planner keeps its room.
+T5.4 added one more set-level step — composing the actions — and T5.5
+added the report, record and choice helpers here, not to
+`review_section_plan`. So the set-level steps moved here and the
+composition joined them; the per-section planner keeps its room.
 Imports go one way: `review_actions` → `review_new_note` →
 `review_section_set` → `review_section_plan` → `review_hashi_text`
 (`tests/test_review_section_plan.py`, `FORBIDDEN`). No old names are

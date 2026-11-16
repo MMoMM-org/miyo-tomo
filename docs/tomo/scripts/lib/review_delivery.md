@@ -64,7 +64,8 @@ the names and their detail come from one reading of the plan.
 Owner decision 2026-11-12 (spec 045 T6.1 finding: the PRD said F6-AC3 "a
 rerun replaces the section" while the SDD said every set at the path is
 `set-exists`, and the e2e walk had to delete the applied set by hand to get
-the rerun through). `second_set(set_exists, set_applied)` now reads: a
+the rerun through). `second_set(set_exists, any_applied)` (first named `set_applied`, when it was fed
+`all_applied`) now reads: a
 complete delivery (`doc_mark` recorded) or a withdrawn one is always a second
 set; a set this delivery did not write (`wrote_set()` false) is a second set
 *unless every action in it is applied* — then it is the finished set of an
@@ -139,8 +140,8 @@ Differs From the Record"); `DELIVERED_PLAN` and `ANCHOR_PICKED`, the key and
 the flag of that record, moved with them. Passing `configured_anchor` and
 `anchor_picked` instead of the `Run` is what keeps the lib free of an import
 cycle. `delivery_paths` and `public_paths` sit with the other path functions.
-At about 320 lines the module stays one responsibility (what a delivery needs
-around the plan); a split such as a resume lib is the move if it passes 350.
+At 348 lines (cap 350) the module stays one responsibility (what a delivery needs
+around the plan); a split such as a resume lib is the move before anything is added.
 Spec 046 T5.5 adds `sections` and `choices_given` to the record
 (`plan_record(..., choices_given)`), the section comparison to
 `replan_differs` and `choices-needed` to `resume_refusal`; the per-section

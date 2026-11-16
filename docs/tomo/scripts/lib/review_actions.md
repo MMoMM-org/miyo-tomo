@@ -232,7 +232,8 @@ items under another key (the `%%s3%% %%s1%%` case); delivering nothing is the
 only safe outcome. The check sits after `approved-line-missing` and before
 `not-approved`, so a document that cannot be read is named as such before the
 Approved line is judged. The loop is line-neutral on purpose:
-`review_actions.py` is over its size guide, so the refusal extends the
+`review_actions.py` was over its size guide when this refusal was added (it
+is 413 lines since the T5.2 and T5.4 splits), so the refusal extends the
 existing tuple instead of adding a branch.
 
 ## WHY Mapped Sections Are Split From the Groups (spec 046 T5.2)
@@ -294,7 +295,7 @@ no text (CON-3). Without rows this case is still spec 045's
 It sits in `ReviewPlan.notices`, not in `problems`: `review_delivery.classify`
 refuses every problem name it does not list, and listing a name there
 requires the skill's wording for it (`test_review_skill_pass2`), which is a
-later task's (T5.5 wires the notice into the output, T5.6 words it). The
+later task's (T5.5 wired the notice into the output, T5.6 worded it). The
 constant lives in `review_section_plan` beside the other spec 046 notice
 names, so the guard that every problem constant of this module is
 classified keeps meaning "every spec 045 problem".
@@ -307,7 +308,7 @@ note's template — so neither the Tomo Review heading nor an analysis or
 routed sub-heading lands in an off-limits section (ADR-8). It is a refusal
 without a heading pick: the fix is the setup's place. The name is
 `review_section_plan.STOPS`' `landing-off-limits`, the same stop a section
-gets; `classify` refuses it as an unlisted name until T5.5 lists it. With no off-limits
+gets; `classify` lists it among the refusing names (T5.5). With no off-limits
 rows the check finds nothing and spec 045's plans are unchanged.
 
 A re-run is checked too (`review_section_plan.review_off_limits`), because

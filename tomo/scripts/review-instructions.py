@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.3.1
+# version: 0.3.2
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13; spec 046 ADR-12: section stops, choices).
 
@@ -40,7 +40,7 @@ Output: one JSON object on stdout, ASCII-escaped.
     preview: status ok, stem, doc_path, mode insert|replace|new-note, target, target_moved?, duplicates?,
              target_appeared?, place {anchor, placement, level}, section_md, escaped_lines, templater_hint,
              variant_missing?, template_unmergeable?, unlanded?, problems [refusing], notices, headings?,
-             set_exists, set_applied, resume; mapped: SECTIONS = sections [{key, mode, notices, scope_level?, stop?,
+             set_exists, set_applied, resume; mapped: SECTIONS = sections [{key, mode, placement, notices, scope_level?, stop?,
              choices?, block_at?, lines (preview only)}], dropped [{key, added}], empty [key], choices_invalid?
     deliver: status delivered|resumed, stem, step "", paths {set_json, set_md, note?}, next hashi-or-by-hand,
              mode, target, place, notices, target_appeared?, SECTIONS

@@ -5,8 +5,9 @@
 > PRD F1-AC3, F1-AC4, F1-AC5, F1-AC6, F1-AC9, F1-AC10, Rules 5 and 6; SDD
 > ADR-1, ADR-2, "Runtime View / Double placement"): it reads the section
 > definitions `read.json` carries and checks the `sections` the model wrote
-> into `proposals.json` beside spec 045's `groups`. Rendering a section part
-> joins it in T4.2. No Kado, no model, no file I/O.
+> into `proposals.json` beside spec 045's `groups`; from T4.2 it also builds
+> the section parts from the configured rows and renders them (heading,
+> checkbox, landing line, mark suffix). No Kado, no model, no file I/O.
 
 ## WHY a New Module, Not More of `review_doc.py`
 
@@ -77,7 +78,8 @@ Rule 5 (one finding, one place) is semantic; whether two differently worded
 items are "the same finding" stays the model's (the skill says so). What a
 script can refuse without guessing is the plain repeat: the same text, or
 the same sources with the same first line. Text is normalised (casefold,
-whitespace collapsed, `%%` marks removed) so a copy that differs only in case
+whitespace collapsed, the `%%t<n>%%` ids removed whole and then any other
+`%%`, before the trailing link list) so a copy that differs only in case
 or spacing is still a copy.
 
 Of the links, only the link list goes: the parenthesised list of wiki links
@@ -132,3 +134,67 @@ quarter that read monthly notes (`review_doc.group_reason`). Anything else
 child notes were not read) is `mark-not-allowed`, a refusal rather than a
 silent drop, because the label it would render claims a review was read
 that was not.
+
+## WHY a Section Part Looks the Way It Does (spec 046 T4.2, ADR-11, F1-AC8, F3-AC2, F3-AC3)
+
+`## <heading> %%sN%%`, then `- [x] <label> %%sN%%`, then an italic landing
+line, then the items. The id on the heading keeps the section recognisable
+when the user edits the heading text, and keeps a user section named like a
+group label ("Done") from being read as that group; the same id on the
+checkbox ties the checkbox to its part. The id is the row key itself: it is
+opaque (assigned at save, never derived from text, CON-3). The checkbox
+label is the positive wording (`Abschnitt übernehmen`, `Use this section`):
+ticked means "deliver it", so the user's one click is the natural reading of
+the line. An empty section's checkbox starts unticked and shows the
+nothing-found bullet: there is nothing to deliver, and a ticked empty
+section would say otherwise (F1-AC8). The landing line has no column-0
+structure (it starts `*`), so the parser ignores it; it exists so the user
+sees where the section lands before approving (F3-AC3).
+
+## WHY the Landing Line Names Heading, Placement, Level and Parent
+
+A heading text can occur twice in a note ("Notes" under two parents); the
+level and the parent the row was mapped with say which one is meant. The
+wording follows the placement: `before` → "vor „X“" / `before "X"`, `under`
+→ "direkt unter" / "right under", `end` → "am Ende von" / "at the end of".
+An analysis row (`review`) and a routed section (its heading missing in a
+new note, set by delivery planning in Phase 5) land inside Tomo's own section
+under a sub-heading named after them, so their line says "im Abschnitt „Tomo
+Review“ unter „X“" without level or parent — the user's heading is not where
+anything goes. The divider's line says where the "Tomo Review" section
+itself goes (`place.anchor` and `place.placement`, the words the info callout
+already uses). German uses „…“, English straight quotes as the callout does.
+All words live in `review_doc._LABELS`, one table for the document.
+
+## WHY a Mark Renders as a Suffix of the Item Text (F1-AC9)
+
+A month or quarter item keeps its mark in whichever section it lands
+(`· nur im Wochenrückblick`, `· in keinem Wochenrückblick`, the quarter's
+monthly equivalents). It is rendered after the link list and before the id,
+as part of the item's text: the user can edit or delete it, it is delivered
+as written, and the parser does not need to read it back.
+
+## WHY the Parts Take Their Landing From the Config Rows
+
+`read.json`'s SectionDefinitions carry no placement on purpose: where a
+section lands is not the model's to weigh (`review-read.py`,
+`section_definitions`). `review-doc.py` reads the vault config anyway for the
+setup, so `parts` builds each part from the configured row of the same id —
+heading, level, parent, placement — and takes only the order and the keys
+from `read.json` (template order, as `match` offered and the user confirmed
+the rows). When the keys of `read.json` and the configured rows differ, the
+mapping changed between the read and the write (a row added, removed, the
+mapping dropped or added). Guessing a placement for a section the config no
+longer has, or silently leaving out one it now has, would put text where the
+user did not confirm it or drop a part the delivery expects; `parts` raises
+`SectionsChanged` and the write is refused `sections-changed`, so the period
+is read again under the current mapping.
+
+## WHY the Double-Placement Normaliser Strips the Ids First (T4.2)
+
+The rendered form of an item ends `([[stem]], …) %%tN%%`. A model that
+echoes such a line into `text` used to keep its link list: removing every
+`%%` left `… ([[a]]) t1`, and the list was no longer trailing. The ids
+(`%%t<n>%%`) are now removed whole first, then any other `%%`, and only then
+is the trailing link list taken off, so an echoed line normalises to its
+finding text like any other copy.

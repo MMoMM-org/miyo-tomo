@@ -173,6 +173,49 @@ item needs a weekly. `check_item` and `group_reason` are public because
 `review_sections` applies the same rule to section items with their mark as
 the group: one rule, not two copies.
 
+## WHY the Unmapped Document Keeps Its Own Code Path (spec 046 T4.2, F1-AC10, CON-2)
+
+Without a mapping (`DocInput.sections` is None) `render_document` runs the
+group loop it ran in spec 045: every group of the kind, the nothing-found
+bullet for an empty one, the same ids. The section side is a second branch,
+not a generalisation of the first, so a user who never maps a section gets
+the document spec 045 shipped, byte for byte. `tests/test_review_doc_golden.py`
+pins that against a recording of the pre-T4.2 head (week and month); a
+change there is a regression, not a stale golden.
+
+## WHY the Mapped Document Is Assembled From Parts (spec 046 T4.2, ADR-11, F1-AC7, F3-AC1)
+
+With a mapping the document mirrors the user's note: the section parts in
+template order, then the "Tomo Review" part — a divider heading
+`## <review heading> %%review%%` with its landing line, the analysis parts
+(rows with placement `review`, F2-AC12), then the groups. The section part
+itself is `review_sections`' (one owner for its heading, checkbox, landing
+line and mark); this module keeps the frame and the groups and hands the
+section side one function, `group_parts`, so a group renders the same way in
+both documents. Empty groups are left out with a mapping: the user's own
+sections already answer "what happened", and a column of "nothing found"
+groups under "Tomo Review" would be noise (F1-AC7). When no group and no
+analysis part is left, the divider goes too: an empty "Tomo Review" part
+would promise a section the delivery never writes. The habits stay a group,
+so they stay in the "Tomo Review" part. Every part stays at `##`, so the
+parser's column-0 grammar does not change. The ids stay global over the
+whole document (`%%t1%%` … across sections and groups): the parser and
+`pass1_links` key on them, and two parts may not share one.
+
+`counts` gains one entry per section key beside the group counts. Group keys
+are words and section keys are row ids (`s<n>`), so the two never collide,
+and the sum of `counts` stays the number of Tomo items in the document —
+what `review_doc_read` hands the parser as `pass1_total`.
+
+## WHY the Child Groups Render By What Was Accepted (spec 046 T4.2)
+
+`month_groups` used to be set from `weekly_only in accepted`, which is true
+only for a month with weekly notes. A quarter's `monthly_only` /
+`not_in_monthly` would never render, although `check_items` accepted them.
+The flag is now "a child group of this kind was accepted" (the group table of
+the kind decides which), so a quarter that read monthly notes shows its pair
+and a week or month is unchanged.
+
 ## WHY the Review Keys Are Top-Level Frontmatter (ADR-2 Amendment)
 
 `doc-frontmatter.schema.json` closes the `tomo:` block to `doc_type`,

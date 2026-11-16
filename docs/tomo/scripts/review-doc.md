@@ -163,3 +163,35 @@ Stem Guard").
 The skill may mint a run id before Pass 1 (as `/inbox` does) and pass it,
 so the document, the cost log and the meta share one id; without it the
 script mints one through `lib/run_id.generate`, the same format.
+
+## WHY `write` and `replace` Run the Section Checks Before Any Kado Call (spec 046 T4.2)
+
+`review_sections.check` is the second half of the proposals check: unknown
+or duplicate keys, caps, double placement and marks are errors of the file
+as a whole and come back as `proposals-invalid` with `errors`
+(`<pointer>: <error>`), exactly like a schema error, so the skill's
+rewrite-once loop handles both the same way. Both subcommands share
+`render_and_write`, so `replace --confirm` runs every check `write` runs.
+The checks run before the target probe: a refused file costs no Kado call
+and leaves `read.json`, `proposals.json` and `meta.json` as they were.
+Section items without a source are rejected one by one (`{section, index,
+reason}`) and join `rejected` beside the group rejections.
+
+## WHY `sections-changed` Refuses Instead of Guessing
+
+The landing of a part comes from the configured row with the same id (see
+docs/tomo/scripts/lib/review_sections.md, "WHY the Parts Take Their Landing
+From the Config Rows"). A read whose section keys differ from the current
+rows was made under another mapping; a document built from it would place
+text by rows the user has since changed. The refusal names the cause, and
+the answer is to read the period again.
+
+## WHY `meta.json` Gains `pass1_sections` and Section Keys in `pass1_counts` (ADR-11, CON-3)
+
+Pass 2 must know which section checkboxes the document was written with, so
+a deleted checkbox stops delivery instead of dropping the section silently
+(T4.3). `pass1_sections` is `[{key, count, empty}]` in document order: row
+ids, counts and a flag — no heading, description or item text (CON-3).
+`pass1_counts` carries the section keys beside the groups so its sum stays
+the number of Tomo items written. Without a mapping `pass1_sections` is not
+written at all, so an unmapped `meta.json` keeps spec 045's keys.

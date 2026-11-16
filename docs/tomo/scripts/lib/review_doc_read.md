@@ -41,3 +41,11 @@ The mapping is `review_vault.kado_stops`, shared with the script's own
 reads, so the reader and the script cannot stop for different reasons on
 the same failure (docs/tomo/scripts/review-instructions.md, "WHY the Kado
 Stop Mapping Is One Helper").
+
+## WHY `pass1_counts` Is Summed Whole (spec 046 T4.2)
+
+With a mapping `pass1_counts` holds the section keys (`s1`, …) beside the
+group keys. The reader sums every integer value, so the total handed to the
+parser as `pass1_total` counts section items too; summing only known group
+names would undercount and report sections' items as never written. Group
+words and row ids cannot collide, so no key needs to be told apart here.

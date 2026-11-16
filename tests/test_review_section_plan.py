@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -410,6 +410,36 @@ def test_ambiguous_on_rerun_with_an_intact_block_offers_no_review():
     assert plan(row("s1", "A", 2), lines, choice="review").mode == "ambiguous"
     assert plan(row("s1", "A", 2), lines, choice="skip").mode == "skip"
     assert plan(row("s1", "A", 2), ["## A", "## A"]).offers == ("skip", "review"), "no block: review stays"
+
+
+BROKEN_MATERIAL = [
+    pytest.param([start(), "- old"], id="start-only"),
+    pytest.param(["- old", end()], id="end-only"),
+    pytest.param([start(), "- old", end(), start(), "- y", end()], id="duplicated"),
+    pytest.param(["```", start(), "```"], id="fenced-copy"),
+    pytest.param(["> " + end()], id="quoted-copy"),
+]
+
+
+@pytest.mark.parametrize("block", BROKEN_MATERIAL)
+@pytest.mark.parametrize(("lines_of", "stop"), [
+    pytest.param(lambda b: ["## A renamed", *b, "## B"], "missing", id="missing"),
+    pytest.param(lambda b: ["## A", *b, "## A"], "ambiguous", id="ambiguous"),
+])
+def test_a_stop_beside_any_earlier_block_material_offers_skip_only(block, lines_of, stop):
+    """Rule 8 / F5-AC5: a broken earlier block stays in the note, so `review` would add a second Tomo copy."""
+    lines = lines_of(block)
+    p = plan(row("s1", "A", 2), lines)
+    assert p.mode in (stop, "broken") and p.offers == ("skip",), (p.mode, p.offers)
+    for choice in ("review", "confirm-moved"):
+        refused = plan(row("s1", "A", 2), lines, choice=choice)
+        assert refused.mode == p.mode and refused.offers == ("skip",), choice
+    assert plan(row("s1", "A", 2), lines, choice="skip").mode == "skip"
+
+
+def test_another_periods_or_sections_block_keeps_review():
+    lines = ["## B", start("s1", MONTH), "- x", start("s2"), "- y"]
+    assert plan(row("s1", "A", 2), lines).offers == ("skip", "review")
 
 
 def test_mapped_by_level_parent_and_occurrence():

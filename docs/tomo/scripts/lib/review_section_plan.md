@@ -166,10 +166,19 @@ the period. So with such a block `section-missing` offers `skip` and
 `confirm-moved` (replace the block where it sits), `section-ambiguous`
 only `skip`; `review` stays where no earlier block exists (a first
 delivery). A `--section-choice <key>=review` given there is not taken and
-`review-instructions.py` refuses it `choice-invalid`. A broken earlier
-block is not intact: its stops keep their choices (`section-broken`
-offers `skip` only; a missing heading beside a broken block still offers
-`review`).
+`review-instructions.py` refuses it `choice-invalid`.
+
+The gate is any earlier block material of the section and period, not
+only an intact pair: a start marker alone, an end marker alone, a
+duplicated pair, or a textual copy of either marker. A broken block
+stays in the note just as an intact one does, so `review` beside it
+would equally leave two Tomo copies of the section for the period. With
+broken material `section-missing` and `section-ambiguous` offer `skip`
+only — `confirm-moved` needs exactly one pair to replace, so only an
+intact pair keeps it at `section-missing`. A hidden copy (fenced,
+indented, quoted, inside other text) never reaches these steps: step 3b
+stops it `section-broken` first, which offers `skip` only, as does a
+broken block whose mapped heading is found.
 
 ## WHY Notices `block-replaced` and `block-moved-confirmed`
 

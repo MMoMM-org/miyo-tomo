@@ -708,8 +708,9 @@ the question, so the user reads what lands before deciding what does not. The st
   0 Abort; the user answers in words, and Rule "when it is unclear, ask again" covers a garbled answer.
 - **The offered choices come from the script, never from the skill.** Each `sections[]` entry with a `stop` carries
   `choices` (`lib/review_section_plan._stop` / `plan_section`, per case, not per stop name: a missing heading offers
-  skip and review, but skip and confirm-moved when Tomo's block pair is still in the note; a heading there more than
-  once offers skip and review, skip only beside that intact pair (one block per section, T5.7 owner decision); a moved block's ambiguous landing heading skip only; broken and in-review offer skip; a moved
+  skip and review, but skip and confirm-moved when Tomo's intact block pair is still in the note and skip only beside
+  a broken earlier block (a start or end marker alone, a duplicated pair); a heading there more than once offers skip
+  and review, skip only beside any earlier block of the section (one block per section, T5.7 owner decision); a moved block's ambiguous landing heading skip only; broken and in-review offer skip; a moved
   block skip and confirm-moved, skip only when no heading stands above it; `landing-off-limits` none). A stop-name →
   choices table in the skill would be wrong for some of these. A stop without choices can only be aborted: the skill names it and stops without a
   question, because there is nothing to choose.

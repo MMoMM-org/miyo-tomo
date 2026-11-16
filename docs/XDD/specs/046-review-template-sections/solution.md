@@ -569,7 +569,9 @@ A row with `placement: review` is allowed only on a heading left out as `automat
   {month, days, weekly, monthly} (days by date, monthly notes by month, weekly notes by the majority month of their days
   in the quarter); joined back by lib/review_read_parts.load
 - review-doc.py write --stem <stem> --proposals <path>
-  new refusal errors: unknown-section, over-cap, double-placement, mark-not-allowed (plus spec 045's)
+  new refusal errors: unknown-section, duplicate-section (a key named twice in `sections`), over-cap (naming the
+  section key), double-placement, mark-not-allowed (plus spec 045's); new per-item reasons for the quarter groups:
+  quarter-only-group (a quarter group outside a quarter), no-monthly-notes (a quarter that read no monthly notes)
   status written: counts per group and per section key
 - review-instructions.py preview|deliver --stem <stem> [--place-anchor A] [--section-choice <key>=skip|review ...]
                                           [--confirm-moved <key> ...]
@@ -970,7 +972,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: the skill grows by about 1,000 characters; the model's single pass carries more instructions. (Measured at T2.3: the setup step alone added about 3,900 characters; accepted by the owner 2026-11-15, the trim belongs to #259.)
   - User confirmed: 2026-11-14
 
-- [x] ADR-2 Double placement: `review_sections.check` refuses an item proposed in two places (same normalised text, or same sources + first line); the semantic one-finding-one-place stays the model's; caps are refused (`over-cap`), never truncated, so the model merges on the rewrite-once loop; a moved month/quarter item keeps its mark in an optional `mark` field checked like its group and rendered as a labelled suffix that travels with the item text.
+- [x] ADR-2 Double placement: `review_sections.check` refuses an item proposed in two places (same normalised text, or same sources + first line); the semantic one-finding-one-place stays the model's; caps are refused (`over-cap`), never truncated, and a section key named twice is refused (`duplicate-section`, owner 2026-11-16) so a split entry cannot get round its cap, so the model merges on the rewrite-once loop; a moved month/quarter item keeps its mark in an optional `mark` field checked like its group and rendered as a labelled suffix that travels with the item text.
   - Rationale: only what a script can check is promised (PRD v1.3 F1-AC6); refusing beats silent loss.
   - Trade-offs: a reworded duplicate passes; a refusal costs one rewrite turn.
   - User confirmed: 2026-11-14

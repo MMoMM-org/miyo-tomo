@@ -8,7 +8,7 @@
 | **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
 | **Model tier** | hard |
-| **Last Updated** | 2026-11-15 |
+| **Last Updated** | 2026-11-16 |
 
 ## Documents
 
@@ -85,6 +85,7 @@
 | 2026-11-15 | T3.3: `read.json` carries the section definitions (key = row id; no placement, no occurrence) only with a mapping, written compact; `review-read --kind quarter` re-opened through `period.build`; `--measure` added (counts and bytes only, plus `day_bytes` per month for sizing) | SDD Internal API / ADR-1 / ADR-7; whether analysis rows need a marker is T4.4's decision |
 | 2026-11-15 | T3.4: 2026-Q1 measured on the test vault with the owner's go (scratch copy of the instance config with a quarterly setup; read-only): 453 calls, 137 s, 710,106 bytes unsplit; split per month (days by date, monthly notes by month, weekly notes by majority month, dateless keys in the index); re-measured with the owner's go: index 144,294 / 01 193,079 / 02 176,710 / 03 196,218 bytes, all ≤ 256,000, March 59.8 KB headroom — no quarter character budget needed | ADR-7; the plan's stop rule did not trigger |
 | 2026-11-15 | Phase 3 drift check (Drift, Alignment, Consistency; no FAIL, 2 MEDIUM, 5 LOW): all fixed — CON-2 sixth difference, these log rows, the SDD API/shapes/Directory Map, Phase 4 notes (T4.1 monthly sources, T4.4/T4.5 quarter keys, review-doc.md), WHY-text and docstring fixes, a mapped-vs-unmapped equality test | Owner chose "fix all now" |
+| 2026-11-16 | T4.1: keep `duplicate-section` (a section key named twice in proposals `sections`), added to the SDD Internal API and ADR-2 with the quarter per-item reasons `quarter-only-group` / `no-monthly-notes`; `over-cap` names the section key | Spec review found the refusal unrequested; without it a split entry gets round the per-entry cap. Owner chose keep + amend SDD |
 
 ## Context
 

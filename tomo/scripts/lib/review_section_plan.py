@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.3.0
+# version: 0.4.0
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -15,17 +15,13 @@ scoped to the mapped heading for ``under`` / ``end``, unscoped for ``before``), 
 insertion index of a new "Tomo Review" section; an existing one is found by its spec 045 marker.
 ``place_off_limits`` runs the landing check on spec 045's "Tomo Review" placement, ``review_off_limits`` where it sits.
 
-A new note (T5.2, F4-AC5): ``plan_new_note`` plans every row placed in the note on the text
-``review_actions`` built it from (None: a plain note); a heading the text lacks, holds twice or holds
-only inside a multi-line Templater span is ``review`` (routed to "Tomo Review") unless the user's choice
-is ``skip``. ``splice_blocks`` inserts the blocks at ``SectionPlan.insert_at``. ``routed_keys`` names
-the routed keys for Pass 1. ``plan_existing`` plans the rows of an existing note. ``review_parts`` gives
-the "Tomo Review" sub-parts: analysis rows and routed sections in mapping order, headings
-display-neutralised.
+The delivery's sections as a set — every row planned, a new note's routing, the "Tomo Review"
+sub-parts, the splice and the composed actions — are ``review_section_set``'s (T5.4).
 
 The note is read as Hashi reads it (``review_hashi_text``: ``split_lines``, ``fenced_mask``,
 ``hashi_headings``, ``JS_WS``); markers are unfenced lines equal to the marker after JavaScript's
-``trimEnd``. Imports ``review_hashi_text``, never ``review_actions``. No Kado, no clock, no file I/O.
+``trimEnd``. Imports ``review_hashi_text``, never ``review_actions`` or ``review_section_set``. No Kado,
+no clock, no file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_section_plan.md
 """
@@ -36,8 +32,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from lib import review_hashi_text as rht
-from lib.review_sections import REVIEW as ANALYSIS, display_heading
-from lib.template_syntax import templater_inner_line_indexes
 from lib.review_mapping import HeadingKey, TemplateHeading, landing_off_limits, row_key
 
 INSERT, REPLACE, SKIP, REVIEW = "insert", "replace", "skip", "review"
@@ -288,63 +282,3 @@ def review_off_limits(note_text: str, period: str, off_limits: Sequence[dict]) -
     tr = note.review_range(period)
     heads = [] if tr is None else [n for n in (note.above(tr[0] + 1), note.above(tr[0])) if n is not None]
     return next((r for r in (landing_off_limits(note.keyed[n], off_limits) for n in heads) if r), None)
-
-
-# --- the delivery's sections (T5.2) --------------------------------------------------------------
-
-def _placed(rows: Sequence[dict]) -> List[dict]:
-    return [r for r in rows if r.get("placement") in HASHI_PLACEMENT]
-
-
-def plan_existing(rows: Sequence[dict], text: str, period: str, items: Dict[str, list], *,
-                  choices: Optional[Dict[str, str]] = None, off_limits: Sequence[dict] = (),
-                  review_at: Optional[int] = None) -> List[SectionPlan]:
-    """Per row placed in the note, mapping order: its plan on an existing note's ``text``."""
-    return [plan_section(r, text, period, items.get(str(r["id"])) or [], choice=(choices or {}).get(str(r["id"])),
-                         off_limits=off_limits, review_at=review_at) for r in _placed(rows)]
-
-
-def plan_new_note(rows: Sequence[dict], text: Optional[str], period: str, items: Dict[str, list], *,
-                  choices: Optional[Dict[str, str]] = None, off_limits: Sequence[dict] = ()) -> List[SectionPlan]:
-    """Per row placed in the note, mapping order: its plan on the new note's ``text``, routed where it cannot land."""
-    inner = templater_inner_line_indexes(text) if text is not None else set()
-    out = []
-    for r in _placed(rows):
-        key = str(r["id"])
-        routed = SKIP if (choices or {}).get(key) == SKIP else REVIEW    # answers only a stop; an INSERT inserts
-        if text is None:
-            p = SectionPlan(key, routed, start_marker(key, period), end_marker(key, period))
-            p.lines, p.escaped_lines = block_lines(items.get(key) or [])
-        else:
-            p = plan_section(r, text, period, items.get(key) or [], choice=routed, off_limits=off_limits)
-            if p.mode == INSERT and p.heading_at in inner:
-                p.mode = routed                              # the heading exists only once Templater ran
-        out.append(p)
-    return out
-
-
-def routed_keys(rows: Sequence[dict], text: Optional[str], period: str, off_limits: Sequence[dict] = ()) -> List[str]:
-    """Pass 1: the keys a new note built from ``text`` routes to "Tomo Review"."""
-    return [p.key for p in plan_new_note(rows, text, period, {}, off_limits=off_limits) if p.mode == REVIEW]
-
-
-def splice_blocks(lines: List[str], inserts: Sequence[Tuple[int, List[str]]]) -> None:
-    """Insert every ``(index, lines)``; at one index an earlier insert ends up above a later one."""
-    for _, (at, block) in sorted(enumerate(inserts), key=lambda e: (e[1][0], e[0]), reverse=True):
-        lines[at:at] = block
-
-
-def review_parts(rows: Sequence[dict], plans: Sequence[SectionPlan], items: Dict[str, list]
-                 ) -> Tuple[List[Tuple[str, List[List[str]]]], int]:
-    """``([(sub-heading, [lines]), ...], escapes)``: analysis rows and routed sections in mapping order, non-empty."""
-    routed = {p.key for p in plans if p.mode == REVIEW}
-    parts: List[Tuple[str, List[List[str]]]] = []
-    escaped = 0
-    for r in rows:
-        key = str(r["id"])
-        if r.get("placement") == ANALYSIS or key in routed:
-            lines, count = block_lines(items.get(key) or [])
-            if lines:
-                parts.append((display_heading(r["heading"]), [lines]))
-                escaped += count
-    return parts, escaped

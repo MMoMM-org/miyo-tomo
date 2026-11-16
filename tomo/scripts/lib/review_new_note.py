@@ -1,5 +1,5 @@
 # review_new_note.py — the text of a new periodic note a /review delivery builds in the inbox.
-# version: 0.1.0
+# version: 0.1.1
 """Compose a new note's text (spec 045 ADR-8; spec 046 T5.2, F4-AC5).
 
 ``Template`` holds the configured template's text and its Tomo variant's (None when absent or
@@ -12,7 +12,7 @@ template had it, ``stamped`` the note with the rendered-note / pending-move bloc
 (``FrontmatterMergeError`` when the template's frontmatter cannot take it).
 
 Plain values in, text out: no ``ReviewPlan``, no Kado, no clock, no file I/O. Imported by
-``review_actions`` and the review scripts; imports ``review_section_plan`` and
+``review_actions`` and the review scripts; imports ``review_section_set`` and
 ``review_hashi_text``, never ``review_actions``.
 
 Design notes: docs/tomo/scripts/lib/review_new_note.md
@@ -25,7 +25,7 @@ from typing import List, Optional, Sequence, Tuple
 
 from lib import review_config as rc
 from lib import review_hashi_text as rht
-from lib import review_section_plan as rsp
+from lib import review_section_set as rss
 from lib.doc_frontmatter import build_tomo_block, merge_tomo_block_into_markdown
 from lib.review_vault import TEMPLATER_MARK
 
@@ -60,10 +60,10 @@ def plain_note(name: str, section_md: str) -> str:
 
 
 def spliced(text: str, inserts: Sequence[Tuple[int, List[str]]]) -> str:
-    """``text`` with every ``(line index, lines)`` inserted (``review_section_plan.splice_blocks``); the
+    """``text`` with every ``(line index, lines)`` inserted (``review_section_set.splice_blocks``); the
     final newline only when ``text`` had one."""
     lines, trailing = rht.split_lines(text)
-    rsp.splice_blocks(lines, inserts)
+    rss.splice_blocks(lines, inserts)
     return "\n".join(lines) + ("\n" if trailing else "")
 
 

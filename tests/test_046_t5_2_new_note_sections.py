@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_046_t5_2_new_note_sections.py — new notes, analysis rows and the "Tomo Review" interplay (046 T5.2).
 
 PRD F4-AC5, F2-AC12, F2-AC7; SDD Runtime View / Complex Logic "New note", the off-limits landing
@@ -138,7 +138,7 @@ def test_the_next_run_finds_every_spliced_block_and_replaces_it():
     again = plan(target_text=note)
     assert again.mode == "replace" and again.problems == [], again.problems
     assert modes(again) == {"s1": "replace", "s3": "missing", "s4": "replace"}
-    assert [a["action"] for a in again.actions] == ["replace_section"]
+    assert [a["action"] for a in again.actions][-1] == "replace_section"     # the sections first (T5.4)
 
 
 def test_a_heading_the_new_note_lacks_routes_and_never_leaves_a_marker():
@@ -183,14 +183,14 @@ EXISTING = TEMPLATE_TEXT.replace("{{title}}", PERIOD)
 def test_analysis_rows_land_as_level_plus_one_sub_headings_inside_tomo_review_never_in_their_section():
     p = plan(target_text=EXISTING, setup=mapped(anchor=OWN, placement="inside", own_sections=[]))
     assert p.problems == [], p.problems
-    content = p.actions[0]["content"].split("\n")
+    content = p.actions[-1]["content"].split("\n")
     assert content[:4] == [f"### {HEADING}", MARKER, "#### Energy and Sleep", "- Schlaf kurz ([[2026-03-24]])"]
     assert not any(s.key == "s2" for s in p.sections)
-    assert p.actions[0]["anchor"]["value"] == OWN
+    assert p.actions[-1]["anchor"]["value"] == OWN
 
 
 def test_the_habits_stay_in_tomo_review_with_a_mapping_after_the_sections():
-    content = plan(target_text=EXISTING).actions[0]["content"].split("\n")
+    content = plan(target_text=EXISTING).actions[-1]["content"].split("\n")
     assert content.index("### Energy and Sleep") < content.index("### Erledigt") < content.index("### Gewohnheiten")
 
 
@@ -206,9 +206,9 @@ def test_an_existing_note_plans_its_sections_and_routes_only_on_the_review_choic
     note = EXISTING.replace("## Gone\n", "")
     p = plan(target_text=note)
     assert modes(p) == {"s1": "insert", "s3": "missing", "s4": "insert"}
-    assert "### Gone" not in p.actions[0]["content"]
+    assert "### Gone" not in p.actions[-1]["content"]
     routed = plan(target_text=note, choices={"s3": "review"})
-    assert modes(routed)["s3"] == "review" and "### Gone\n- Verloren" in routed.actions[0]["content"]
+    assert modes(routed)["s3"] == "review" and "### Gone\n- Verloren" in routed.actions[-1]["content"]
 
 
 def test_a_new_tomo_review_passes_its_insertion_index_as_review_at():
@@ -218,7 +218,8 @@ def test_a_new_tomo_review_passes_its_insertion_index_as_review_at():
     assert modes(p) == {"s4": "in-review"}
     alone = plan(review=approved(rows, {"s4": ["Plan A"]}, groups={}, habits=False), target_text=EXISTING,
                  rows=rows, setup=s)
-    assert modes(alone) == {"s4": "insert"} and alone.actions == [] and alone.problems == []
+    assert modes(alone) == {"s4": "insert"} and alone.problems == []
+    assert [a["action"] for a in alone.actions] == ["insert_under_marker"]   # the section's own action (T5.4)
 
 
 # ---------------------------------------------------------------- the landing check of the "Tomo Review" place
@@ -280,7 +281,7 @@ def test_a_rerun_stops_when_the_existing_tomo_review_sits_off_limits(note, rows)
 def test_a_rerun_replaces_when_no_row_covers_where_tomo_review_sits(note, rows):
     p = plan(target_text=note, setup=mapped(off_limits=rows))
     assert p.problems == [], p.problems
-    assert [a["action"] for a in p.actions] == ["replace_section"] and p.actions[0]["anchor"]["value"] == HEADING
+    assert p.actions[-1]["action"] == "replace_section" and p.actions[-1]["anchor"]["value"] == HEADING
 
 
 # ---------------------------------------------------------------- a re-run with nothing for Tomo Review
@@ -289,7 +290,8 @@ def test_review_section_kept_when_a_rerun_leaves_nothing_for_an_earlier_tomo_rev
     rows = [row("s1", "Highlights", "end")]
     note = EXISTING.replace(f"## {OWN}\n", f"## {HEADING}\n{MARKER}\n- alt\n\n## {OWN}\n")
     p = plan(review=approved(rows, {"s1": ["neu"]}, groups={}, habits=False), target_text=note, rows=rows)
-    assert p.mode == "replace" and p.actions == [] and p.problems == []
+    assert p.mode == "replace" and p.problems == []
+    assert [a["action"] for a in p.actions] == ["insert_under_marker"]           # the section only, no Tomo Review
     assert p.notices == ["review-section-kept"] and rdl.classify(p)[0] == []      # a notice, never a refusal
     assert modes(p) == {"s1": "insert"}
 
@@ -351,7 +353,7 @@ def test_an_escaped_sub_part_line_is_counted_once_also_when_the_sections_are_pla
     review = approved(rows, {"s2": ["x"], "s4": ["Plan A"]}, groups={}, habits=False)
     review["groups"]["s2"][0]["text"] = "quote %% tomo:s4 2026-W13 %% here"   # set on the record directly
     p = plan(review=review, target_text=EXISTING, rows=rows)
-    assert "quote %% tomo\\:s4 2026-W13 %% here" in p.actions[0]["content"]
+    assert "quote %% tomo\\:s4 2026-W13 %% here" in p.actions[-1]["content"]
     assert p.escaped_lines == 1
 
 

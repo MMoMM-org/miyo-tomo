@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.6.1
+# version: 0.7.0
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -17,8 +17,10 @@ built instead, with the merge helper's reason), the problems (``not-approved``,
 where the place is at fault, and the actions: one ``insert_under_marker`` (``before`` or ``inside``, never ``after``)
 when the target holds no marker of this period, one ``replace_section`` on the heading above the
 marker when it does — whatever that heading's text — or one ``move_note`` for a new note that
-waits in the inbox stamped rendered-note/pending-move. The marker counts at column 0 only
-(trailing whitespace tolerated); an indented copy is an item's continuation line. A heading
+waits in the inbox stamped rendered-note/pending-move. With mapped rows an existing note's set
+holds first one action per landing section, in mapping order, then that "Tomo Review" action, ids
+``I01…In`` (``review_section_set.compose``, T5.4); a refused "Tomo Review" part leaves it empty.
+The marker counts at column 0 only (trailing whitespace tolerated); an indented copy is an item's continuation line. A heading
 with the review's text but no marker, a marker under an own section, or a marker under a
 heading an earlier heading of the same text shadows is a collision: nothing is emitted. A
 refused replace (the marker proves the rerun) reports mode ``replace`` and the heading found
@@ -37,7 +39,7 @@ the list a resume of a delivery begun with ``--place-anchor`` offers again.
 T5.2): ``ReviewPlan.sections`` (``choices`` answer stops), analysis and routed sub-parts in "Tomo
 Review", blocks spliced into a new note, ``landing-off-limits``, ``review-section-kept``. The new
 note's text is composed by ``review_new_note``; imports go one way: this module ->
-``review_new_note`` -> ``review_section_plan`` -> ``review_hashi_text``.
+``review_new_note`` -> ``review_section_set`` -> ``review_section_plan`` -> ``review_hashi_text``.
 
 No Kado, no clock, no file I/O (the wire schema version is read from the schema file).
 
@@ -54,13 +56,13 @@ from lib import review_hashi_text as rht
 from lib import review_md
 from lib import review_new_note as rnn
 from lib import review_section_plan as rsp
+from lib import review_section_set as rss
 from lib.doc_frontmatter import FrontmatterMergeError
 from lib.review_doc_parse import APPROVED_MISSING, SECTION_CHECKBOX_MISSING
 from lib.wire_version import wire_schema_version
 
 WIRE_SCHEMA = "instructions.schema.json"
 WIRE_TYPE = "tomo-instructions"
-ACTION_ID = "I01"
 INSERT, REPLACE, NEW_NOTE = "insert", "replace", "new-note"
 NOT_APPROVED = "not-approved"
 NOTHING_TO_DELIVER = "nothing-to-deliver"
@@ -288,15 +290,13 @@ def _sectioned(plan: ReviewPlan, setup: rc.ReviewSetup, text: Optional[str], per
     if not setup.sections:
         return groups
     if new_note:
-        plan.sections = rsp.plan_new_note(setup.sections, text, period, mapped.items, choices=mapped.choices,
+        plan.sections = rss.plan_new_note(setup.sections, text, period, mapped.items, choices=mapped.choices,
                                           off_limits=setup.off_limits)
     else:
-        plan.sections = rsp.plan_existing(setup.sections, text, period, mapped.items, choices=mapped.choices,
+        plan.sections = rss.plan_existing(setup.sections, text, period, mapped.items, choices=mapped.choices,
                                           off_limits=setup.off_limits, review_at=review_at)
-    parts, escaped = rsp.review_parts(setup.sections, plan.sections, mapped.items)
-    if new_note:                               # the inserts are spliced into the new note: their escapes land
-        escaped += sum(p.escaped_lines for p in plan.sections if p.mode == rsp.INSERT)
-    plan.escaped_lines = mapped.escaped + escaped
+    parts, escaped = rss.review_parts(setup.sections, plan.sections, mapped.items)
+    plan.escaped_lines = mapped.escaped + escaped + rss.landed_escapes(plan.sections, new_note)
     return parts + list(groups)
 
 
@@ -316,6 +316,7 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
         plan.place = {"anchor": text, "placement": REPLACE, "level": level}
         if not groups:                         # nothing left for the earlier section: it stays as it is
             plan.notices.append(rsp.REVIEW_SECTION_KEPT)
+            plan.actions = rss.compose(plan.sections, target.path)
             return plan
         if setup.off_limits and rsp.review_off_limits(target.text or "", period, setup.off_limits) is not None:
             return _refuse(plan, rsp.STOPS[rsp.OFF_LIMITS_LANDING], [])     # where it sits now: also off limits
@@ -326,10 +327,12 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
         if rht.bare(text) != rht.bare(setup.heading):
             plan.problems.append(HEADING_RENAMED)
         plan.section_md, body = render_section(text, level, period, groups)
-        plan.actions = [{"id": ACTION_ID, "action": "replace_section", "target_path": target.path,
-                         "anchor": {"type": "heading", "value": text}, "content": body}]
+        plan.actions = rss.compose(plan.sections, target.path, {
+            "action": "replace_section", "target_path": target.path, "anchor": {"type": "heading", "value": text},
+            "content": body})
         return plan
     if not groups:
+        plan.actions = rss.compose(plan.sections, target.path)
         return plan                            # nothing for a new "Tomo Review": no insert
     if _first(headings, setup.heading) is not None:
         return _refuse(plan, HEADING_COLLISION, headings)
@@ -342,9 +345,9 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
     _sectioned(plan, setup, target.text, period, groups, mapped, False, review_at=at)
     plan.place = {"anchor": value, "placement": setup.placement, "level": level}
     plan.section_md, _ = render_section(setup.heading, level, period, groups)
-    plan.actions = [{"id": ACTION_ID, "action": "insert_under_marker", "target_path": target.path,
-                     "anchor": {"type": "heading", "value": value}, "placement": setup.placement,
-                     "content": plan.section_md}]
+    plan.actions = rss.compose(plan.sections, target.path, {
+        "action": "insert_under_marker", "target_path": target.path, "anchor": {"type": "heading", "value": value},
+        "placement": setup.placement, "content": plan.section_md})
     return plan
 
 
@@ -391,7 +394,7 @@ def _new_note(plan: ReviewPlan, setup: rc.ReviewSetup, template: rnn.Template, a
             plain = _sectioned(plan, setup, None, period, groups, mapped, True)
             plan.note_text = rnn.stamped(_plain_note(plan, setup, name, period, plain), run_id, generated)
     plan.note_path = setup.inbox_path(f"{name}.md")
-    plan.actions = [{"id": ACTION_ID, "action": "move_note", "source": plan.note_path, "destination": plan.target,
+    plan.actions = [{"id": rss.action_id(1), "action": "move_note", "source": plan.note_path, "destination": plan.target,
                      "title": name, "rendered_file": f"{name}.md", "source_inbox_item": None}]
     return plan
 

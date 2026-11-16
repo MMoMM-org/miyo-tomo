@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """test_review_state.py — lib/review_state.py, the one owner of /review's
 open-review states (spec 045 T2.3, T4.3, P5; SDD Complex Logic review_state; ADR-6).
 The open_reviews listing tests live in tests/test_review_state_listing.py (split out at Phase 6,
@@ -17,7 +17,8 @@ tests/test_review_state_finished.py.
   → failed-delivery, also with
   steps_done ["note"] and no failed_step; approved without a set JSON →
   failed-delivery; pending without a set → open; every action applied →
-  applied; an unapplied move_note whose source (inbox copy) and destination
+  applied; some applied, not all (a partly applied set) → open (spec 046 ADR-12, CON-2's intended
+  difference; tests/test_046_t5_4_partly_applied.py); an unapplied move_note whose source (inbox copy) and destination
   (target) both exist → move-refused; an unapplied insert/replace whose
   target is gone → target-missing; otherwise delivered; an unreadable set
   reads delivered; a missing or corrupt meta counts as absent
@@ -176,9 +177,9 @@ def test_every_action_applied_is_applied():
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), None, _set(_move(True))) == "applied"
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), {"steps_done": ["set_json", "set_md", "doc_mark"]},
                            _set(_insert(True), _insert(True, "replace_section"))) == "applied"
-    # one unapplied action is enough to wait
+    # one applied, one not: partly applied, a new delivery writes over it (spec 046 ADR-12)
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), None, _set(_insert(True), _insert(False)),
-                           target_exists=True) == "delivered"
+                           target_exists=True) == "open"
     # applied must be exactly True
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), None, _set(dict(_insert(), applied="yes")),
                            target_exists=True) == "delivered"
@@ -196,7 +197,7 @@ def test_a_fresh_record_over_a_fully_applied_set_reads_open_and_all_applied_need
     assert rs.review_state(doc, None, _set(_move(True))) == "applied"
     assert rs.review_state(doc, {"steps_done": ["set_json", "set_md", "doc_mark"]}, _set(_move(True))) == "applied"
     assert rs.review_state(doc, {"steps_done": ["set_json"]}, _set(_move(True))) == "failed-delivery"
-    assert rs.review_state(doc, fresh, _set(_insert(True), _insert(False)), target_exists=True) == "delivered"
+    assert rs.review_state(doc, fresh, _set(_insert(True), _insert(False)), target_exists=True) == "open"  # 6a
     assert rs.all_applied(_set(_move(True))) is True and rs.all_applied(_set(_insert(True), _insert(True))) is True
     for not_applied in (None, {}, {"actions": []}, {"actions": ["nope"]}, _set(_move()), _set(_move(True), _move()),
                         _set(dict(_insert(), applied="yes"))):

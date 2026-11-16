@@ -34,6 +34,12 @@ Review" takes the last. The order is a function of the rows' order in the
 setup only, never of the order of the items dict or of the choices dict,
 so two runs over the same inputs produce byte-identical sets.
 
+An empty section (no item lines) emits no action in either mode (F4-AC1:
+"one action per kept non-empty section"): a first delivery writes no empty
+marker pair into the user's note, and a re-run leaves an earlier block as
+it is instead of emptying it — the same rule as `review-section-kept` for
+"Tomo Review". Removing an earlier block is the user's edit.
+
 The alternative — an id fixed per mapping position, leaving gaps where a
 section stopped — was rejected. It would make a section's id stable across
 runs with different stops, but nothing reads ids across runs: Hashi writes

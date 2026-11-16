@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -550,9 +550,10 @@ def test_crlf_heading_is_no_heading_for_hashi():
 
 LIB = TESTS_DIR.parent / "tomo" / "scripts" / "lib"
 # module -> the review modules it must never import (directly)
-FORBIDDEN = {
-    "review_hashi_text": {"review_actions", "review_new_note", "review_section_plan"},
-    "review_section_plan": {"review_actions", "review_new_note"},
+FORBIDDEN = {   # the order (T5.4): review_actions -> review_new_note -> review_section_set -> review_section_plan
+    "review_hashi_text": {"review_actions", "review_new_note", "review_section_set", "review_section_plan"},
+    "review_section_plan": {"review_actions", "review_new_note", "review_section_set"},
+    "review_section_set": {"review_actions", "review_new_note"},
     "review_new_note": {"review_actions"},
 }
 
@@ -576,7 +577,8 @@ def test_a_lower_review_module_never_imports_a_higher_one(module):
 
 
 @pytest.mark.parametrize("order", [("review_section_plan", "review_actions"), ("review_actions", "review_section_plan"),
-                                   ("review_new_note", "review_actions"), ("review_hashi_text", "review_actions")])
+                                   ("review_new_note", "review_actions"), ("review_hashi_text", "review_actions"),
+                                   ("review_section_set", "review_actions"), ("review_section_plan", "review_section_set")])
 def test_each_review_module_imports_alone_in_a_fresh_interpreter(order):
     code = f"import sys; sys.path.insert(0, {str(LIB.parent)!r}); " + "; ".join(f"from lib import {m}" for m in order)
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

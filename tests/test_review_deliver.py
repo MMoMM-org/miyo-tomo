@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.9
+# version: 0.2.10
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -727,7 +727,8 @@ def test_drop_refuses_a_set_hashi_already_applied_and_writes_nothing(doc_mod, in
     assert out == {"status": "refused", "stem": STEM, "problems": ["already-applied"]}
     untouched(instance, fake, meta_before, set_before)
     assert [e for e in fake.events if e[0].startswith("read")] == [("read_file", SET_JSON)]
-    assert cli("status", "--stem", STEM)[1]["state"] == ("applied" if marked == "the-one-action" else "delivered")
+    # one of two applied is a partly applied set: `open`, a new delivery writes over it (spec 046 ADR-12)
+    assert cli("status", "--stem", STEM)[1]["state"] == ("applied" if marked == "the-one-action" else "open")
 
 
 def test_drop_withdraws_a_set_no_action_of_which_is_applied_with_the_reads_guard(doc_mod, ins, instance, monkeypatch,

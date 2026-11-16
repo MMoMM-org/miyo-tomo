@@ -89,8 +89,36 @@ between the block and its heading.
 (directly below the heading line, above the user's own text); `end` →
 Hashi `inside` (at the end of the heading's section, after any
 subsections). The insert content ends with a newline, which Hashi's split
-turns into one blank line after the end marker; the replace content has no
+turns into one blank line after the end marker — unless the note already
+has a blank line at the insertion point (below); the replace content has no
 trailing newline (the contract's "lines between the markers").
+
+### WHY the Insert's Trailing Blank Line Depends on the Note (spec 046 T6.2)
+
+Hashi inserts verbatim and adds nothing: `insertUnderMarker.ts:72` splits
+`content` on `\n`, `:98` picks `insertAfter` (the heading line + 1,
+`anchorResolver.ts:106`) for `after`, and `:110` hands the lines to
+`spliceLines` (`blockInsert.ts:37-44`), which inserts them at the index
+and keeps the note's own final newline. Hashi's own tests send content
+without a trailing newline and get no blank line
+(`test/unit/actions/insertUnderMarker.test.ts:30`, `:73-85`): separation
+is the producer's job. So the blank line after the end marker is Tomo's
+alone. Sent always, an `under` insert into the common shape `## Notes`,
+blank line, text left two blank lines between the block and the user's
+text — the blank Tomo sent plus the one already there. Since T6.2
+`SectionPlan.blank_after` is false when the line at the insertion point
+exists and is blank (after JavaScript's `trimEnd` whitespace, `JS_WS`):
+the note's own blank line separates the block, and the result has one.
+Everywhere else the blank line stays — before a heading (`before`, `end`
+above the next heading, `under` a heading followed by a sub-heading) and
+before text, where the block would otherwise run into the next line. At
+the end of the file (`end` with no later heading) it stays too: the file
+then ends with one empty line after the block, pinned as is. `block()`
+and the `content` are built from the same list, so a new note spliced by
+Tomo (`review_section_set.splice_blocks`) gets the same lines Hashi would
+insert. The `replace_between_markers` content is untouched. Pinned per
+layout in `tests/test_046_t6_2_carried_debt.py` against the reference
+splice of `tests/test_review_section_plan.py`.
 
 ## WHY Scope for `under`/`end`, None for `before`, Always on the Moved Path
 

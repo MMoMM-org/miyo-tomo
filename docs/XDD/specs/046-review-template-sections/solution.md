@@ -498,7 +498,9 @@ tests/
 ├── test_046_t4_5_skill_quarter.py               # NEW (T4.5): skill pins for the quarter read
 ├── fixtures/046-t4-2-unmapped-doc-golden/       # NEW (T4.2)
 ├── fixtures/046-t4-3-unmapped-parse-golden/     # NEW (T4.3)
-├── test_046_t6_2_carried_debt.py               # NEW (T6.2): the code debt carried from Phase 5 (section key, read order, splits)
+├── test_046_t6_2_carried_debt.py               # NEW (T6.2): the code debt carried from Phase 5 (section key, read order, blank line)
+├── test_046_t6_2_heading_walk.py                # NEW (T6.2): the shared heading walk against its golden
+├── fixtures/046-t6-2-heading-walk-golden/       # NEW (T6.2): walk.json, record.py (recorded before the change)
 ├── test_046_close_out_gaps.py                   # NEW at close-out
 └── fixtures/instructions-v4-candidate.schema.json   # NEW until T6.1: test-only schema from the handoff fragment
 ```

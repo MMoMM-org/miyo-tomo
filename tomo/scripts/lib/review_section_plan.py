@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.5.4
+# version: 0.6.0
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -18,6 +18,9 @@ insertion index of a new "Tomo Review" section; an existing one is found by its 
 
 The delivery's sections as a set — every row planned, a new note's routing, the "Tomo Review"
 sub-parts, the splice and the composed actions — are ``review_section_set``'s (T5.4).
+
+An insert's block ends in a blank line unless the note has one at the insertion point
+(``SectionPlan.blank_after``): Hashi adds none, so one blank line separates the block either way.
 
 The note is read as Hashi reads it (``review_hashi_text``: ``split_lines``, ``fenced_mask``,
 ``hashi_headings``, ``JS_WS``) and keyed by ``review_mapping.walk_headings``, the walk the template analysis
@@ -74,6 +77,7 @@ class SectionPlan:
     block_at: Optional[Dict[str, object]] = None          # a moved block: the heading it sits under (None: preamble)
     insert_at: Optional[int] = None                       # an insert: the line index Hashi inserts at
     heading_at: Optional[int] = None                      # an insert: the mapped heading's line index
+    blank_after: bool = True                              # an insert: a blank line ends the block (none follows)
     notices: List[str] = field(default_factory=list)
     offers: Tuple[str, ...] = ()                          # a stop: the choices that answer it
 
@@ -86,7 +90,7 @@ class SectionPlan:
         if self.mode == INSERT:
             return {"id": action_id, "action": "insert_under_marker", "target_path": target_path,
                     "anchor": {"type": "heading", "value": self.anchor}, "placement": self.hashi_placement,
-                    "content": "\n".join([self.start_marker, *self.lines, self.end_marker]) + "\n"}
+                    "content": "\n".join(self.block())}
         if self.mode == REPLACE:
             out = {"id": action_id, "action": "replace_between_markers", "target_path": target_path,
                    "start_marker": self.start_marker, "end_marker": self.end_marker}
@@ -97,8 +101,9 @@ class SectionPlan:
         return None
 
     def block(self) -> List[str]:
-        """The insert's lines as Hashi splits its content: markers, items, the blank line after."""
-        return [self.start_marker, *self.lines, self.end_marker, ""]
+        """The insert's lines as Hashi splits its content: markers, items, and a blank line after unless the note
+        already has one at the insertion point."""
+        return [self.start_marker, *self.lines, self.end_marker] + ([""] if self.blank_after else [])
 
 
 def block_lines(items: Sequence[dict]) -> Tuple[List[str], int]:
@@ -223,6 +228,7 @@ def _first_delivery(plan, note: _Note, mapped: int, placement: str, choice, off_
         return _stop(plan, IN_REVIEW, choice)          # Hashi runs every insert before replace_section
     plan.mode, plan.anchor, plan.hashi_placement = INSERT, note.heads[mapped][2], HASHI_PLACEMENT[placement]
     plan.insert_at, plan.heading_at = p, note.line(mapped)
+    plan.blank_after = not (p < len(note.lines) and not note.lines[p].strip(rht.JS_WS))   # Hashi adds no blank line
     return plan
 
 

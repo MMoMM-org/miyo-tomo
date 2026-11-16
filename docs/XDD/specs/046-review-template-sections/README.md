@@ -90,6 +90,8 @@
 | 2026-11-16 | Model escalation: T4.3 opus → opus@max | Trigger: second review FAIL |
 | 2026-11-16 | Phase 4 drift check (Drift, Alignment, Consistency; no FAIL, 9 MEDIUM, 9 LOW): all fixed — SDD write/parse contracts, section-checkbox-missing as a gate refusal, ParsedDoc/SectionDefinition/SectionPart/meta fields, display-neutralised headings, Directory Map, ADR-1 growth (31,600 bytes, trim #259), ADR-7 quarter context-size risk, review_actions WHY, Phase 5/6 notes, spec 045 superseded pointers | Owner chose "fix all now" |
 | 2026-11-16 | T5.2: split `lib/review_hashi_text.py` (the Hashi-parse mirror) and `lib/review_new_note.py` (new-note composition) out of `review_actions.py`, with Directory Map entries | review_actions.py (500/500) and review_section_plan.py (350/350) had no room for T5.4/T5.5 and imported each other; owner chose "split now in T5.2" |
+| 2026-11-16 | Phase 5 drift check (Drift, Alignment, Consistency; no FAIL): fixed — skill line for the "Tomo Review" place landing off limits, the privacy walk of the mapped path, SDD edits E1–E26, WHY/docstring touch-ups, Phase 6 carry-over, spec 045 superseded banners | Owner chose "fix all now" |
+| 2026-11-16 | No review choice beside any earlier block of the section on a re-run: a missing or doubled heading next to Tomo's earlier block (intact or broken) offers skip, or skip and confirm-moved for an intact pair after a missing heading | Owner chose "drop review there" for an intact block (one Tomo copy per section, Rule 8); the review extended it to a broken block, which would equally leave two copies |
 
 ## Context
 

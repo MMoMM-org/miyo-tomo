@@ -1120,6 +1120,8 @@ sequenceDiagram
 
 ### Error Handling
 
+*Superseded for a mapped review by spec 046 (docs/XDD/specs/046-review-template-sections/solution.md, Error Handling).*
+
 | Operation | Failure | stdout | User message (by the skill) |
 |---|---|---|---|
 | `start` | invalid argument, `@` note not periodic | `error.kind` invalid-period / not-periodic-note, `expected`, `example` | what was expected + one example; nothing written (F2-AC5, F2-AC7) |

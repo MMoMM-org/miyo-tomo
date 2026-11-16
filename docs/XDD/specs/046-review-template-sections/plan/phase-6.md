@@ -47,6 +47,8 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
   4. Validate: the full suite GREEN; ruff clean.
   5. Success: week, month and quarter run end to end as a month does `[ref: PRD/F6-AC6]`
 
+  Carried from Phase 5: PRIVACY.md rows for the mapped stdout fields (`sections[].lines` in preview, `block_at.heading`); the `review-instructions.py` `SECTION_KEY` pattern is looser than the real `^s\d{1,3}$`; file room is nil (`review-instructions.py` 536/540, `review_section_set.py` 199/200, `review_delivery.py` 348/350), so split before adding; `_Note.read` walks the heading tree a second time like `review_mapping._tree` (share it); an `under` insert can leave two blank lines; the e2e walk covers a section stop beside the "Tomo Review" place problem, which asks the section choices first (one extra round).
+
 - [ ] **T6.3 Live walk with Hashi in the test vault (owner-run)** `[activity: validate]`
 
   1. Prime: spec 045 `live-walk.md` format; reference memories on test-vault plugins (update-time-on-edit, Templater on create)
@@ -63,6 +65,8 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
         - costs and durations per pass from `tomo-session-stats.py`.
      Writes reach the test vault only through Hashi's apply; nothing edits it directly.
   3. Implement: record every run in `live-walk.md` (counts only, no journal text); file walk-found fixes as tasks with RED tests. Notes from Phase 4: record the context use (tokens) and cost of the quarter's Pass 1 beside the ≤ $5 / ≤ 20 min KPI; the mapped callout's target stem and not-read / partly-read paths are still raw (path-derived, low risk) — check them in the walk or note them in the close-out.
+  Carried from Phase 5: the live walk records the quarter's context use (tokens) and cost beside the KPI (already named above from Phase 4; check it is recorded); a section stop beside the "Tomo Review" place problem asks the section choices first, one extra round — watch for it.
+
   4. Validate: KPIs — weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.75, quarterly Pass 1 ≤ $5.00 and ≤ 20 min; 0 changed characters of user text outside markers; 0 sections with two blocks; 0 writes to off-limits.
   5. Success: Tomo and Hashi work together on all three kinds, first delivery and re-run `[ref: PRD/Success Metrics; PRD/Constraints]`
 
@@ -70,6 +74,6 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
 
   1. Prime: spec 045 `close-out.md` and spec 044's (method)
   2. Test: every one of the 49 PRD criteria traced to node ids run in ONE pytest invocation, or to a recorded live-walk row for model behaviour; criteria parts no test can fail closed by RED-proven tests in `tests/test_046_close_out_gaps.py`; inbox cost log updated. Known prose-pin-only parts to trace to live-walk rows (Phase 2 drift check): F2-AC10 "the request continues in the same session", F2-AC3 "one line per left-out heading with its reason", F2-AC2/F2-AC6 (the table and suggestion descriptions as the model words them).
-  3. Implement: `close-out.md`; spec README Finalize after merge; memory index entry (Critical Documentation).
+  3. Implement: `close-out.md`; spec README Finalize after merge; memory index entry (Critical Documentation). Carried from Phase 5: `load_run` reads the note before the set (a millisecond window where an applied set plus a stale note could plan a second insert; read the set first); the skill step 7 stop bullet is one ~1,100-character sentence (split into sub-bullets, re-pin `QUESTION` / `STOPS_HEAD`); the negative pin in `tests/test_046_t5_6_skill_choices.py` has a tautological half; the file-size debt above.
   4. Validate: drift check spec vs code; the Kokoro FYI (`_outbox/for-kokoro/2026-11-14_…`) status checked and, if the contract changed at T6.1, a follow-up FYI; the PR carries the spec ID, the issues (#263, #256, #267) and the Hashi release.
   5. Success: the spec closes with its evidence `[ref: PRD all criteria]`

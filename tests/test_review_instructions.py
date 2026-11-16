@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.3
+# version: 0.4.4
 r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -54,7 +54,6 @@ import sys
 import unicodedata
 from pathlib import Path
 
-import jsonschema
 import pytest
 import yaml
 
@@ -69,7 +68,7 @@ from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib.period import ISO, Period  # noqa: E402
 from test_review_doc import INBOX, WEEKLY, _doc_input  # noqa: E402
-from review_deliver_helpers import SCHEMA_PARAMS  # noqa: E402
+from review_deliver_helpers import SCHEMA_PARAMS, schema_errors  # noqa: E402
 from test_review_doc_parse import GROUPS, tick  # noqa: E402
 
 PERIOD = "2026-W13"
@@ -162,11 +161,6 @@ def hashi_headings(text: str) -> list[tuple[int, int, str]]:
 def hashi_resolves(text: str, value: str) -> tuple[int, int, str] | None:
     """anchorResolver.ts:100 — the first heading whose text equals ``value`` exactly."""
     return next((h for h in hashi_headings(text) if h[2] == value), None)
-
-
-def schema_errors(doc: dict, path: Path) -> list[str]:
-    validator = jsonschema.Draft202012Validator(json.loads(path.read_text(encoding="utf-8")))
-    return [e.message for e in validator.iter_errors(doc)]
 
 
 # ---------------------------------------------------------------- insert

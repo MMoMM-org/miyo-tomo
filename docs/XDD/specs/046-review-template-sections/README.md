@@ -92,6 +92,7 @@
 | 2026-11-16 | T5.2: split `lib/review_hashi_text.py` (the Hashi-parse mirror) and `lib/review_new_note.py` (new-note composition) out of `review_actions.py`, with Directory Map entries | review_actions.py (500/500) and review_section_plan.py (350/350) had no room for T5.4/T5.5 and imported each other; owner chose "split now in T5.2" |
 | 2026-11-16 | Phase 5 drift check (Drift, Alignment, Consistency; no FAIL): fixed — skill line for the "Tomo Review" place landing off limits, the privacy walk of the mapped path, SDD edits E1–E26, WHY/docstring touch-ups, Phase 6 carry-over, spec 045 superseded banners | Owner chose "fix all now" |
 | 2026-11-16 | No review choice beside any earlier block of the section on a re-run: a missing or doubled heading next to Tomo's earlier block (intact or broken) offers skip, or skip and confirm-moved for an intact pair after a missing heading | Owner chose "drop review there" for an intact block (one Tomo copy per section, Rule 8); the review extended it to a broken block, which would equally leave two copies |
+| 2026-11-16 | Phase 6 started before Hashi's release: T6.2's parts that need no v4 schema run now (carried code debt, end-to-end tests against the test-only candidate schema, documentation); T6.1 and the v4 re-validation wait for Hashi | Owner chose "start T6.2 parts now"; no reply in _inbox/from-hashi/ yet |
 
 ## Context
 

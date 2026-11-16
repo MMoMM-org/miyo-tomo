@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Pass 1 — proposals and the review document by section"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -71,6 +71,6 @@ Turns the model's per-section proposals into a review document laid out like the
   4. Validate: tests green.
   5. Success: a quarter's Pass 1 reads within the Read limit `[ref: PRD/F6-AC6; SDD/Quality Requirements]`
 
-- [ ] **T4.6 Phase Validation** `[activity: validate]`
+- [x] **T4.6 Phase Validation** `[activity: validate]`
 
   - Run all Phase 4 tests and the full suite (GREEN). The unmapped-document byte-identity test green. Drift check against ADR-1/2/11. WHY-first order (git log) and no eval-gated file changed. Lint clean.

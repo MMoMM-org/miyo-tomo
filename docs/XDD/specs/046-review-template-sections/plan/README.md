@@ -152,7 +152,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 1: Foundations — config, writer, template analysis, quarter period](phase-1.md)
 - [x] [Phase 2: Setup — mapping, off-limits, template choice](phase-2.md)
 - [x] [Phase 3: Reading — child-review level, quarter, read files](phase-3.md)
-- [ ] [Phase 4: Pass 1 — proposals and the review document by section](phase-4.md)
+- [x] [Phase 4: Pass 1 — proposals and the review document by section](phase-4.md)
 - [ ] [Phase 5: Pass 2 — delivery into the user's sections](phase-5.md)
 - [ ] [Phase 6: Wire v4, integration, live walk and close-out](phase-6.md)
 

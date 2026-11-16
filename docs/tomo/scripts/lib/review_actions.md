@@ -314,3 +314,59 @@ only safe outcome. The check sits after `approved-line-missing` and before
 Approved line is judged. The loop is line-neutral on purpose:
 `review_actions.py` is over its size guide, so the refusal extends the
 existing tuple instead of adding a branch.
+
+## WHY Mapped Sections Are Split From the Groups (spec 046 T5.2)
+
+The ApprovedReview record files a section's items under its key, next to
+the groups. Before spec 046 any key outside `review_doc.GROUPS` was
+`unlanded`; a configured row's key is not: its items land in their own
+block (an existing note: the per-section plans in `ReviewPlan.sections`,
+composed into actions by the set builder; a new note: spliced into the
+note) or in "Tomo Review" (analysis rows, routed sections). So the
+configured keys are taken out before `landed_groups` runs, and only a key
+neither a group nor a row stays `unlanded-items`. Without rows nothing is
+taken out and spec 045's output is byte-identical (CON-2).
+`nothing-to-deliver` refuses only when neither a group nor a section has a
+line to land.
+
+## WHY "Tomo Review" Holds Analysis Rows, Routed Sections, Then the Groups
+
+An analysis row's heading is script-only (dataview, tracker); writing into
+it would be overwritten or break the query, so its material lands as a
+sub-heading inside "Tomo Review" (F2-AC12). A routed section has no
+heading in the note to land under. Both become sub-parts at the Tomo
+Review level + 1 in mapping order, before spec 045's groups; the habits
+stay a group and so stay in "Tomo Review" (F2-AC7). The sub-parts are built
+by `review_section_plan.review_parts`.
+
+## WHY Sections Are Planned Before the "Tomo Review" Insertion Point
+
+Whether "Tomo Review" is written at all depends on what lands in it, and
+routing depends only on missing or doubled headings, never on where Tomo
+Review goes. So the sections are planned first with `review_at=None`; when
+Tomo Review has content and is new on an existing note, they are planned
+again with `review_at` set to its insertion index (what `_insertion`
+returns), so a section insert at that same index stops as
+`block-in-review-section` — Hashi orders two inserts at one index by kind,
+not by Tomo's intent. When Tomo Review already exists, `plan_section`
+finds it by its spec 045 marker and `review_at` stays None.
+
+## WHY `review-section-kept` and No `replace_section`
+
+On a re-run whose Tomo Review receives nothing (every group empty, no
+analysis or routed material), a `replace_section` with only the marker
+would delete the earlier review. The section stays as it is, no action is
+emitted for it, and the notice `review-section-kept` tells the user;
+removing it is the user's choice. The notice is a name only — no heading,
+no text (CON-3). Without rows this case is still spec 045's
+`nothing-to-deliver`.
+
+## WHY the "Tomo Review" Placement Is Checked Against Off-Limits Rows
+
+`landing-off-limits` (`review_section_plan.place_off_limits`) runs where
+"Tomo Review" is inserted — an existing note without the marker and a new
+note's template — so neither the Tomo Review heading nor an analysis or
+routed sub-heading lands in an off-limits section (ADR-8). It is a refusal
+without a heading pick: the fix is the setup's place. A re-run replaces the
+section where it already sits and is not re-checked. With no off-limits
+rows the check finds nothing and spec 045's plans are unchanged.

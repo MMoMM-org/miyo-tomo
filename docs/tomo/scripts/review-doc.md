@@ -241,3 +241,14 @@ ids, counts and a flag — no heading, description or item text (CON-3).
 `pass1_counts` carries the section keys beside the groups so its sum stays
 the number of Tomo items written. Without a mapping `pass1_sections` is not
 written at all, so an unmapped `meta.json` keeps spec 045's keys.
+
+## WHY `write` Reads the Template for a New Mapped Note (spec 046 T5.2, F4-AC5)
+
+A section whose heading a new note will lack lands in "Tomo Review", and
+its landing line must say so before the user approves. For a new target
+(and only with a mapping) `write` reads the configured template and its
+`_tomo` variant (`review_delivery.template_paths`), chooses one by spec
+045's rule (`review_actions.template_choice`) and marks the parts
+`review_section_plan.routed_keys` names. That is one or two Kado reads per
+new-note run; the template text goes nowhere but that call. An existing
+note needs no read: its routing depends on the user's Pass 2 choices.

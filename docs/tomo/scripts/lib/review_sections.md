@@ -231,3 +231,13 @@ picks the anchor and hands it to `_callout`; it calls `display_heading` through
 the `review_sections` module it already imports locally, since
 `review_sections` imports `review_doc` at module level and a top-level import
 the other way would be a cycle.
+
+## WHY a Routed Part Keeps Its Template Place but Opens the Divider (T5.2)
+
+A routed part (`routed`, set by `review-doc.py write` for a new note
+whose template lacks the heading) renders where its row stands in the
+template order, with the landing line naming "Tomo Review": the user reads
+the sections in the order they configured them. Its items land in Tomo
+Review, so the divider with Tomo Review's own landing line is rendered
+whenever any part lands there — an analysis part, a routed part or a
+non-empty group.

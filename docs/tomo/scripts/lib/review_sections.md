@@ -60,8 +60,13 @@ Two kinds of failure, two answers, as in spec 045:
 ## WHY Caps Are Refused, Never Truncated (ADR-2, Rule 6)
 
 Truncating to the cap would keep whichever items the model happened to write
-first, not the ones that matter. `over-cap` names the section; the model
-merges on the rewrite. The count is of the items the model proposed for the
+first, not the ones that matter. `over-cap` names the section: the pointer
+to its items plus its key in parentheses (`/sections/0/items: over-cap (s1)`,
+SDD F1-AC5), so the model sees which of its sections to merge without
+counting entries; the model merges on the rewrite. Only `over-cap` carries
+the key: the other refusals point at the key itself (`unknown-section`,
+`duplicate-section`) or at one item (`mark-not-allowed`,
+`double-placement`), where the item, not the section, is what to change. The count is of the items the model proposed for the
 section, before the source rule: a refusal that depended on how many items
 later fail their sources would let the same file be refused or accepted by
 the source check, and the model could not tell from the error what to cut.

@@ -1,5 +1,5 @@
 # review_sections.py — the Pass 1 section side of /review: the model's section proposals checked.
-# version: 0.1.0
+# version: 0.1.1
 """The user's mapped sections in the Pass 1 proposals of ``/review`` (spec 046, ADR-1, ADR-2).
 
 ``read.json`` carries ``sections`` (the SectionDefinitions) only when the
@@ -12,7 +12,7 @@ returns a ``SectionCheck``: the accepted items per section key
 
 - ``unknown-section``: a key with no definition (every key, without a mapping)
 - ``duplicate-section``: a key named a second time
-- ``over-cap``: more proposed items than the section's ``cap``
+- ``over-cap (<key>)``: more proposed items than the section's ``cap``
 - ``mark-not-allowed``: a mark that is not the period kind's, or whose child
   notes (a month's weekly, a quarter's monthly notes) were not read
 - ``double-placement`` (only with a mapping): the same normalised text, or the
@@ -91,7 +91,7 @@ def check(proposals: dict, read: dict) -> SectionCheck:
             continue
         seen.add(key)
         if len(items) > _cap(defs[key]):
-            result.errors.append(_error(f"/sections/{i}/items", OVER_CAP))
+            result.errors.append(_error(f"/sections/{i}/items", f"{OVER_CAP} ({key})"))
         result.accepted[key] = []
         for j, item in enumerate(items):
             mark = item.get("mark")

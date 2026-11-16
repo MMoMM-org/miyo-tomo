@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_sections.py — lib/review_sections.py and the spec 046 proposals schema (046 T4.1).
 
 Synthetic read.json / proposals.json dicts, no Kado:
@@ -177,14 +177,14 @@ def test_more_items_than_the_cap_are_refused_never_truncated():
     props = with_sections(proposals(), section("s1", *[item(f"a{d}", d) for d in days]),
                           section("s2", *[item(f"b{d}", d) for d in days]))
     result = rs.check(props, read)
-    assert result.errors == ["/sections/0/items: over-cap"]
+    assert result.errors == ["/sections/0/items: over-cap (s1)"]
     assert len(result.accepted["s1"]) == 3                       # refused as a whole, nothing cut
 
 
 def test_the_cap_counts_the_proposed_items_before_the_source_rule():
     read = mapped(week_read(), definition("s1", cap=1))
     props = with_sections(proposals(), section("s1", item("ok", "2026-03-24"), item("no source", "Efforts/X.md")))
-    assert rs.check(props, read).errors == ["/sections/0/items: over-cap"]
+    assert rs.check(props, read).errors == ["/sections/0/items: over-cap (s1)"]
 
 
 # ---------------------------------------------------------------- the source rule

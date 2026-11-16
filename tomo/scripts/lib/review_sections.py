@@ -1,5 +1,5 @@
 # review_sections.py — the Pass 1 section side of /review: the model's section proposals checked.
-# version: 0.1.1
+# version: 0.1.2
 """The user's mapped sections in the Pass 1 proposals of ``/review`` (spec 046, ADR-1, ADR-2).
 
 ``read.json`` carries ``sections`` (the SectionDefinitions) only when the
@@ -43,7 +43,8 @@ MARK_NOT_ALLOWED = "mark-not-allowed"
 DOUBLE_PLACEMENT = "double-placement"
 
 _LINK = r"!?\[\[[^\]\n]*\]\]"
-_LINKS = re.compile(rf"\(\s*{_LINK}(?:\s*,\s*{_LINK})*\s*\)|{_LINK}")
+_LINK_LIST = re.compile(rf"\(\s*{_LINK}(?:\s*,\s*{_LINK})*\s*\)\s*$")   # the trailing ([[a]], [[b]]) list
+_INLINE_LINK = re.compile(r"!?\[\[([^\]|\n]*)(?:\|[^\]\n]*)?\]\]")      # [[a|b]] -> a, [[a#h]] -> a#h
 
 
 @dataclass
@@ -81,13 +82,16 @@ def check(proposals: dict, read: dict) -> SectionCheck:
     has_children = rd.has_child_notes(read)
     sources = rd.Sources.of(read)
     seen = set()
+    refused: set = set()                                # entry indexes refused by key, out of the double pass
     for i, entry in enumerate(entries):
         key, items = str(entry.get("key")), entry.get("items") or []
         if key not in (defs or {}):
             result.errors.append(_error(f"/sections/{i}/key", UNKNOWN_SECTION))
+            refused.add(i)
             continue
         if key in seen:
             result.errors.append(_error(f"/sections/{i}/key", DUPLICATE_SECTION))
+            refused.add(i)
             continue
         seen.add(key)
         if len(items) > _cap(defs[key]):
@@ -107,15 +111,16 @@ def check(proposals: dict, read: dict) -> SectionCheck:
                 accepted["mark"] = str(mark)
             result.accepted[key].append(accepted)
     if defs is not None:
-        result.errors.extend(_double_placements(proposals))
+        result.errors.extend(_double_placements(proposals, refused))
     return result
 
 
 # --- double placement -------------------------------------------------------------------
 
 def _normalised_lines(text: object) -> List[str]:
-    """The text's lines casefolded, whitespace collapsed, without ``%%`` marks and wiki links; empty ones dropped."""
-    lines = (" ".join(_LINKS.sub(" ", ln).casefold().split())
+    """The text's lines casefolded, whitespace collapsed, without ``%%`` marks and a trailing link list,
+    each inline link reduced to its target; empty ones dropped."""
+    lines = (" ".join(_INLINE_LINK.sub(r"\1", _LINK_LIST.sub("", ln)).casefold().split())
              for ln in str(text).replace(rd.ID_MARK, "").splitlines())
     return [ln for ln in lines if ln]
 
@@ -125,9 +130,11 @@ def _source_set(sources: object) -> frozenset:
     return frozenset(rd.note_stem(str(s)).casefold() for s in sources or [])
 
 
-def _places(proposals: dict) -> Iterator[Tuple[str, dict]]:
-    """Every item in document order with its pointer: the sections, then the groups in table order."""
+def _places(proposals: dict, refused: set) -> Iterator[Tuple[str, dict]]:
+    """Every item in document order with its pointer: the sections not ``refused``, then the groups in table order."""
     for i, entry in enumerate(proposals.get("sections") or []):
+        if i in refused:
+            continue
         for j, item in enumerate(entry.get("items") or []):
             yield f"/sections/{i}/items/{j}", item
     groups = proposals.get("groups") or {}
@@ -136,14 +143,14 @@ def _places(proposals: dict) -> Iterator[Tuple[str, dict]]:
             yield f"/groups/{group}/{j}", item
 
 
-def _double_placements(proposals: dict) -> List[str]:
+def _double_placements(proposals: dict, refused: set) -> List[str]:
     texts: set = set()
     firsts: set = set()
     errors: List[str] = []
-    for pointer, item in _places(proposals):
+    for pointer, item in _places(proposals, refused):
         lines = _normalised_lines(item.get("text"))
         if not lines:
-            continue                                   # empty-text rejects it
+            continue                                   # nothing but whitespace, marks or a link list: no finding to repeat
         text, first = " ".join(lines), (_source_set(item.get("sources")), lines[0])
         if text in texts or first in firsts:
             errors.append(_error(pointer, DOUBLE_PLACEMENT))

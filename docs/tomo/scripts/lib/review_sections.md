@@ -77,15 +77,35 @@ Rule 5 (one finding, one place) is semantic; whether two differently worded
 items are "the same finding" stays the model's (the skill says so). What a
 script can refuse without guessing is the plain repeat: the same text, or
 the same sources with the same first line. Text is normalised (casefold,
-whitespace collapsed, `%%` marks and wiki links / a parenthesised link list
-removed) so a copy that differs only in case, spacing or the links the
-script renders anyway is still a copy. Sources are compared as the set of
+whitespace collapsed, `%%` marks removed) so a copy that differs only in case
+or spacing is still a copy.
+
+Of the links, only the link list goes: the parenthesised list of wiki links
+at the end of a line, `([[a]], [[b|Mon]], [[c#Log]])`, the form
+`review_doc.item_lines` renders after the item text from its sources. A model
+that copies that list into `text` has still written the same finding, and its
+sources are compared separately. A wiki link inside the sentence is part of
+the finding: "Talked with [[Anna]] about the offer" and "Talked with [[Bert]]
+about the offer" are two findings, and stripping every link would make them
+one and refuse the whole file. So an inline link is reduced to its target
+(`[[a|b]]` → `a`, `[[a#h]]` → `a#h`, `![[x]]` → `x`): different targets
+stay different, and the same target under another alias is still the same.
+A text that is nothing but a link list normalises to nothing and is skipped
+here: it holds no finding text to repeat.
+
+Items of a `sections` entry refused as `unknown-section` or
+`duplicate-section` do not take part. The entry is already refused and the
+model rewrites it as a whole; its items reported a second time as
+`double-placement` would point the model at items it must drop anyway, not
+at a second place to merge. Sources are compared as the set of
 their note stems, so a path and a bare stem of the same note are one source.
-The check runs over every section item and every group item in document
-order (sections first, then the groups in their table order) and names the
-later one, so the model keeps the first place. It runs only with a mapping:
-spec 045's groups are checked exactly as before (F1-AC10). An item whose
-text normalises to nothing is skipped here; `empty-text` rejects it.
+The check runs over every item of the accepted section entries and every
+group item in document order (sections first, then the groups in their table
+order) and names the later one, so the model keeps the first place. It runs
+only with a mapping: spec 045's groups are checked exactly as before
+(F1-AC10). An item whose text normalises to nothing is skipped here:
+whitespace-only text is rejected as `empty-text` by the source rule, and a
+link-list-only text holds no finding text a second item could repeat.
 
 ## WHY a Section Item Uses the Group Source Rule, With Its Mark as the Group
 

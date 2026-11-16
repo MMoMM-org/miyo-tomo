@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_sections.py — lib/review_sections.py and the spec 046 proposals schema (046 T4.1).
 
 Synthetic read.json / proposals.json dicts, no Kado:
@@ -281,3 +281,38 @@ def test_the_same_first_line_with_other_sources_is_not_a_double():
 def test_two_identical_group_items_are_a_double_only_with_a_mapping():
     assert rs.check(DOUBLED, mapped(week_read())).errors == ["/groups/open/0: double-placement"]
     assert rs.check(DOUBLED, week_read()).errors == []
+
+
+@pytest.mark.parametrize("first, second", [
+    ("Talked with [[Anna]] about the offer", "Talked with [[Bert]] about the offer"),
+    ("Met [[Anna]]", "Met [[Bob]]"),
+    ("[[Anna|the client]] called", "[[Bert|the client]] called"),
+    ("[[Anna#Offer]] x", "[[Anna#Budget]] x"),
+    ("![[chart-a.png]] x", "![[chart-b.png]] x"),
+])
+def test_an_inline_link_keeps_its_target_so_different_targets_are_not_a_double(first, second):
+    props = with_sections(proposals(done=[item(first, "2026-03-24")]), section("s1", item(second, "2026-03-25")))
+    assert rs.check(props, mapped(week_read())).errors == []
+
+
+def test_an_inline_link_with_the_same_target_is_a_double_whatever_its_alias():
+    props = with_sections(proposals(done=[item("Met [[Anna|her]]", "2026-03-24")]),
+                          section("s1", item("met [[Anna]]", "2026-03-25")))
+    assert rs.check(props, mapped(week_read())).errors == ["/groups/done/0: double-placement"]
+
+
+def test_a_trailing_link_list_with_aliases_and_headings_normalises_away():
+    props = with_sections(proposals(done=[item("Finished the report ([[2026-03-02|Mon]], [[2026-03-03#Log]])",
+                                               "2026-03-24")]),
+                          section("s1", item("finished the report ([[2026-03-25]])", "2026-03-25")))
+    assert rs.check(props, mapped(week_read())).errors == ["/groups/done/0: double-placement"]
+
+
+@pytest.mark.parametrize("key", ["s1", "s7"])
+def test_a_refused_section_entry_adds_no_double_placement(key):
+    props = with_sections(proposals(), section("s1", item("a", "2026-03-23")), section(key, item("a", "2026-03-24")))
+    error = "duplicate-section" if key == "s1" else "unknown-section"
+    assert rs.check(props, mapped(week_read())).errors == [f"/sections/1/key: {error}"]
+    props["groups"]["done"] = [item("a", "2026-03-24")]       # the pass still runs on the accepted places
+    assert rs.check(props, mapped(week_read())).errors == [f"/sections/1/key: {error}",
+                                                           "/groups/done/0: double-placement"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t5_2_new_note_sections.py — new notes, analysis rows and the "Tomo Review" interplay (046 T5.2).
 
 PRD F4-AC5, F2-AC12, F2-AC7; SDD Runtime View / Complex Logic "New note", the off-limits landing
@@ -17,6 +17,8 @@ ParsedDoc.approved_review(). Mechanisms pinned:
 - on an existing note sections are planned into ReviewPlan.sections, `choice=review` routes, and a
   new "Tomo Review" passes its insertion index as `review_at`;
 - the "Tomo Review" placement passes the off-limits landing check (else `landing-off-limits`);
+- a re-run stops with `landing-off-limits` when a row covers the existing "Tomo Review" heading or the
+  heading whose body holds its line (a `with_subsections` row through an ancestor), else replaces;
 - `review-section-kept` when a re-run leaves nothing for an earlier "Tomo Review" section;
 - configured section keys are not `unlanded`; `nothing-to-deliver` counts sections;
 - Pass 1: `review-doc.py write` marks the routed parts of a new note, landing line and divider.
@@ -237,6 +239,45 @@ def test_tomo_review_before_the_heading_after_an_off_limits_body_is_landing_off_
 def test_landing_off_limits_refuses_at_delivery():
     p = plan(target_text=EXISTING, setup=mapped(anchor=OWN, placement="inside", own_sections=[], off_limits=OFF_OWN))
     assert rdl.classify(p)[0] == ["landing-off-limits"]
+
+
+# ---------------------------------------------------------------- a re-run: where the existing "Tomo Review" sits
+# The rule: an existing "Tomo Review" (the heading above its spec 045 marker) is off limits when a row covers that
+# heading itself or the heading whose body holds its heading line (``review_mapping.landing_off_limits`` on both).
+
+def off(heading, level=2, parent=None, subsections=False) -> list:
+    return [{"heading": heading, "level": level, "parent": parent, "occurrence": 1, "with_subsections": subsections}]
+
+
+TR = f"{HEADING}\n{MARKER}\n- alt\n"
+IN_OWN = EXISTING.replace("meine Worte\n", f"meine Worte\n\n### {TR}")                        # a child of OWN
+DEEP_IN_OWN = EXISTING.replace("meine Worte\n", f"meine Worte\n\n### Notizen\nx\n\n#### {TR}")  # OWN's grandchild
+AFTER_OWN = EXISTING.replace("## Plans\n", f"## {TR}\n## Plans\n")                            # right after OWN's body
+BEFORE_OWN = EXISTING.replace(f"## {OWN}\n", f"## {TR}\n## {OWN}\n")                          # after Energy and Sleep
+
+
+@pytest.mark.parametrize("note, rows", [
+    (IN_OWN, off(OWN)),                                        # the row names the heading whose body holds it
+    (AFTER_OWN, off(OWN)),                                     # as an insert before Plans would land there
+    (DEEP_IN_OWN, off(OWN, subsections=True)),                 # a with_subsections row names an ancestor
+    (BEFORE_OWN, off(HEADING)),                                # the row names the Tomo Review heading itself
+    (IN_OWN, off(HEADING, level=3, parent=OWN)),
+], ids=["parent", "sibling-body", "ancestor-with-subsections", "itself", "itself-as-child"])
+def test_a_rerun_stops_when_the_existing_tomo_review_sits_off_limits(note, rows):
+    p = plan(target_text=note, setup=mapped(off_limits=rows))
+    assert p.mode == "replace" and p.problems == ["landing-off-limits"], p.problems
+    assert p.actions == [] and p.section_md == "" and rdl.classify(p)[0] == ["landing-off-limits"]
+
+
+@pytest.mark.parametrize("note, rows", [
+    (IN_OWN, off("Plans")),                                    # an unrelated heading
+    (BEFORE_OWN, off(OWN)),                                    # OWN comes after Tomo Review: nothing holds it
+    (DEEP_IN_OWN, off(OWN)),                                   # without with_subsections OWN's own body only
+], ids=["unrelated", "next-heading", "ancestor-without-subsections"])
+def test_a_rerun_replaces_when_no_row_covers_where_tomo_review_sits(note, rows):
+    p = plan(target_text=note, setup=mapped(off_limits=rows))
+    assert p.problems == [], p.problems
+    assert [a["action"] for a in p.actions] == ["replace_section"] and p.actions[0]["anchor"]["value"] == HEADING
 
 
 # ---------------------------------------------------------------- a re-run with nothing for Tomo Review

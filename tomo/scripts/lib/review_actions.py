@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.5.0
+# version: 0.5.1
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -27,9 +27,8 @@ hashes kept, every line opening with ``` or ~~~ toggles a fence, frontmatter inc
 split on ``\\n`` only, ECMAScript's whitespace set ``JS_WS`` and line terminators — a CRLF line is
 no heading); a configured anchor, the review heading and the own sections match a note heading
 with or without closing hashes, the emitted anchor value is Hashi's text. Heading levels come
-from ``review_config.place_level``; every
-landed item line runs through ``review_doc.neutralised`` once more (idempotent); ids are
-stripped; the content ends with one blank line and depends on nothing but the arguments.
+from ``review_config.place_level``; every landed item line runs through ``review_doc.neutralised`` once more
+(idempotent); ids are stripped; the content ends with one blank line and depends on nothing but the arguments.
 ``locate_target`` picks the target among the configured paths (flat folder first, the duplicate
 named) and the by-name hits elsewhere. ``pick_headings`` names the headings a heading pick
 chooses from without a refusal (the target note's, or the chosen template's for a new note) —
@@ -185,8 +184,7 @@ def landed_groups(review: dict) -> Tuple[List[Tuple[str, List[List[str]]]], int,
     its non-empty kept items are counted as unlanded and left out."""
     words = rd.labels(str(review.get("language") or ""))
     groups: List[Tuple[str, List[List[str]]]] = []
-    escaped = 0
-    unlanded = 0
+    escaped = unlanded = 0
     for group, items in (review.get("groups") or {}).items():
         landed: List[List[str]] = []
         for item in items or []:
@@ -396,6 +394,8 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
         if not groups:                         # nothing left for the earlier section: it stays as it is
             plan.notices.append(rsp.REVIEW_SECTION_KEPT)
             return plan
+        if setup.off_limits and rsp.review_off_limits(target.text or "", period, setup.off_limits) is not None:
+            return _refuse(plan, rsp.STOPS[rsp.OFF_LIMITS_LANDING], [])     # where it sits now: also off limits
         if _own(setup, text) or _resolved(headings, text) != above:
             return _refuse(plan, HEADING_COLLISION, headings)
         if _level_or_refuse(plan, rc.BEFORE, level, headings) is None:

@@ -107,7 +107,11 @@ sits. The heading identity is rebuilt on the note's headings as
 occurrence, ancestors) so `review_mapping.landing_off_limits` is the one
 check for both. A level-1 heading or the preamble is never covered.
 `place_off_limits` runs the same check on spec 045's Tomo Review placement
-(`before` / `inside` an anchor), for T5.2.
+(`before` / `inside` an anchor), for T5.2. `review_off_limits` runs it on an
+existing Tomo Review on a re-run — the heading above its marker and the
+heading whose body holds that heading's line — because a re-run's replace
+writes wherever the section sits now, mirroring this module's own re-run
+rule (where it actually sits, not where it was planned).
 
 ## WHY a Section Never Lands In or At the Tomo Review Range (ADR-12)
 

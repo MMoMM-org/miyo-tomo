@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.2.0
+# version: 0.2.1
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -13,7 +13,7 @@ scoped to the mapped heading for ``under`` / ``end``, unscoped for ``before``), 
 ``in-review``, ``landing-off-limits`` (``SectionPlan.stop`` names it). ``choice`` (``skip``,
 ``review``, ``confirm-moved``) answers only the stop that offers it. ``review_at`` is the planned
 insertion index of a new "Tomo Review" section; an existing one is found by its spec 045 marker.
-``place_off_limits`` runs the landing check on spec 045's "Tomo Review" placement.
+``place_off_limits`` runs the landing check on spec 045's "Tomo Review" placement, ``review_off_limits`` where it sits.
 
 A new note (T5.2, F4-AC5): ``plan_new_note`` plans every row placed in the note on the text
 ``review_actions`` built it from (None: a plain note); a heading the text lacks, holds twice or holds
@@ -279,6 +279,15 @@ def place_off_limits(note_text: str, anchor: str, placement: str, off_limits: Se
     p = note.line(n) if _SPEC045_PLACEMENT[placement] == "before" else note.range_end(n) + 1
     landing = note.above(p)
     return None if landing is None else landing_off_limits(note.keyed[landing], off_limits)
+
+
+def review_off_limits(note_text: str, period: str, off_limits: Sequence[dict]) -> Optional[dict]:
+    """The off-limits row covering an existing "Tomo Review" (the heading above its spec 045 marker) or the heading
+    whose body holds that heading's line; None without a marker or a covering row."""
+    note = _Note.read(note_text)
+    tr = note.review_range(period)
+    heads = [] if tr is None else [n for n in (note.above(tr[0] + 1), note.above(tr[0])) if n is not None]
+    return next((r for r in (landing_off_limits(note.keyed[n], off_limits) for n in heads) if r), None)
 
 
 # --- the delivery's sections (T5.2) --------------------------------------------------------------

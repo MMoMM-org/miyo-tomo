@@ -377,6 +377,22 @@ note's template — so neither the Tomo Review heading nor an analysis or
 routed sub-heading lands in an off-limits section (ADR-8). It is a refusal
 without a heading pick: the fix is the setup's place. The name is
 `review_section_plan.STOPS`' `landing-off-limits`, the same stop a section
-gets; `classify` refuses it as an unlisted name until T5.5 lists it. A re-run replaces the
-section where it already sits and is not re-checked. With no off-limits
+gets; `classify` refuses it as an unlisted name until T5.5 lists it. With no off-limits
 rows the check finds nothing and spec 045's plans are unchanged.
+
+A re-run is checked too (`review_section_plan.review_off_limits`), because
+the re-run's `replace_section` rewrites the whole section — now with
+analysis and routed sub-headings — wherever it sits, and that place can be
+off limits by then: the user marked the heading off limits after the first
+run, or moved the section under an off-limits heading. Checking only at
+insert time would let the 0-writes-to-an-off-limits-section rule (PRD
+Rule 4) hold on the first run and break on every later one. The rule
+mirrors the section planner's re-run rule (check where it actually sits):
+the existing section is off limits when a row covers the Tomo Review heading
+itself, or the heading whose body holds that heading's line (its parent, or
+the earlier sibling whose body it follows — the landing an insert at that
+spot would get). A `with_subsections` row covers both through their
+ancestors. The check runs after `review-section-kept` (a re-run with nothing
+for the section writes nothing there, so there is nothing to stop) and
+before the collision checks; it refuses without a heading pick, like the
+insert's.

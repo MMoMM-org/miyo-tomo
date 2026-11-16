@@ -87,6 +87,7 @@
 | 2026-11-15 | Phase 3 drift check (Drift, Alignment, Consistency; no FAIL, 2 MEDIUM, 5 LOW): all fixed — CON-2 sixth difference, these log rows, the SDD API/shapes/Directory Map, Phase 4 notes (T4.1 monthly sources, T4.4/T4.5 quarter keys, review-doc.md), WHY-text and docstring fixes, a mapped-vs-unmapped equality test | Owner chose "fix all now" |
 | 2026-11-16 | T4.1: keep `duplicate-section` (a section key named twice in proposals `sections`), added to the SDD Internal API and ADR-2 with the quarter per-item reasons `quarter-only-group` / `no-monthly-notes`; `over-cap` names the section key | Spec review found the refusal unrequested; without it a split entry gets round the per-entry cap. Owner chose keep + amend SDD |
 | 2026-11-16 | T4.2: placement and landing of each section part come from the configured `setup.sections` row by id, not from read.json; a read whose section keys differ from the config rows is refused `sections-changed`; headings, landing lines and the mapped callout's anchor are display-neutralised; the unmapped callout keeps its raw anchor | Keeps the model's file free of where a section lands; a hand-edited heading cannot forge a section id for the parser; CON-2 byte identity of the unmapped document (orchestrator decision, reviewed) |
+| 2026-11-16 | Model escalation: T4.3 opus → opus@max | Trigger: second review FAIL |
 
 ## Context
 

@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Pass 2 — delivery into the user's sections"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 5
 ---

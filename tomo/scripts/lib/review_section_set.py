@@ -1,5 +1,5 @@
 # review_section_set.py — the mapped sections of one /review delivery as a set, and the actions they compose.
-# version: 0.1.1
+# version: 0.2.0
 """Plan, route and compose the mapped sections of a ``/review`` delivery (spec 046 T5.2, T5.4; PRD
 F4-AC1, F4-AC5, F2-AC12; SDD ADR-12).
 
@@ -17,6 +17,12 @@ escapes of the blocks that land as their own block (``insert`` and ``replace``; 
 new note, whose text is spliced from inserts). ``lands`` is the one test of both: a section with no lines
 lands in neither, so a new note gets no empty marker pair.
 
+What the delivery reads besides the actions (T5.5): ``report`` — per section with lines its key, mode,
+notices, scope level, a stop with the choices it offers and where a moved block sits, ``lines`` on request;
+``record`` — ``{key, mode, placement, scope_level}`` per section with lines, keys and enums only; ``untaken``
+— the keys of the user's choices no plan took; ``dropped`` / ``empty`` read the parsed document's
+``section_counts``; ``names`` and ``fields`` are the problem and notice names and the output fields of all that.
+
 Imports ``review_section_plan``, never ``review_actions`` or ``review_new_note``. No Kado, no clock, no
 file I/O.
 
@@ -31,6 +37,8 @@ from lib.review_sections import REVIEW as ANALYSIS, display_heading
 from lib.template_syntax import templater_inner_line_indexes
 
 LANDING = (rsp.INSERT, rsp.REPLACE)
+CHOICE_INVALID = "choice-invalid"                      # a choice no plan took
+SECTION_DROPPED, SECTION_EMPTY = "section-dropped", "section-empty"
 
 
 def action_id(n: int) -> str:
@@ -117,3 +125,74 @@ def compose(plans: Sequence[rsp.SectionPlan], target_path: str, review_action: O
     if review_action is not None:
         actions.append({"id": action_id(len(actions) + 1), **review_action})
     return actions
+
+
+def report(plans: Sequence[rsp.SectionPlan], *, lines: bool) -> List[dict]:
+    """Per section whose block holds lines: what the preview and the delivery output show of it."""
+    out: List[dict] = []
+    for p in plans:
+        if not p.lines:
+            continue
+        entry: Dict[str, object] = {"key": p.key, "mode": p.mode, "notices": list(p.notices)}
+        if p.scope is not None:
+            entry["scope_level"] = p.scope["level"]
+        if p.stop is not None:
+            entry["stop"], entry["choices"] = p.stop, list(p.offers)
+        if p.block_at is not None:
+            entry["block_at"] = dict(p.block_at)
+        if lines:
+            entry["lines"] = list(p.lines)
+        out.append(entry)
+    return out
+
+
+def record(plans: Sequence[rsp.SectionPlan]) -> List[dict]:
+    """``delivered_plan.sections``: per section whose block holds lines, keys and enums only."""
+    return [{"key": p.key, "mode": p.mode, "placement": p.hashi_placement,
+             "scope_level": p.scope["level"] if p.scope is not None else None} for p in plans if p.lines]
+
+
+def untaken(plans: Sequence[rsp.SectionPlan], choices: Dict[str, str]) -> List[str]:
+    """The keys of ``choices`` no plan took: no such section, or the choice answers no stop of it."""
+    by_key = {p.key: p for p in plans}
+
+    def taken(key: str, choice: str) -> bool:
+        p = by_key.get(key)
+        if p is None:
+            return False
+        if choice == rsp.CONFIRM_MOVED:
+            return rsp.BLOCK_MOVED_CONFIRMED in p.notices
+        return p.mode == choice
+    return [key for key, choice in choices.items() if not taken(key, choice)]
+
+
+def dropped(counts: Dict[str, dict]) -> List[dict]:
+    """``[{key, added}]`` per unticked section that held anything, Tomo's items or the user's."""
+    return [{"key": key, "added": c["added"]} for key, c in counts.items()
+            if c.get("ticked") is False and (c["kept"] or c["unticked"] or c["added"])]
+
+
+def empty(counts: Dict[str, dict]) -> List[str]:
+    """The keys of the ticked sections that receive nothing."""
+    return [key for key, c in counts.items() if c.get("empty")]
+
+
+def names(plans: Sequence[rsp.SectionPlan], counts: Dict[str, dict], choices: Dict[str, str]) -> List[str]:
+    """The stops of the sections with lines, ``choice-invalid``, their notices, ``section-dropped`` / ``-empty``."""
+    out = [p.stop for p in plans if p.stop is not None and p.lines]
+    out += [CHOICE_INVALID] if untaken(plans, choices) else []
+    out += [n for p in plans if p.lines for n in p.notices]
+    return out + [SECTION_DROPPED] * bool(dropped(counts)) + [SECTION_EMPTY] * bool(empty(counts))
+
+
+def fields(plans: Sequence[rsp.SectionPlan], counts: Dict[str, dict], choices: Dict[str, str], *,
+           lines: bool) -> dict:
+    """``sections``, ``dropped``, ``empty`` of a mapped plan (none without sections or counts), and
+    ``choices_invalid`` when a choice was not taken."""
+    out: Dict[str, object] = {}
+    if plans or counts:
+        out.update(sections=report(plans, lines=lines), dropped=dropped(counts), empty=empty(counts))
+    invalid = untaken(plans, choices)
+    if invalid:
+        out["choices_invalid"] = invalid
+    return out

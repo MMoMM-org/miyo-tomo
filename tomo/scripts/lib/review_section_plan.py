@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.4.0
+# version: 0.5.0
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -11,7 +11,8 @@ Hashi text, ``before`` -> ``before``, ``under`` -> ``after``, ``end`` -> ``insid
 scoped to the mapped heading for ``under`` / ``end``, unscoped for ``before``), ``skip`` / ``review``
 (the user's choice at a stop) or a stop: ``missing``, ``ambiguous``, ``broken``, ``moved``,
 ``in-review``, ``landing-off-limits`` (``SectionPlan.stop`` names it). ``choice`` (``skip``,
-``review``, ``confirm-moved``) answers only the stop that offers it. ``review_at`` is the planned
+``review``, ``confirm-moved``) answers only the stop that offers it; ``SectionPlan.offers`` names what a stop
+that stays offers. ``review_at`` is the planned
 insertion index of a new "Tomo Review" section; an existing one is found by its spec 045 marker.
 ``place_off_limits`` runs the landing check on spec 045's "Tomo Review" placement, ``review_off_limits`` where it sits.
 
@@ -71,6 +72,7 @@ class SectionPlan:
     insert_at: Optional[int] = None                       # an insert: the line index Hashi inserts at
     heading_at: Optional[int] = None                      # an insert: the mapped heading's line index
     notices: List[str] = field(default_factory=list)
+    offers: Tuple[str, ...] = ()                          # a stop: the choices that answer it
 
     @property
     def stop(self) -> Optional[str]:
@@ -180,8 +182,13 @@ class _Note:
 
 # --- the plan ------------------------------------------------------------------------------------
 
-def _stop(plan: SectionPlan, mode: str, choice: Optional[str], allowed: Tuple[str, ...] = (SKIP,)) -> SectionPlan:
-    plan.mode = choice if choice in allowed else mode
+def _stop(plan: SectionPlan, mode: str, choice: Optional[str], allowed: Tuple[str, ...] = (SKIP,),
+          offers: Optional[Tuple[str, ...]] = None) -> SectionPlan:
+    """``choice`` when ``allowed`` takes it, else the stop ``mode`` offering ``offers`` (default ``allowed``)."""
+    if choice in allowed:
+        plan.mode = choice
+    else:
+        plan.mode, plan.offers = mode, (allowed if offers is None else offers)
     return plan
 
 
@@ -203,7 +210,8 @@ def plan_section(row: dict, note_text: str, period: str, items: Sequence[dict], 
     pair = len(starts) == 1 and len(ends) == 1 and ends[0] > starts[0]
     mapped = note.find(row_key(row))
     if mapped is None and not (pair and choice == CONFIRM_MOVED):
-        return _stop(plan, MISSING, choice, (SKIP, REVIEW))                 # step 5, also on a re-run
+        return _stop(plan, MISSING, choice, (SKIP, REVIEW),                 # step 5, also on a re-run
+                     (SKIP, REVIEW, CONFIRM_MOVED) if pair else None)
     if mapped is not None and sum(h[2] == note.heads[mapped][2] for h in note.heads) > 1:
         return _stop(plan, AMBIGUOUS, choice, (SKIP, REVIEW))               # Rule 9: Hashi takes the first
     tr = note.review_range(period)
@@ -257,7 +265,7 @@ def _rerun(plan, note: _Note, mapped: Optional[int], placement: str, block: Tupl
         return _stop(plan, AMBIGUOUS, choice)
     plan.block_at = {"heading": text, "level": level}
     if choice != CONFIRM_MOVED:
-        return _stop(plan, MOVED, choice)
+        return _stop(plan, MOVED, choice, offers=(SKIP, CONFIRM_MOVED))
     plan.scope = {"heading": text, "level": level}
     plan.mode, plan.notices = REPLACE, [BLOCK_REPLACED, BLOCK_MOVED_CONFIRMED]
     return plan

@@ -1,46 +1,37 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.9
+# version: 0.3.0
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
-ADR-13).
+ADR-13; spec 046 ADR-12: section stops, choices).
 
-``preview`` reads the approved document fresh through Kado, builds the plan
-(``lib/review_actions``) against the target note as it is now, and prints the
-section as it will land, its target and place, the refusing problems and the
-notices — nothing is written. ``deliver`` builds the same plan and writes, in
-this order, the new note (``new-note`` mode only), ``<stem>_instructions.json``
-and ``<stem>_instructions.md`` to the inbox through ``lib/staged_delivery``,
-then marks the document delivered with one write guarded by the ``modified``
-the reader saw; ``meta.json`` records every step so a failed delivery resumes
-without a duplicate, and the plan the delivery writes (``delivered_plan``:
-mode, target, place, ``anchor_picked`` when ``--place-anchor`` was given —
-never the heading), recorded with the first step, so a resume reports what
-was written rather than the plan rebuilt against the vault now; the undone
-steps write the rebuilt payloads, so a resume with an undone set step whose
-rebuilt plan differs from the record refuses ``replan-differs``, and a resume
-of a picked-anchor record without ``--place-anchor`` refuses ``anchor-needed``
-with the ``headings`` of the pick (nothing written either way). A set at the stem's path that this delivery did not
-write refuses ``set-exists`` while any action in it waits; once every action
-is applied (``lib/review_state.all_applied`` — the finished set of an earlier
-run of the period) ``deliver`` writes the new set JSON over it, guarded by the
-``modified`` the probe read, and the new MD over the old one, and keeps
-``set_replaced`` in ``meta.json`` so a resume overwrites the old MD too and
-never rewrites the set it landed itself. ``drop`` withdraws any delivery that began — a step
-done or in flight — by writing the set with an empty ``actions`` list and
-an MD that names every file the delivery left (the new note among them);
-it reads the set JSON first (``lib/review_state.read_set``) and refuses when
-Hashi marked any action ``applied`` (nothing written, nothing changed),
-withdraws over an absent or unreadable set, and writes the set JSON guarded
-by the ``modified`` that read returned; before any step it removes the
-stage. It marks ``meta.json`` withdrawn last, so a drop that failed on the
-MD write is listed again by the next ``/review``. ``status`` names the review's state
-through ``lib/review_state.stem_state`` — the function ``review-session.py
-start`` uses per listed document — which reads the set JSON for an approved
-document and probes the target and the inbox copy for a waiting set (ADR-6).
+``preview`` reads the approved document fresh through Kado, builds the plan (``lib/review_actions``) against the
+target note as it is now, and prints the section as it will land, its target and place, the refusing problems and
+the notices — nothing is written. ``deliver`` builds the same plan and writes, in this order, the new note
+(``new-note`` mode only), ``<stem>_instructions.json`` and ``<stem>_instructions.md`` to the inbox through
+``lib/staged_delivery``, then marks the document delivered with one write guarded by the ``modified`` the reader
+saw; ``meta.json`` records every step so a failed delivery resumes without a duplicate, and the plan the delivery
+writes (``delivered_plan``: mode, target, place, ``anchor_picked`` when ``--place-anchor`` was given — never the
+heading), recorded with the first step, so a resume reports what was written rather than the plan rebuilt against
+the vault now; the undone steps write the rebuilt payloads, so a resume with an undone set step whose rebuilt plan
+differs from the record refuses ``replan-differs``, and a resume of a picked-anchor record without
+``--place-anchor`` refuses ``anchor-needed`` with the ``headings`` of the pick (nothing written either way). A set
+at the stem's path that this delivery did not write refuses ``set-exists`` while no action in it is applied; once
+any is (``lib/review_state.any_applied``: an earlier run's finished or partly applied set, spec 046 ADR-12)
+``deliver`` writes the new set JSON over it, guarded by the ``modified`` the probe read, and the new MD over the old
+one, and keeps ``set_replaced`` in ``meta.json`` so a resume overwrites the old MD too and never rewrites the set it
+landed itself. ``drop`` withdraws any delivery that began — a step done or in flight — by writing the set with an
+empty ``actions`` list and an MD that names every file the delivery left (the new note among them); it reads the set
+JSON first (``lib/review_state.read_set``) and refuses when Hashi marked any action ``applied`` (nothing written,
+nothing changed), withdraws over an absent or unreadable set, and writes the set JSON guarded by the ``modified``
+that read returned; before any step it removes the stage. It marks ``meta.json`` withdrawn last, so a drop that
+failed on the MD write is listed again by the next ``/review``. ``status`` names the review's state through
+``lib/review_state.stem_state`` — the function ``review-session.py start`` uses per listed document — which reads
+the set JSON for an approved document and probes the target and the inbox copy for a waiting set (ADR-6).
 
 Usage (cwd = instance root):
-    python3 scripts/review-instructions.py preview --stem <period>_review [--place-anchor H]
-    python3 scripts/review-instructions.py deliver --stem <period>_review [--place-anchor H]
+    python3 scripts/review-instructions.py preview --stem <period>_review [--place-anchor H] [CHOICES]
+    python3 scripts/review-instructions.py deliver --stem <period>_review [--place-anchor H] [CHOICES]
+        CHOICES: [--section-choice <key>=skip|review ...] [--confirm-moved <key> ...] — answers to section stops
     python3 scripts/review-instructions.py drop    --stem <period>_review
     python3 scripts/review-instructions.py status  --stem <period>_review
         [--config config/vault-config.yaml] [--profiles-dir profiles] [--tmp tomo-tmp/review]
@@ -49,11 +40,12 @@ Output: one JSON object on stdout, ASCII-escaped.
     preview: status ok, stem, doc_path, mode insert|replace|new-note, target, target_moved?, duplicates?,
              target_appeared?, place {anchor, placement, level}, section_md, escaped_lines, templater_hint,
              variant_missing?, template_unmergeable?, unlanded?, problems [refusing], notices, headings?,
-             set_exists, set_applied, resume
+             set_exists, set_applied, resume; mapped: SECTIONS = sections [{key, mode, notices, scope_level?, stop?,
+             choices?, block_at?, lines (preview only)}], dropped [{key, added}], empty [key], choices_invalid?
     deliver: status delivered|resumed, stem, step "", paths {set_json, set_md, note?}, next hashi-or-by-hand,
-             mode, target, place, notices, target_appeared?
-           | status refused, stem, problems [<refusing problems>|set-exists|set-withdrawn|replan-differs|anchor-needed|
-             name-taken], exists_path?, step?, headings? (anchor-needed only)
+             mode, target, place, notices, target_appeared?, SECTIONS
+           | status refused, stem, problems [<refusing>|set-exists|set-withdrawn|replan-differs|anchor-needed|
+             choices-needed|name-taken], exists_path?, step?, headings? (anchor-needed only), SECTIONS?
            | status stopped, stem, step, failed_step, paths, problems [doc-changed|kado-write-failed],
              reason? open-unsaved|changed-since-read|unknown (doc-changed only)
     drop:    status withdrawn, stem, paths {set_json, set_md, note?} | status dropped, stem, removed
@@ -64,29 +56,26 @@ Output: one JSON object on stdout, ASCII-escaped.
              setup-invalid|inbox-not-configured], errors? | status stopped, stem, error {kind, detail}
 
 Rules: a refusing problem means nothing is written; a second set for the stem is refused (set-exists) unless
-    every action of the set at the path is applied — then deliver writes over it, the set JSON under the
-    modified the probe read (Kado's CONFLICT there is kado-write-failed, resumable); a set
-    at the path with an empty actions list on a begun delivery is a drop that did not finish, refused
-    (set-withdrawn) before set-exists is considered — drop completes it, deliver never resumes over it;
-    steps already done are skipped on resume, a step in flight is compared or uploaded; the document mark
-    is the last step — a refused guard (Kado's error code CONFLICT, or the client's KadoConcurrencyError)
-    is doc-changed with failed_step doc_mark, any other write failure kado-write-failed, both resumable;
-    doc-changed names why in reason — open-unsaved (Kado's dirty-editor message: the document is open in
-    Obsidian with unsaved changes), changed-since-read (the write guard's message, or KadoConcurrencyError),
-    unknown (a CONFLICT with neither) — the name only, never Kado's message; a resumed output reports the
-    recorded delivered_plan (mode, target, place; target_appeared from the Pass 1 mode against the recorded
-    one), the rebuilt plan when the delivery began before the record existed; on a delivery still open (begun,
-    doc_mark undone, not withdrawn, no set-withdrawn), a record whose anchor_picked is true needs --place-anchor
-    again (anchor-needed, with headings, before anything else), and a record with an undone step among its own
-    steps (note for a new-note record, set_json, set_md) is refused replan-differs when the rebuilt mode, target,
-    place.placement or place.level differs from the record, or place.anchor when the record holds one — before
-    the rebuilt plan's own problems; only doc_mark undone, or no record, resumes as before; a finished or
-    withdrawn delivery keeps set-exists or set-withdrawn and is never compared or asked for a heading.
-    drop refuses already-applied on any action with applied: true (no partial withdrawal); its set
-    read answers absent only on NOT_FOUND, any other Kado failure stops the run; a refused guard on
-    the set write is set-changed, resumable by running drop again.
-    Nothing of the document or a note reaches stdout except preview's section_md; stderr names problem
-    classes only.
+    an action of the set at the path is applied — then deliver writes over it, the set JSON under the modified
+    the probe read (Kado's CONFLICT there is kado-write-failed, resumable); an emptied set on a begun delivery is
+    a drop that did not finish (set-withdrawn, before set-exists) — drop completes it, deliver never resumes over
+    it; done steps are skipped on resume, a step in flight is compared or uploaded; the document mark is last — a
+    refused guard (Kado's CONFLICT, or KadoConcurrencyError) is doc-changed with failed_step doc_mark, any other
+    write failure kado-write-failed, both resumable; reason names why: open-unsaved (Kado's dirty-editor
+    message), changed-since-read (the guard's message, or KadoConcurrencyError), unknown — never Kado's message;
+    a resumed output reports the recorded delivered_plan (mode, target, place; target_appeared against the
+    recorded mode), the rebuilt plan without a record; on a delivery still open (begun, doc_mark undone, not
+    withdrawn, no set-withdrawn) a record with anchor_picked needs --place-anchor (anchor-needed, with headings),
+    one with choices_given needs choices (choices-needed), then a record with an undone step of its own (note for
+    a new-note record, set_json, set_md) refuses replan-differs when the rebuilt mode, target, place.placement,
+    place.level, place.anchor (when recorded) or sections (keys and modes, when recorded) differ — before the
+    rebuilt plan's own problems; a finished or withdrawn delivery keeps set-exists or set-withdrawn.
+    A stop of a section whose block holds lines refuses until a choice answers it; a choice no plan took refuses
+    choice-invalid; a malformed or doubled choice exits 2; a plan without an action is nothing-to-deliver.
+    drop refuses already-applied on any applied action (no partial withdrawal); its set read answers absent only
+    on NOT_FOUND, any other Kado failure stops the run; a refused guard on the set write is set-changed.
+    Nothing of the document or a note reaches stdout except preview's section_md and sections.lines; stderr names
+    problem classes only.
 
 Exit codes:
     0 — output usable (every status)
@@ -100,6 +89,7 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
+import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -115,6 +105,7 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_new_note as rnn  # noqa: E402
+from lib import review_section_plan as rsp  # noqa: E402
 from lib.kado_client import (  # noqa: E402
     KadoClient, KadoError, KadoNotFoundError,
 )
@@ -132,6 +123,7 @@ NEXT = "hashi-or-by-hand"
 DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
 SET_CHANGED = "set-changed"
 SET_REPLACED = "set_replaced"                           # meta.json: this delivery writes over an earlier run's applied set
+SECTION_KEY = re.compile(r"[A-Za-z0-9_-]+")
 
 
 class Refused(Exception):
@@ -177,6 +169,8 @@ class Run:
     notices: List[str]
     anchor_picked: bool                        # --place-anchor was given on this call
     pick_headings: List[str]                   # what a heading pick chooses from, refusal or not
+    choices: Dict[str, str]                    # --section-choice / --confirm-moved, key -> choice
+    counts: Dict[str, dict]                    # the parsed document's section_counts
 
     @property
     def set_exists(self) -> bool:
@@ -194,8 +188,11 @@ class Run:
         out["problems"], out["notices"] = list(self.problems), list(self.notices)
         if self.meta.data.get("mode") == ra.NEW_NOTE and self.plan.mode != ra.NEW_NOTE:
             out["target_appeared"] = True
-        out.update(extra)
+        out.update(self.sections(lines=section), **extra)
         return out
+
+    def sections(self, *, lines: bool) -> dict:
+        return rdl.section_report(self.plan, self.counts, self.choices, lines=lines)
 
 
 def _config_and_profile(args: argparse.Namespace) -> tuple:
@@ -274,20 +271,22 @@ def load_run(args: argparse.Namespace) -> Run:
         raise Refused("inbox-not-configured") from None
     target = _target(vault, setup, str(period_name or ""))
     template = _template(vault, setup, target)
-    anchor = getattr(args, "place_anchor", None)
+    anchor, choices = getattr(args, "place_anchor", None), getattr(args, "choices", None) or {}
     plan = ra.build_review_plan(read.parsed.approved_review(), setup, target, template, anchor=anchor,
-                                run_id=meta.run_id, generated=meta.generated)
+                                choices=choices, run_id=meta.run_id, generated=meta.generated)
     held = rs.read_set(vault, paths[rdl.SET_JSON])
-    set_exists, set_applied = held is not None, held is not None and rs.all_applied(held.data)
+    # a set with any action applied is written over: a partly applied set never gets stuck (spec 046 ADR-12)
+    set_exists, applied_any = held is not None, held is not None and rs.any_applied(held.data)
     if set_exists and meta.started() and not meta.withdrawn() and rs.is_emptied_set(held.data):
         extra = [rdl.SET_WITHDRAWN]                                    # a drop that did not finish: never resumed over
     else:
-        extra = [rdl.SET_EXISTS] if meta.second_set(set_exists, set_applied) else []
-    problems, notices = rdl.classify(plan, extra)
+        extra = [rdl.SET_EXISTS] if meta.second_set(set_exists, applied_any) else []
+    counts = read.parsed.section_counts()
+    problems, notices = rdl.classify(plan, extra, counts, choices)
     # the finished set of an earlier run is written over; the flag outlives the first write for the resume
-    replaces_set = not problems and (set_applied or meta.data.get(SET_REPLACED) is True)
+    replaces_set = not problems and (applied_any or meta.data.get(SET_REPLACED) is True)
     return Run(args.stem, stage, meta, setup, profile, vault, read, paths, held, replaces_set, plan, problems, notices,
-               anchor is not None, ra.pick_headings(setup, target, template))
+               anchor is not None, ra.pick_headings(setup, target, template), choices, counts)
 
 
 # ---------------------------------------------------------------- preview
@@ -342,14 +341,16 @@ def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str,
 
 def deliver(args: argparse.Namespace) -> dict:
     run = load_run(args)
-    refusal = rdl.resume_refusal(run.meta, run.plan, run.problems, run.anchor_picked) if run.meta.started() else None
+    refusal = (rdl.resume_refusal(run.meta, run.plan, run.problems, run.anchor_picked, bool(run.choices))
+               if run.meta.started() else None)
     if refusal is not None:
         out = {"status": "refused", "stem": run.stem, "problems": [refusal], "notices": run.notices}
         if refusal == rdl.ANCHOR_NEEDED:
             out["headings"] = run.pick_headings
         return out
     if run.problems:
-        return {"status": "refused", "stem": run.stem, "problems": run.problems, "notices": run.notices}
+        return {"status": "refused", "stem": run.stem, "problems": run.problems, "notices": run.notices,
+                **run.sections(lines=False)}
     paths = rdl.delivery_paths(run.paths, run.plan)
     set_doc = ra.build_review_instruction_set(run.plan, stem=run.stem, generated=run.meta.generated,
                                               profile=run.profile)
@@ -361,7 +362,8 @@ def deliver(args: argparse.Namespace) -> dict:
     if run.replaces_set:
         run.meta.data[SET_REPLACED] = True                     # persisted with the first step's in-flight mark
     if not resumed:                                            # the plan this run writes, persisted the same way
-        run.meta.data[rdl.DELIVERED_PLAN] = rdl.plan_record(run.plan, run.setup.anchor, run.anchor_picked)
+        run.meta.data[rdl.DELIVERED_PLAN] = rdl.plan_record(run.plan, run.setup.anchor, run.anchor_picked,
+                                                            bool(run.choices))
     delivery = StagedDelivery(run.vault.client, rdl.STEPS, paths, run.meta,
                               lambda: rdl.save_meta(run.stage, run.meta), script=SCRIPT)
     try:
@@ -470,6 +472,24 @@ def _stem_arg(text: str) -> str:
     return text
 
 
+class _ChoiceFlag(argparse.Action):
+    """``--section-choice <key>=skip|review`` and ``--confirm-moved <key>`` into one ``{key: choice}``; a malformed
+    value or a key given twice is a bad invocation."""
+
+    def __call__(self, parser, namespace, value, option_string=None):
+        if option_string == "--confirm-moved":
+            key, choice = value, rsp.CONFIRM_MOVED
+        else:
+            key, _, choice = value.partition("=")
+            if choice not in (rsp.SKIP, rsp.REVIEW):
+                parser.error(f"{option_string}: expected <key>=skip|review")
+        choices = dict(getattr(namespace, self.dest) or {})
+        if not SECTION_KEY.fullmatch(key) or key in choices:
+            parser.error(f"{option_string}: expected a section key, each key at most once")
+        choices[key] = choice
+        setattr(namespace, self.dest, choices)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Pass 2 of /review: preview, deliver, drop, status.")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
@@ -485,6 +505,10 @@ def build_parser() -> argparse.ArgumentParser:
         cmd.add_argument("--stem", required=True, type=_stem_arg, help="<period>_review, the tomo-tmp/review/ folder")
         if name in ("preview", "deliver"):
             cmd.add_argument("--place-anchor", help="The heading the user chose instead of the configured anchor")
+            cmd.add_argument("--section-choice", action=_ChoiceFlag, dest="choices", metavar="KEY=skip|review",
+                             help="Answer a section stop: leave the section out, or put it into Tomo Review")
+            cmd.add_argument("--confirm-moved", action=_ChoiceFlag, dest="choices", metavar="KEY",
+                             help="Replace a moved block where it sits now")
     return p
 
 

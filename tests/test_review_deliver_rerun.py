@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_deliver_rerun.py — a rerun of a period writes its set over the first run's fully applied set
 (spec 045 T6.1 fix round; owner decision 2026-11-12; PRD F6-AC2, F6-AC3; SDD Error Handling `set-exists`).
 
 Split out of test_review_deliver.py (its fixtures and helpers are imported) to keep that file from growing.
 Pinned here, on `review-instructions.py` against the guarded fake: a set at the stem's path that this delivery
-did not write is `set-exists` while any action in it waits — none applied, or some — and nothing is written;
+did not write is `set-exists` while no action in it is applied, and nothing is written (a partly applied set is
+written over since spec 046 T5.5, tests/test_046_t5_5_partly_applied.py);
 once every action carries `applied: true` the set is the finished one of an earlier run, `preview` says so
 (`set_applied`) and `deliver` writes the new set JSON over it under the `modified` the probe read, and the new MD
 over the old one, with the usual steps recorded; a delivery that fails after the set JSON landed resumes over
@@ -13,7 +14,7 @@ the old MD without `name-taken`, and never rewrites the set it wrote itself — 
 between. The emptied set of a drop (`actions: []`) never counts as applied. The classifier's side of the same
 decision is in tests/test_review_state.py (a fresh record over a fully applied set reads `open`).
 
-Mechanisms a mutation falsifies: `review_state.all_applied` answering True for an empty or partly applied set, or
+Mechanisms a mutation falsifies: `review_state.any_applied` answering True for an empty or unapplied set, or
 False for a fully applied one, flips `test_deliver_refuses_a_set_that_is_not_fully_applied` or
 `test_deliver_writes_the_new_set_over_a_fully_applied_one`; the overwrite path going through the loop's
 `deliver_step` fails the latter with `name-taken`; a resume that forgets `set_replaced` fails
@@ -57,7 +58,9 @@ def _rerun(doc_mod, ins, instance, monkeypatch, capsys, *applied: bool):
     return cli, fake
 
 
-@pytest.mark.parametrize("applied", [(False,), (True, False), ()], ids=["none-applied", "partly-applied", "emptied"])
+# a partly applied set ((True, False)) is written over since spec 046 T5.5 (ADR-12):
+# tests/test_046_t5_5_partly_applied.py::test_a_partly_applied_set_reads_open_and_is_deliverable
+@pytest.mark.parametrize("applied", [(False,), ()], ids=["none-applied", "emptied"])
 def test_deliver_refuses_a_set_that_is_not_fully_applied(doc_mod, ins, instance, monkeypatch, capsys, applied):
     cli, fake = _rerun(doc_mod, ins, instance, monkeypatch, capsys, *applied)
     before = dict(fake.files)

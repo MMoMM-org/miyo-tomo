@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_046_t5_2_new_note_sections.py — new notes, analysis rows and the "Tomo Review" interplay (046 T5.2).
 
 PRD F4-AC5, F2-AC12, F2-AC7; SDD Runtime View / Complex Logic "New note", the off-limits landing
@@ -242,7 +242,8 @@ def test_tomo_review_before_the_heading_after_an_off_limits_body_is_landing_off_
 
 def test_landing_off_limits_refuses_at_delivery():
     p = plan(target_text=EXISTING, setup=mapped(anchor=OWN, placement="inside", own_sections=[], off_limits=OFF_OWN))
-    assert rdl.classify(p)[0] == ["landing-off-limits"]
+    # s3 ("Gone") is not in EXISTING: since T5.5 its stop refuses too (a stopped section with lines)
+    assert rdl.classify(p)[0] == ["landing-off-limits", "section-missing"]
 
 
 # ---------------------------------------------------------------- a re-run: where the existing "Tomo Review" sits
@@ -270,7 +271,10 @@ BEFORE_OWN = EXISTING.replace(f"## {OWN}\n", f"## {TR}\n## {OWN}\n")            
 def test_a_rerun_stops_when_the_existing_tomo_review_sits_off_limits(note, rows):
     p = plan(target_text=note, setup=mapped(off_limits=rows))
     assert p.mode == "replace" and p.problems == ["landing-off-limits"], p.problems
-    assert p.actions == [] and p.section_md == "" and rdl.classify(p)[0] == ["landing-off-limits"]
+    assert p.actions == [] and p.section_md == ""
+    refused = rdl.classify(p)[0]                       # since T5.5 the sections' own stops follow (s3 "Gone" ...)
+    assert refused[0] == "landing-off-limits" and "section-missing" in refused
+    assert set(refused[1:]) <= {"section-missing", "block-in-review-section"}, refused
 
 
 @pytest.mark.parametrize("note, rows", [

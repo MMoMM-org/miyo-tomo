@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.2.1
+# version: 0.3.0
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -13,7 +13,10 @@ finish), ``REPLAN_DIFFERS`` ``deliver``'s refusal of a resume whose re-plan
 contradicts the recorded ``delivered_plan`` while a set step is undone, and
 ``ANCHOR_NEEDED`` its refusal of a resume without ``--place-anchor`` of a
 delivery begun with one — all listed among ``REFUSING`` so one pin covers
-every name.
+every name. Spec 046 T5.5: the section stops, ``choice-invalid`` and
+``choices-needed`` refuse, the section notices are notices
+(``review_section_set.names``); a plan with no refusing problem and no action
+is ``nothing-to-deliver``; ``section_report`` gives the fields of those names.
 ``STEPS`` is the delivery
 order ``note → set_json → set_md → doc_mark``. ``ReviewMeta`` lends the
 ``meta.json`` dict the attributes ``staged_delivery`` records into
@@ -50,6 +53,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from lib import review_actions as ra
 from lib import review_config as rc
+from lib import review_section_plan as rsp
+from lib import review_section_set as rss
 from lib.doc_frontmatter import merge_tomo_block_into_markdown
 from lib.kado_client import KadoConcurrencyError, KadoError, KadoToolError
 from lib.note_io import atomic_write_text
@@ -66,14 +71,18 @@ SET_WITHDRAWN = "set-withdrawn"
 ALREADY_APPLIED = "already-applied"
 REPLAN_DIFFERS = "replan-differs"
 ANCHOR_NEEDED = "anchor-needed"
+CHOICES_NEEDED, CHOICE_INVALID = "choices-needed", rss.CHOICE_INVALID
+SECTION_DROPPED, SECTION_EMPTY = rss.SECTION_DROPPED, rss.SECTION_EMPTY
 TEMPLATER_HINT, VARIANT_MISSING, TEMPLATE_UNMERGEABLE = "templater_hint", "variant_missing", "template_unmergeable"
 REFUSING = (ra.NOT_APPROVED, APPROVED_MISSING, SECTION_CHECKBOX_MISSING, ra.NOTHING_TO_DELIVER, ra.PLACE_MISSING,
             ra.PLACE_TOO_DEEP, ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED, REPLAN_DIFFERS,
-            ANCHOR_NEEDED)
-NOTICES = (ra.HEADING_RENAMED, ra.UNLANDED_ITEMS, VARIANT_MISSING, TEMPLATER_HINT, TEMPLATE_UNMERGEABLE)
+            ANCHOR_NEEDED, *rsp.STOPS.values(), CHOICE_INVALID, CHOICES_NEEDED)
+NOTICES = (ra.HEADING_RENAMED, ra.UNLANDED_ITEMS, VARIANT_MISSING, TEMPLATER_HINT, TEMPLATE_UNMERGEABLE,
+           rsp.BLOCK_REPLACED, rsp.BLOCK_MOVED_CONFIRMED, rsp.REVIEW_SECTION_KEPT, SECTION_DROPPED, SECTION_EMPTY)
 INSTRUCTIONS_SUFFIX = "_instructions"
 DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes
 ANCHOR_PICKED = "anchor_picked"                         # delivered_plan: --place-anchor was given (never the heading)
+SECTIONS, CHOICES_GIVEN = "sections", "choices_given"   # delivered_plan: section keys + modes; choices were given
 CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
 TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
 OPEN_UNSAVED, CHANGED_SINCE_READ, UNKNOWN_CONFLICT = "open-unsaved", "changed-since-read", "unknown"
@@ -83,17 +92,29 @@ GUARD_PHRASE = "updated in the background"                  # Kado's write guard
 
 # --- the classification --------------------------------------------------------------
 
-def classify(plan: ra.ReviewPlan, extra: Sequence[str] = ()) -> Tuple[List[str], List[str]]:
-    """``(refusing problems, notices)`` of ``plan`` plus ``extra`` names, in order; an unknown name refuses."""
+def classify(plan: ra.ReviewPlan, extra: Sequence[str] = (), counts: Optional[Dict[str, dict]] = None,
+             choices: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[str]]:
+    """``(refusing problems, notices)`` of ``plan`` plus ``extra`` names, in order, each once; an unknown name
+    refuses; the parsed document's section ``counts`` and the user's ``choices`` add theirs."""
     problems: List[str] = []
     notices: List[str] = []
-    for name in [*plan.problems, *extra]:
-        (notices if name in NOTICES else problems).append(name)
+    section_names = rss.names(plan.sections, counts or {}, choices or {})
+    for name in [*plan.problems, *extra, *section_names, *plan.notices]:
+        listed = notices if name in NOTICES else problems
+        if name not in listed:
+            listed.append(name)
+    if not problems and not plan.actions:
+        problems.append(ra.NOTHING_TO_DELIVER)              # every section left out, nothing for "Tomo Review"
     for name, flag in ((TEMPLATER_HINT, plan.templater_hint), (VARIANT_MISSING, plan.variant_missing),
                        (TEMPLATE_UNMERGEABLE, plan.template_unmergeable)):
         if flag and name not in notices:
             notices.append(name)
     return problems, notices
+
+
+def section_report(plan: ra.ReviewPlan, counts: Dict[str, dict], choices: Dict[str, str], *, lines: bool) -> dict:
+    """The output fields of a mapped plan (``review_section_set.fields``)."""
+    return rss.fields(plan.sections, counts, choices, lines=lines)
 
 
 # --- meta.json ------------------------------------------------------------------------
@@ -260,32 +281,39 @@ def conflict_reason(exc: KadoError) -> str:
 
 # --- the delivered plan and the resume (#258) -----------------------------------------
 
-def plan_record(plan: ra.ReviewPlan, configured_anchor: Optional[str], anchor_picked: bool) -> dict:
+def plan_record(plan: ra.ReviewPlan, configured_anchor: Optional[str], anchor_picked: bool,
+                choices_given: bool = False) -> dict:
     """``mode``, ``target`` and ``place`` of the plan about to be written, for ``meta.json``: the anchor only
-    when it is the configured one (config text) — a heading of the note's own stays out of ``tomo-tmp``."""
+    when it is the configured one (config text) — a heading of the note's own stays out of ``tomo-tmp``; with
+    mapped sections also ``sections`` (keys and enums) and ``choices_given``."""
     place = dict(plan.place)
     if place.get("anchor") != configured_anchor:
         place["anchor"] = None
     record = {"mode": plan.mode, "target": plan.target, "place": place}
     if anchor_picked:
         record[ANCHOR_PICKED] = True
+    if plan.sections:
+        record[SECTIONS], record[CHOICES_GIVEN] = rss.record(plan.sections), choices_given
     return record
 
 
 def replan_differs(plan: ra.ReviewPlan, record: dict) -> bool:
     """Whether ``plan`` built now would write something else than ``record`` says the delivery wrote: ``mode``,
-    ``target``, ``place.placement`` and ``place.level``, plus ``place.anchor`` when the record holds one."""
+    ``target``, ``place.placement`` and ``place.level``, plus ``place.anchor`` when the record holds one, and the
+    sections' keys and modes when it holds them."""
     place, recorded = plan.place, record.get("place")
     recorded = recorded if isinstance(recorded, dict) else {}
     keys = ["placement", "level"] + (["anchor"] if recorded.get("anchor") is not None else [])
     return (record.get("mode") != plan.mode or record.get("target") != plan.target
-            or any(recorded.get(key) != place.get(key) for key in keys))
+            or any(recorded.get(key) != place.get(key) for key in keys)
+            or (SECTIONS in record and record[SECTIONS] != rss.record(plan.sections)))
 
 
-def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str], anchor_picked: bool) -> Optional[str]:
+def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str], anchor_picked: bool,
+                   choices_given: bool = False) -> Optional[str]:
     """Why a resumed run must not write: ``anchor-needed`` when the record says a heading was picked and none was
-    given now; ``replan-differs`` when a step of the recorded plan is undone and the plan built now differs from
-    the record. None without a record, with only ``doc_mark`` undone, or when the plans agree — and None for a
+    given now; ``choices-needed`` when it says choices were given and none are now; ``replan-differs`` when a
+    step of the recorded plan is undone and the plan built now differs from the record. None without a record, with only ``doc_mark`` undone, or when the plans agree — and None for a
     delivery nothing resumes (the mark done, withdrawn, or a drop that did not finish): it keeps its own refusal."""
     record = meta.data.get(DELIVERED_PLAN)
     closed = DOC_MARK in meta.steps_done or meta.withdrawn() or SET_WITHDRAWN in problems
@@ -293,6 +321,8 @@ def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str
         return None
     if record.get(ANCHOR_PICKED) is True and not anchor_picked:
         return ANCHOR_NEEDED
+    if record.get(CHOICES_GIVEN) is True and not choices_given:
+        return CHOICES_NEEDED
     steps = ([NOTE] if record.get("mode") == ra.NEW_NOTE else []) + [SET_JSON, SET_MD]
     if all(step in meta.steps_done for step in steps):
         return None

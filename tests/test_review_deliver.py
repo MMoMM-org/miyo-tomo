@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.10
+# version: 0.2.11
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -131,9 +131,13 @@ def test_cli_every_problem_name_is_pinned_to_refusing_or_notice():
     assert set(rdl.REFUSING) == {"not-approved", "approved-line-missing", "section-checkbox-missing",
                                  "nothing-to-deliver", "place-missing",
                                  "place-too-deep", "user-heading-collision", "set-exists", "set-withdrawn",
-                                 "already-applied", "replan-differs", "anchor-needed"}
+                                 "already-applied", "replan-differs", "anchor-needed",
+                                 # spec 046 T5.5: the section stops and the choice refusals
+                                 "section-missing", "section-ambiguous", "section-broken", "section-moved",
+                                 "block-in-review-section", "landing-off-limits", "choice-invalid", "choices-needed"}
     assert set(rdl.NOTICES) == {"heading-renamed", "unlanded-items", "variant_missing", "templater_hint",
-                                "template_unmergeable"}
+                                "template_unmergeable", "block-replaced", "block-moved-confirmed",
+                                "review-section-kept", "section-dropped", "section-empty"}
     assert not set(rdl.REFUSING) & set(rdl.NOTICES)
     emitted = {ra.NOT_APPROVED, rdp.APPROVED_MISSING, ra.NOTHING_TO_DELIVER, ra.UNLANDED_ITEMS, ra.PLACE_MISSING,
                ra.PLACE_TOO_DEEP, ra.HEADING_RENAMED, ra.HEADING_COLLISION}

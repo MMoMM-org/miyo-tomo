@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_setup_input_rows.py — `review-session.py setup-input` refuses what may not be saved and saves the rest
 (spec 046 T2.2).
 
 PRD F2-AC4, F2-AC10, F2-AC11, F2-AC12, Rule 4; SDD Internal API Changes, Error Handling, ADR-3, ADR-10, ADR-13:
 - refusals: `template-not-found` (a name `match` did not find, rows for a template `match` did not show, rows
   without any `match`), `section-left-out` with its reason, `section-not-in-template`, `section-off-limits`,
-  `landing-off-limits` (a `before` under an off-limits previous heading, an `end` whose last sub-section is
-  off-limits, the "Tomo Review" place in an off-limits subtree), `analysis-not-automatic`; `duplicate-section`,
+  `landing-off-limits` (a `before` under an off-limits previous heading, the "Tomo Review" place in an off-limits
+  subtree; an `end` whose last sub-section is off-limits is accepted since T6.3), `analysis-not-automatic`; `duplicate-section`,
   `duplicate-off-limits`, `duplicate-section-id` and a malformed id (`schema`) from `review_config.input_problems`;
 - a `mixed` heading is accepted; accepted rows reach the writer input with ids (kept from the saved rows, else the
   next free number); the rows file is deleted on save and kept on a refusal;
@@ -298,9 +298,10 @@ def test_a_before_under_an_off_limits_previous_heading_is_refused(mod, instance,
     assert accepted["status"] == "ok", "under lands in the mapped heading itself"
 
 
-def test_an_end_whose_last_subsection_is_off_limits_is_refused(mod, instance, monkeypatch, capsys):
+def test_an_end_whose_last_subsection_is_off_limits_is_accepted(mod, instance, monkeypatch, capsys):
+    """T6.3 (owner 2026-11-17): `end` lands at the end of the heading's own text, before its first sub-heading."""
     out = _matched_setup(mod, monkeypatch, capsys, instance, sections=[row(GOALS, "end")], off_limits=[off(HEALTH)])
-    _refused(out, "/sections/0/placement", "landing-off-limits")
+    assert out["status"] == "ok", out
 
 
 @pytest.mark.parametrize("place", [{"anchor": "Reflections", "placement": "inside"},

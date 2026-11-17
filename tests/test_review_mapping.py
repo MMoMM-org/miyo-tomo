@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_mapping.py — lib.review_mapping: template analysis, off-limits, landing check
 (spec 046 T1.2; PRD F2-AC3, F2-AC5, F2-AC11; SDD ADR-8, ADR-9, ADR-10, "Template analysis").
 
@@ -14,7 +14,7 @@ Covers:
 - landing_off_limits: a named row, an ancestor with sub-sections, an ancestor without
 - row ids s<n> kept per heading key, never reusing a number; dropped rows after a change
 - outline / from_outline classify as analyse_template does (T2.2); a stored outline of another
-  shape raises; landing names the heading whose body receives a before / under / end placement
+  shape raises; landing names the heading whose body receives a before / under / end / inside placement
 - the offered / left-out sets of the five test-vault templates (structure only, no journal
   text) match the SDD's Template analysis example
 """
@@ -443,12 +443,14 @@ def test_a_stored_outline_of_another_shape_raises_value_error(broken) -> None:
 @pytest.mark.parametrize("heading,placement,expected", [
     ("Box", "before", "Mixed"),          # the body of the heading above
     ("Box", "under", "Box"),
-    ("Box", "end", "Last"),              # the last heading inside the range, sub-sections included
+    ("Box", "end", "Box"),               # T6.3: the end of the heading's own text, before its first sub-heading
+    ("Box", "inside", "Last"),           # the "Tomo Review" place: the last heading inside the range
     ("Inner", "end", "Inner"),
+    ("Inner", "inside", "Inner"),
     ("Habits", "before", None),          # below a level-1 heading: never coverable
     ("After", "before", None),
-    ("Second", "end", "After"),          # an anchor at level 1 ("Tomo Review" inside)
-    ("Title", "end", "Last"),            # a level-1 range ends at the next level-1 heading
+    ("Second", "inside", "After"),       # an anchor at level 1 ("Tomo Review" inside)
+    ("Title", "inside", "Last"),         # a level-1 range ends at the next level-1 heading
 ])
 def test_landing_names_the_heading_whose_body_receives_the_lines(heading, placement, expected) -> None:
     stored = rm.outline(_OUTLINE)

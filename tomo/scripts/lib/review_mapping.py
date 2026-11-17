@@ -1,5 +1,5 @@
 # review_mapping.py — which template headings /review may offer as sections, and why the others are left out.
-# version: 0.3.0
+# version: 0.4.0
 """Template analysis for ``/review`` sections (spec 046, T1.2; PRD F2-AC3, F2-AC5, F2-AC11).
 
 ``analyse_template(text, off_limits)`` returns one ``TemplateHeading`` per heading of level
@@ -15,8 +15,9 @@ template's headings after the structural rules (key, line, ancestors, body kind,
 plus its level-1 lines, as JSON-ready data; ``from_outline(data, off_limits)`` runs the
 off-limits and automatic rules on it (``ValueError`` for another shape) and
 ``outline_top(data)`` returns the level-1 lines. ``landing(heads, top, line, placement)``
-names the heading whose own body receives a ``before | under | end`` placement at the
-heading on ``line`` (None in the preamble or a level-1 body). No setting file, no Kado, no
+names the heading whose own body receives a ``before | under | end | inside`` placement at the
+heading on ``line`` (``end``: the heading's own text; ``inside``: its whole section; None in the
+preamble or a level-1 body). No setting file, no Kado, no
 model, no file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_mapping.md
@@ -319,15 +320,16 @@ def outline_top(data) -> List[Tuple[int, str]]:
 
 def landing(heads: Sequence[TemplateHeading], top: Sequence[Tuple[int, str]], line: int,
             placement: str) -> Optional[TemplateHeading]:
-    """The heading whose own body receives a ``before`` / ``under`` / ``end`` placement at the heading on
-    ``line``; None in the preamble or in a level-1 body (no row covers a level-1 heading)."""
+    """The heading whose own body receives a ``before`` / ``under`` / ``end`` / ``inside`` placement at the heading
+    on ``line``: ``end`` is the end of the heading's own text, ``inside`` (the "Tomo Review" place) the end of its
+    whole section; None in the preamble or in a level-1 body (no row covers a level-1 heading)."""
     entries = sorted([(h.line, h.level, h) for h in heads] + [(ln, 1, None) for ln, _ in top],
                      key=lambda e: e[0])
     index = next(i for i, e in enumerate(entries) if e[0] == line)
     if placement == "before":
         return entries[index - 1][2] if index > 0 else None
     last = index
-    if placement == "end":
+    if placement == "inside":
         while last + 1 < len(entries) and entries[last + 1][1] > entries[index][1]:
             last += 1
     return entries[last][2]

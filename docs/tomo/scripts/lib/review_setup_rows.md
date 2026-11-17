@@ -88,13 +88,15 @@ Per row, first rule wins, so the user sees the one reason that matters:
 4. For any other placement: a left-out heading is `section-left-out` with its
    reason (`templater`, `link`, `per-period-parent`, `automatic`); an offered
    heading is accepted, a `mixed` one included (F2-AC4).
-5. `landing-off-limits` — a `before` or `end` placement whose lines would land
-   in the body of a covered heading (`review_mapping.landing`): `before` lands
-   in the heading above, `end` in the last heading inside the range. `under`
-   lands in the mapped heading itself, already checked in 2.
+5. `landing-off-limits` — a `before` placement whose lines would land in the
+   body of a covered heading (`review_mapping.landing`): the heading above.
+   `under` and `end` land in the mapped heading itself, already checked in 2
+   (`end` since T6.3, owner 2026-11-17: it is the end of the heading's own
+   text, so an off-limits last sub-section no longer refuses it).
 
 The "Tomo Review" place (`place.anchor` + `place.placement`) runs the same
-landing check (`before` as a row's `before`, `inside` as a row's `end`) on the
+landing check (`before` as a row's `before`, `inside` as the end of the
+anchor's whole section, sub-sections included — spec 045's meaning) on the
 first template heading with the anchor text, the heading Hashi finds. An
 anchor the template lacks is not checked here; the plan-time check on the
 note still runs. The off-limits rows used are the confirmed ones, or the

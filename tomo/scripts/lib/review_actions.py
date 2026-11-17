@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.7.1
+# version: 0.7.2
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -362,7 +362,7 @@ def _templated_note(plan: ReviewPlan, setup: rc.ReviewSetup, text: str, anchor: 
                     mapped: _Mapped) -> Optional[str]:
     """The template ``text`` with the section by the before/inside rule and the blocks; None on a problem."""
     content = _sectioned(plan, setup, text, period, groups, mapped, True)
-    inserts = [(p.insert_at, p.block()) for p in plan.sections if rss.lands(p, (rsp.INSERT,))]
+    inserts = rss.insert_blocks(plan.sections)
     if content:
         placed = _insertion(plan, setup, anchor, rht.hashi_headings(rht.split_lines(text)[0]), text)
         if placed is None:

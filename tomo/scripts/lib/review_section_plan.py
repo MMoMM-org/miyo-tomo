@@ -1,12 +1,13 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.6.0
+# version: 0.7.0
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
 
 ``plan_section(row, note_text, period, items, *, choice, off_limits, review_at)`` returns a
 ``SectionPlan``: ``mode`` ``insert`` (no block yet: ``insert_under_marker`` at the mapped heading's
-Hashi text, ``before`` -> ``before``, ``under`` -> ``after``, ``end`` -> ``inside``), ``replace``
+Hashi text, ``before`` -> ``before``, ``under`` -> ``after``, ``end`` -> ``inside``; ``end`` at a heading with
+sub-headings -> ``before`` the first sub-heading, the end of the heading's own text), ``replace``
 (exactly one start and one end marker, in that order, in the row's home: ``replace_between_markers``,
 scoped to the mapped heading for ``under`` / ``end``, unscoped for ``before``), ``skip`` / ``review``
 (the user's choice at a stop) or a stop: ``missing``, ``ambiguous``, ``broken``, ``moved``,
@@ -220,13 +221,23 @@ def plan_section(row: dict, note_text: str, period: str, items: Sequence[dict], 
     return _stop(plan, BROKEN, choice)                                      # step 8: any other count or order
 
 
-def _first_delivery(plan, note: _Note, mapped: int, placement: str, choice, off_limits, tr, review_at) -> SectionPlan:
+def _insertion(note: _Note, mapped: int, placement: str) -> Tuple[int, int, str]:
+    """``(index, anchor heading, Hashi placement)``; ``end`` at a heading with sub-headings is ``before`` the first."""
+    if placement == "end" and mapped + 1 < len(note.heads) and note.heads[mapped + 1][1] > note.heads[mapped][1]:
+        return note.line(mapped + 1), mapped + 1, "before"
     p = {"before": note.line(mapped), "under": note.line(mapped) + 1, "end": note.range_end(mapped) + 1}[placement]
+    return p, mapped, HASHI_PLACEMENT[placement]
+
+
+def _first_delivery(plan, note: _Note, mapped: int, placement: str, choice, off_limits, tr, review_at) -> SectionPlan:
+    p, anchor, hashi = _insertion(note, mapped, placement)
+    if anchor != mapped and sum(h[2] == note.heads[anchor][2] for h in note.heads) > 1:
+        return _stop(plan, AMBIGUOUS, choice, (SKIP, REVIEW))  # Rule 9 on the anchor sent; no block yet
     if note.covered(note.above(p), off_limits):
         return _stop(plan, OFF_LIMITS_LANDING, choice, ())
     if (tr is not None and tr[0] < p <= tr[1] + 1) or p == review_at:
         return _stop(plan, IN_REVIEW, choice)          # Hashi runs every insert before replace_section
-    plan.mode, plan.anchor, plan.hashi_placement = INSERT, note.heads[mapped][2], HASHI_PLACEMENT[placement]
+    plan.mode, plan.anchor, plan.hashi_placement = INSERT, note.heads[anchor][2], hashi
     plan.insert_at, plan.heading_at = p, note.line(mapped)
     plan.blank_after = not (p < len(note.lines) and not note.lines[p].strip(rht.JS_WS))   # Hashi adds no blank line
     return plan

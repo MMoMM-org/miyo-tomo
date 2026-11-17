@@ -1,5 +1,5 @@
 # review_section_set.py — the mapped sections of one /review delivery as a set, and the actions they compose.
-# version: 0.3.0
+# version: 0.4.0
 """Plan, route and compose the mapped sections of a ``/review`` delivery (spec 046 T5.2, T5.4; PRD
 F4-AC1, F4-AC5, F2-AC12; SDD ADR-12).
 
@@ -8,11 +8,14 @@ the text a new note is built from (None: a plain note), routing to "Tomo Review"
 lacks, holds twice or holds only inside a multi-line Templater span, unless the user's choice is
 ``skip``. ``routed_keys`` names those keys for Pass 1. ``review_parts`` gives the "Tomo Review"
 sub-parts: analysis rows and routed sections in mapping order, headings display-neutralised.
-``splice_blocks`` inserts a new note's blocks at ``SectionPlan.insert_at``.
+``splice_blocks`` inserts a new note's blocks at ``SectionPlan.insert_at``; ``insert_blocks`` gives them in
+``ordered`` order.
 
 ``compose`` builds the instruction set's actions of an existing note: one per section whose plan is
 ``insert`` or ``replace`` and whose block holds lines, in mapping order, then the "Tomo Review" action
-when there is one; ids ``I01…In`` dense over the emitted actions. ``landed_escapes`` counts the
+when there is one; ids ``I01…In`` dense over the emitted actions. ``ordered`` is that order with one
+exception: inserts sharing an insertion index (an ``end`` before its first sub-heading and a ``before``
+row on that sub-heading) go by their mapped heading's line, at the place of the first of them. ``landed_escapes`` counts the
 escapes of the blocks that land as their own block (``insert`` and ``replace``; ``insert`` only for a
 new note, whose text is spliced from inserts). ``lands`` is the one test of both: a section with no lines
 lands in neither, so a new note gets no empty marker pair.
@@ -100,6 +103,25 @@ def review_parts(rows: Sequence[dict], plans: Sequence[rsp.SectionPlan], items: 
     return parts, escaped
 
 
+def ordered(plans: Sequence[rsp.SectionPlan]) -> List[rsp.SectionPlan]:
+    """The landing plans in mapping order; inserts at one index by their mapped heading's line (the higher first)."""
+    landing = [p for p in plans if lands(p)]
+    first: Dict[int, int] = {}
+    for i, p in enumerate(landing):
+        if p.mode == rsp.INSERT:
+            first.setdefault(p.insert_at, i)
+
+    def key(e: Tuple[int, rsp.SectionPlan]) -> Tuple[int, int]:
+        i, p = e
+        return (first[p.insert_at], p.heading_at) if p.mode == rsp.INSERT else (i, 0)
+    return [p for _, p in sorted(enumerate(landing), key=key)]
+
+
+def insert_blocks(plans: Sequence[rsp.SectionPlan]) -> List[Tuple[int, List[str]]]:
+    """A new note's ``(index, block lines)`` per landing insert, in ``ordered`` order (for ``splice_blocks``)."""
+    return [(p.insert_at, p.block()) for p in ordered(plans) if p.mode == rsp.INSERT]
+
+
 def lands(plan: rsp.SectionPlan, modes: Sequence[str] = LANDING) -> bool:
     """Whether ``plan`` lands as its own block: its mode is in ``modes`` and its block holds lines."""
     return plan.mode in modes and bool(plan.lines)
@@ -113,10 +135,9 @@ def landed_escapes(plans: Sequence[rsp.SectionPlan], new_note: bool) -> int:
 
 
 def compose(plans: Sequence[rsp.SectionPlan], target_path: str, review_action: Optional[dict] = None) -> List[dict]:
-    """The existing note's actions: every landing section in ``plans``' order, then ``review_action`` (given without
+    """The existing note's actions: every landing section in ``ordered`` order, then ``review_action`` (given without
     an id); ids dense."""
-    actions = [p.action(action_id(n), target_path)
-               for n, p in enumerate((p for p in plans if lands(p)), start=1)]
+    actions = [p.action(action_id(n), target_path) for n, p in enumerate(ordered(plans), start=1)]
     if review_action is not None:
         actions.append({"id": action_id(len(actions) + 1), **review_action})
     return actions

@@ -35,6 +35,18 @@ Review" takes the last. The order is a function of the rows' order in the
 setup only, never of the order of the items dict or of the choices dict,
 so two runs over the same inputs produce byte-identical sets.
 
+One exception keeps a note's order right (T6.3, owner 2026-11-17): inserts
+that share an insertion index are ordered by their mapped heading's line,
+at the place of the first of them. An `end` at a parent is delivered
+`before` its first sub-heading, the same index a `before` row on that
+sub-heading uses; Hashi runs two `before` inserts at one heading in action
+order, each directly above the heading, so the earlier action ends up
+higher. The parent's block must come first — it closes the parent's own
+text, the child's block belongs right above the child. Setup writes rows in
+template order, so this changes nothing there; it guards a hand-reordered
+mapping. `ordered` does it once, for `compose` and for the blocks spliced
+into a new note (`insert_blocks`), so both paths agree.
+
 An empty section (no item lines) emits no action in either mode (F4-AC1:
 "one action per kept non-empty section"; F3-AC5: "that section receives
 nothing"): a first delivery writes no empty marker pair into the user's

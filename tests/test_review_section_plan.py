@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.8
+# version: 0.1.9
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -7,8 +7,8 @@ Complex Logic (steps 1-8, traced examples 1-3), ADR-4, ADR-10, ADR-12. Numbered-
 note is built from a list whose indexes are the line numbers the assertions name.
 
 - the three SDD traced examples and the seven layouts of the second SDD validation
-- first delivery per placement (before -> before, under -> after, end -> inside); replace with and
-  without scope
+- first delivery per placement (before -> before, under -> after, end -> inside, or before the first
+  sub-heading when the heading has some: T6.3); replace with and without scope
 - stops: section-missing, section-ambiguous, section-broken, section-moved, block-in-review-section,
   landing-off-limits, and the choices that answer them
 - item lines escaped against marker text; JS trimEnd vs Python rstrip (U+0085, U+FEFF)
@@ -257,10 +257,13 @@ def _two_sections() -> List[str]:
     return ["# W13", "## Review", "### A", "user text a", "#### A1", "a1 text", "### B", "b text"]
 
 
-@pytest.mark.parametrize("placement, hashi, at", [("before", "before", 2), ("under", "after", 3), ("end", "inside", 6)])
-def test_first_delivery_maps_the_placement_and_lands_where_hashi_puts_it(placement, hashi, at):
-    p, after = applied(row("s1", "A", 3, "Review", placement), _two_sections())
-    assert p.mode == "insert" and p.anchor == "A" and p.hashi_placement == hashi and p.notices == []
+@pytest.mark.parametrize("heading, placement, anchor, hashi, at", [
+    ("A", "before", "A", "before", 2), ("A", "under", "A", "after", 3),
+    ("A", "end", "A1", "before", 4),             # T6.3: the end of A's own text, before its first sub-heading
+    ("B", "end", "B", "inside", 8)])             # no sub-heading: the end of the section
+def test_first_delivery_maps_the_placement_and_lands_where_hashi_puts_it(heading, placement, anchor, hashi, at):
+    p, after = applied(row("s1", heading, 3, "Review", placement), _two_sections())
+    assert p.mode == "insert" and p.anchor == anchor and p.hashi_placement == hashi and p.notices == []
     assert after.split("\n")[at] == p.start_marker
     content = p.action("I01", "n.md")["content"]
     assert content == "\n".join([start(), *BODY, end()]) + "\n"
@@ -270,8 +273,9 @@ def test_insert_action_shape():
     p = plan(row("s1", "A", 3, "Review", "end"), _two_sections())
     assert p.action("I02", "Calendar/W13.md") == {
         "id": "I02", "action": "insert_under_marker", "target_path": "Calendar/W13.md",
-        "anchor": {"type": "heading", "value": "A"}, "placement": "inside",
+        "anchor": {"type": "heading", "value": "A1"}, "placement": "before",
         "content": "\n".join([start(), *BODY, end()]) + "\n"}
+    assert plan(row("s1", "B", 3, "Review", "end"), _two_sections()).action("I01", "n")["placement"] == "inside"
 
 
 def test_replace_action_shape_with_and_without_scope():
@@ -303,14 +307,15 @@ def test_empty_items_give_an_empty_block():
 
 # --- the seven layouts of the second SDD validation -------------------------------------------
 
-def test_layout_end_three_levels_deep_lands_under_the_deepest_last_heading():
+def test_layout_end_three_levels_deep_lands_in_the_own_body_before_the_first_sub_heading():
+    """T6.3 (owner 2026-11-17): `end` is the end of G's own text, so an off-limits deepest heading no longer stops it."""
     lines = ["# M", "## G", "### G1", "#### G1a", "deep", "## Next"]
     p, after = applied(row("s1", "G", 2, None, "end"), lines)
-    assert after.split("\n")[5] == p.start_marker
+    assert after.split("\n")[2] == p.start_marker and (p.anchor, p.hashi_placement) == ("G1", "before")
     off = [{"heading": "G1a", "level": 4, "parent": "G1", "occurrence": 1}]
-    assert plan(row("s1", "G", 2, None, "end"), lines, off_limits=off).mode == "landing-off-limits"
+    assert plan(row("s1", "G", 2, None, "end"), lines, off_limits=off).mode == "insert"
     with_sub = [{"heading": "G1", "level": 3, "parent": "G", "occurrence": 1, "with_subsections": True}]
-    assert plan(row("s1", "G", 2, None, "end"), lines, off_limits=with_sub).mode == "landing-off-limits"
+    assert plan(row("s1", "G", 2, None, "end"), lines, off_limits=with_sub).mode == "insert"
     # a re-run keeps finding it in the range, not as moved
     p2 = rsp.plan_section(row("s1", "G", 2, None, "end"), after, WEEK, ITEMS)
     assert p2.mode == "replace" and p2.scope == {"heading": "G", "level": 2}

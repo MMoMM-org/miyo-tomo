@@ -794,7 +794,7 @@ Mein eigener Text bleibt hier.
 #### What Should I Start Doing?
 ```
 
-First delivery: `insert_under_marker {anchor: {type: heading, value: "What Went Well This Week?"}, placement: inside, content: "%% tomo:s1 2026-W13 %%\n- …\n%% /tomo:s1 2026-W13 %%\n"}`. Re-run: `replace_between_markers {start_marker: "%% tomo:s1 2026-W13 %%", end_marker: "%% /tomo:s1 2026-W13 %%", scope: {heading: "What Went Well This Week?", level: 4}, content: "- …"}`. Placement mapping: `before` → Hashi `before`, `under` → Hashi `after`, `end` → Hashi `inside` (after any subsections). Item lines go through `item_lines` / `neutralised`, and a line that contains marker text (`%%`, optional spaces, `tomo:` or `/tomo:`) is escaped.
+First delivery: `insert_under_marker {anchor: {type: heading, value: "What Went Well This Week?"}, placement: inside, content: "%% tomo:s1 2026-W13 %%\n- …\n%% /tomo:s1 2026-W13 %%\n"}`. Re-run: `replace_between_markers {start_marker: "%% tomo:s1 2026-W13 %%", end_marker: "%% /tomo:s1 2026-W13 %%", scope: {heading: "What Went Well This Week?", level: 4}, content: "- …"}`. Placement mapping: `before` → Hashi `before`, `under` → Hashi `after`, `end` → Hashi `inside` for a heading without sub-headings and Hashi `before` at its first sub-heading for a heading with some (the end of the heading's own text). Amendment 2026-11-17 (owner, T6.3, Hashi joint run round 1): `end` was sent as `inside` at the heading, which Hashi appends at the end of the heading's whole section, so `### In my own words` got its block after its last `####` child and `## Organisation` at the end of the file; `end` now means the end of the heading's own text. Re-runs (`replace_between_markers` scoped to the mapped heading) are unchanged. Item lines go through `item_lines` / `neutralised`, and a line that contains marker text (`%%`, optional spaces, `tomo:` or `/tomo:`) is escaped.
 
 #### Test Examples as Interface Documentation
 
@@ -875,7 +875,7 @@ sequenceDiagram
 | Block moved out of its section | plan | stop `section-moved` naming where it is; skip, or replace only with `--confirm-moved <key>` (a block in the preamble: skip only) |
 | Block inside the "Tomo Review" section | plan | stop `block-in-review-section`; skip / Abort (a `replace_section` of Tomo Review would wipe it) |
 | A heading not in the template added in Correct | `setup-input` | `section-not-in-template` |
-| A `before`/`end` placement that would land in an off-limits section | `setup-input`, plan | `landing-off-limits` at setup and as the stop at plan (the note may differ from the template); no choice offered, only Abort: the place or the row is changed with `/review setup` |
+| A `before` placement (or the "Tomo Review" place) that would land in an off-limits section; `end` lands in the mapped heading's own text since 2026-11-17 | `setup-input`, plan | `landing-off-limits` at setup and as the stop at plan (the note may differ from the template); no choice offered, only Abort: the place or the row is changed with `/review setup` |
 | An analysis row on a heading that is not script-only | `setup-input` | `analysis-not-automatic` |
 | A choice that answers no stop of its section (unknown key, changed note, a choice the stop does not offer) | delivery | refuse `choice-invalid` with `choices_invalid`; the skill reruns preview without the flags |
 | Every section unticked and nothing left for "Tomo Review" | `review-instructions.py` | spec 045's `nothing-to-deliver`, now counting kept sections and the part; Abort or start over |
@@ -917,11 +917,16 @@ OUTPUT: SectionPlan
                                                                                # Rule 9, first delivery and re-run
 6. IF S == [] and E == []:                                        # first delivery
      p = insertion point Hashi will use: mapped.line for before, mapped.line + 1 for under,
-         range(mapped).end + 1 for end
+         for end: sub.line when the next heading `sub` in H is deeper than mapped (its first sub-heading),
+         else range(mapped).end + 1                                  # the end of mapped's own text (2026-11-17)
+     anchor = sub for an end with sub-headings, else mapped
+     IF anchor != mapped and count(h in H where h.text == anchor.hashi_text) > 1:
+        RETURN stop(section-ambiguous) unless choice skip|review    # Rule 9 on the anchor actually sent
      IF landing(p) is covered by an off-limits row: RETURN stop(landing-off-limits)
      IF TR is not None and (TR.start < p <= TR.end + 1) or p == review_at:
         RETURN stop(block-in-review-section) unless skip        # Hashi runs every insert before replace_section
-     RETURN insert(anchor = mapped.hashi_text, placement = {before: before, under: after, end: inside}[row.placement],
+     RETURN insert(anchor = anchor.hashi_text,
+                   placement = before if anchor is sub else {before: before, under: after, end: inside}[row.placement],
                    content = start + item lines + end)
 7. IF len(S) == 1 and len(E) == 1 and E[0] > S[0]:                # re-run
      IF a heading of H lies strictly between S[0] and E[0]: RETURN stop(section-broken)   # straddles a heading
@@ -953,7 +958,7 @@ OUTPUT: SectionPlan
 
 The off-limits landing check is one function, `review_mapping.landing_off_limits(heading, off_limits)`: a heading is covered when a row names it, or when a row with `with_subsections: true` names one of its ancestors; `setup-input` calls it on the template, `plan_section` on the note. The same check runs on spec 045's "Tomo Review" placement (`place.anchor` + `place.placement`) at setup and at plan time, for an existing and a new note, so neither the "Tomo Review" heading nor an analysis sub-heading can land in an off-limits section. On a re-run the existing "Tomo Review" is also checked where it sits (`review_off_limits`: its heading, or the heading whose body holds it) → `landing-off-limits`.
 
-Traced example 1, `end` with subsections (monthly re-run `2026-03`, s4 mapped to "Goals and Wishes" L3 with four L4 children Work, Contacts, Health, Spare Time): H holds "Goals and Wishes" L3 at line 20, the L4 children at 22, 25, 28, 31, and "I look forward to" L3 at 38. range(mapped) = 20..37. The first delivery used Hashi `inside`, so the block sits at 34..36, below "Spare Time". S = [34], E = [36], both in home = 20..37 → `replace_between_markers` with scope `{"Goals and Wishes", 3}`; Hashi's level-aware range is 20..37 as well, so the markers are inside scope. Comparing with "the nearest heading above" would have named "Spare Time" and stopped as moved; the range rule does not. Landing check: the last heading inside the range is "Spare Time"; were "Spare Time" off-limits, the landing check of step 7 stops (and setup already refused `landing-off-limits`).
+Traced example 1, `end` with subsections (monthly re-run `2026-03`, s4 mapped to "Goals and Wishes" L3 with four L4 children Work, Contacts, Health, Spare Time): H holds "Goals and Wishes" L3 at line 20, the L4 children at 22, 25, 28, 31, and "I look forward to" L3 at 38. range(mapped) = 20..37. A first delivery before 2026-11-17 used Hashi `inside`, so the block sits at 34..36, below "Spare Time" (since then a first delivery sends `before` "Work" and the block sits at 22..24 in 20's own body, right above "Work"; both positions are in home). S = [34], E = [36], both in home = 20..37 → `replace_between_markers` with scope `{"Goals and Wishes", 3}`; Hashi's level-aware range is 20..37 as well, so the markers are inside scope. Comparing with "the nearest heading above" would have named "Spare Time" and stopped as moved; the range rule does not. Landing check on the re-run: the block sits under "Spare Time"; were "Spare Time" off-limits, the landing check of step 7 stops where it actually sits. A first delivery lands in "Goals and Wishes"' own body, so an off-limits "Spare Time" (or "Work") no longer stops it, and setup no longer refuses an `end` for an off-limits last sub-section (2026-11-17).
 
 Traced example 2, `under` (weekly re-run `2026-W13`, s1 → "What Went Well This Week?" L4 at line 10, next L4 at 18): S = [11], E = [14] inside 10..17 → replace with scope `{"What Went Well This Week?", 4}`. If the user had deleted line 14: S = [11], E = [] → step 8 → `section-broken`; no action targets the note's later lines. If line 11 sat inside a ```` ``` ```` fence: S = [] (masked) but the fenced line is a textual copy → step 3b → broken (Hashi would also fail; nothing is lost).
 
@@ -1108,7 +1113,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: a visible `%%sN%%` in source view; one more meta field.
   - User confirmed: 2026-11-14
 
-- [x] ADR-12 Multi-action sets: ids `I01…In` in a fixed order (sections in mapping order, then "Tomo Review"); Hashi executes by kind regardless (`insert_under_marker` → `replace_section` → `replace_between_markers`, `planner.ts:39-56`), so `plan_section` never plans a section insert inside or at the "Tomo Review" range; user choices are flags on `preview` and `deliver` (`--section-choice <key>=skip|review`, `--confirm-moved <key>`); `delivered_plan.sections` records key, mode, Hashi placement and scope level (enums and integers) only, for sections with lines, plus `choices_given`, and `replan_differs` compares them; `choices-needed` refuses a resume without the original choices; a set with any applied action can be overwritten by a new delivery (`_overwrite_step` with the `modified` guard), so a partly applied set is never stuck.
+- [x] ADR-12 Multi-action sets: ids `I01…In` in a fixed order (sections in mapping order, then "Tomo Review"; inserts sharing one index — an `end` before its first sub-heading and a `before` row on that sub-heading — go by their mapped heading's line at the place of the first of them, so the parent's block stays above the child's whatever the row order, amendment 2026-11-17, owner; the same order splices a new note); Hashi executes by kind regardless (`insert_under_marker` → `replace_section` → `replace_between_markers`, `planner.ts:39-56`), so `plan_section` never plans a section insert inside or at the "Tomo Review" range; user choices are flags on `preview` and `deliver` (`--section-choice <key>=skip|review`, `--confirm-moved <key>`); `delivered_plan.sections` records key, mode, Hashi placement and scope level (enums and integers) only, for sections with lines, plus `choices_given`, and `replan_differs` compares them; `choices-needed` refuses a resume without the original choices; a set with any applied action can be overwritten by a new delivery (`_overwrite_step` with the `modified` guard), so a partly applied set is never stuck.
   - Rationale: byte-identical resume payloads (#258) and no dead end after one failed section.
   - Trade-offs: `second_set` loosens: the old set's waiting actions are replaced by the new plan, which is built from the note as it is now.
   - User confirmed: 2026-11-14

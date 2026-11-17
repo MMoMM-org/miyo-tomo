@@ -74,8 +74,9 @@ section. The count joins `item_lines`' escaped count.
 
 ## WHY Home Ranges, Not "the Nearest Heading Above" (ADR-10)
 
-An `end` block sits after the mapped heading's last subsection; the nearest
-heading above it is that subsection, not the mapped heading. The re-run
+An `end` block delivered before T6.3 sits after the mapped heading's last
+subsection; the nearest heading above it is that subsection, not the mapped
+heading. The re-run
 therefore asks whether the block lies in the row's home: the mapped
 heading's whole range for `end`, its range and its own body for `under`,
 the gap above the mapped heading for `before`. A `before` home passes over
@@ -87,8 +88,9 @@ between the block and its heading.
 
 `before` → Hashi `before` (at the heading line); `under` → Hashi `after`
 (directly below the heading line, above the user's own text); `end` →
-Hashi `inside` (at the end of the heading's section, after any
-subsections). The insert content ends with a newline, which Hashi's split
+Hashi `inside` (at the end of the heading's section) when the heading has
+no sub-headings, and Hashi `before` at the first sub-heading when it has
+some (below). The insert content ends with a newline, which Hashi's split
 turns into one blank line after the end marker — unless the note already
 has a blank line at the insertion point (below); the replace content has no
 trailing newline (the contract's "lines between the markers").
@@ -119,6 +121,39 @@ Tomo (`review_section_set.splice_blocks`) gets the same lines Hashi would
 insert. The `replace_between_markers` content is untouched. Pinned per
 layout in `tests/test_046_t6_2_carried_debt.py` against the reference
 splice of `tests/test_review_section_plan.py`.
+
+### WHY `end` Stops at the First Sub-heading (spec 046 T6.3, owner 2026-11-17)
+
+`end` means the end of the heading's own text, not the end of its whole
+section. Hashi's `inside` appends at the end of the section, which runs to
+the next heading of the same or a higher level, so a heading with
+sub-headings got its block after the last sub-section: in the joint run
+`### In my own words` (four `####` children) received it below the last
+question, `## Organisation` (children `### Planning`, `### Last Check`) at
+the end of the file. Hashi has no "before the first sub-heading"
+placement, and `after` at the heading would put the block above the
+user's own text. So with sub-headings Tomo sends `before` at the first
+sub-heading (the next heading in the note, deeper than the mapped one):
+the block lands at the end of the parent's own body, and an empty body
+puts it directly below the heading line with the one blank line after it,
+before the sub-heading, as everywhere else. Without sub-headings `inside`
+lands at the same place and stays.
+
+The anchor is then the sub-heading's Hashi text, and Hashi takes the
+first heading with that text. A sub-heading text that occurs more than
+once in the note is `section-ambiguous` (Rule 9 applied to the anchor
+actually sent), with the same choices as an ambiguous mapped heading.
+
+The landing heading of such a block is the mapped heading itself, so an
+off-limits last sub-section no longer stops `end`: nothing lands in it.
+An off-limits first sub-heading does not stop it either: a `before` block
+lands in the body of the heading above, the parent. Re-runs are
+unchanged: `replace_between_markers` is scoped to the mapped heading,
+whose range holds both the new position and the old one (a block an
+earlier run left after the last sub-section is still home and is
+replaced in place, not moved). The "Tomo Review" place keeps spec 045's
+`inside` (the end of the whole section) — only a mapped row's `end`
+changed.
 
 ## WHY Scope for `under`/`end`, None for `before`, Always on the Moved Path
 

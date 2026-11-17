@@ -1,5 +1,5 @@
 # review_setup_rows.py — may these section and off-limits rows be saved: the setup-input row checks of /review.
-# version: 0.1.1
+# version: 0.2.0
 """The row checks of ``review-session.py setup-input`` (spec 046 T2.2; PRD F2-AC4, F2-AC11, F2-AC12, Rule 4).
 
 ``read_evidence(path)`` reads the rows file ``match`` wrote (``lib/review_match.write_rows``):
@@ -36,7 +36,7 @@ NOT_AUTOMATIC = "analysis-not-automatic"
 LANDING = "landing-off-limits"
 MISSING = "missing"                       # the template_kind of a name Kado did not find
 REVIEW = "review"                         # an analysis row's placement (F2-AC12)
-LANDS = {"before": "before", "end": "end", "inside": "end"}   # placements whose lines leave the heading
+LANDS = {"before": "before", "inside": "inside"}   # placements whose lines leave the heading
 
 Outline = Tuple[List[TemplateHeading], List[Tuple[int, str]]]
 
@@ -123,7 +123,8 @@ def _row_problem(i: int, row: dict, by_key: Dict[HeadingKey, TemplateHeading], o
 
 
 def _place_problem(place: dict, outline: Outline, off: Sequence[dict]) -> Optional[rc.Problem]:
-    """The "Tomo Review" place lands as a row's ``before`` / ``end`` at the first heading with the anchor text."""
+    """The "Tomo Review" place lands ``before`` / ``inside`` (its whole section) the first heading with the anchor
+    text."""
     heads, top = outline
     entries = sorted([(h.line, h.heading) for h in heads] + list(top))
     line = next((ln for ln, text in entries if text == place["anchor"]), None)

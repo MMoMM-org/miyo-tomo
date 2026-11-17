@@ -131,10 +131,13 @@ treats it as no evidence.
 ## WHY the Landing Is Computed on the Outline
 
 ADR-8 / SDD Complex Logic: a `before` block becomes part of the body of the
-heading above the mapped one; an `end` block (and the "Tomo Review" section
-placed `inside` an anchor) part of the body of the last heading inside the
-mapped heading's range, sub-sections included; `under` lands in the mapped
-heading. `landing(heads, top, line, placement)` names that heading from the
+heading above the mapped one; the "Tomo Review" section placed `inside` an
+anchor part of the body of the last heading inside the anchor's range,
+sub-sections included; `under` and `end` land in the mapped heading itself
+(since T6.3, owner 2026-11-17: `end` is the end of the heading's own text,
+delivered `before` its first sub-heading — see `review_section_plan.md`).
+`landing` therefore takes `inside` for the whole-section end and treats
+`end` like `under`. `landing(heads, top, line, placement)` names that heading from the
 template's lines, level-1 headings included as boundaries (`top`): a level-1
 heading ends every range and its body is never coverable (rows have levels
 2..6), so a landing there or in the preamble is None. `plan_section` applies

@@ -281,7 +281,7 @@ data:
 
 ### Cross-Component Boundaries (if applicable)
 
-- **API contracts**: the instruction wire is shared with Hashi. Adding `replace_between_markers` bumps `schema_version` "3" → "4" for every Tomo producer (inbox, `/note`, `/review`); Hashi accepts one `const`, so Tomo and Hashi release together (ADR-5).
+- **API contracts**: the instruction wire is shared with Hashi. Adding `replace_between_markers` bumps `schema_version` "3" → "4" for every Tomo producer (inbox, `/note`, `/review`); a v4 Hashi accepts `"3"` and `"4"` (`enum`, Hashi handoff 2026-11-17), an older Hashi refuses `"4"`, so Tomo and Hashi release together (ADR-5).
 - **Team ownership**: Hashi builds the action from the handoff; the owner orchestrates and walks both in the test vault before the Tomo PR merges.
 - **Shared resources**: the vault config file (one writer); the inbox folder.
 - **Breaking change policy**: the version bump makes a v4 set unappliable by an old Hashi. How the new Hashi treats a waiting v3 set is Hashi's decision, asked in the handoff (owner 2026-11-14); Tomo builds no converter, and the readable instruction document stays the user's fallback. A `/review` resume over an uploaded v3 set rebuilds a v4 payload, which `staged_delivery` reports as `refused` `name-taken` with `exists_path` and `step`; the skill words it per step (the note is not Tomo's; `set_json` / `set_md`: an earlier set waits — apply it in Hashi or delete it, then Resume). The Kokoro FYI names the version change and this policy.
@@ -1073,7 +1073,8 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - User confirmed: 2026-11-14
 
 - [x] ADR-5 Wire `schema_version` "3" → "4" for all Tomo producers (they read it from the schema through `wire_schema_version`, so `/inbox` and `/note` follow automatically); Tomo and Hashi release in lockstep; how Hashi treats a waiting v3 set is Hashi's decision (handoff); Tomo builds no converter; Kokoro gets an FYI. All instruction-schema changes — the producer schema, `schema_version`, the shape manifest and the vendored copy — land together after Hashi's release (owner 2026-11-14); until then tests of the new action validate against a test-only schema built from the handoff fragment, and the full suite stays GREEN. (Spec 039's v4 moved schema, version and manifest together and let only the vendored copy lag; here nothing moves early.)
-  - Rationale: spec 035 Rule 9; Hashi accepts one version; the owner keeps conversion out of Tomo.
+  - Rationale: spec 035 Rule 9; Hashi accepted one version at design time (since 2026-11-17 a v4 Hashi accepts v3 and v4, so waiting v3 sets run unchanged); the owner keeps conversion out of Tomo.
+  - Amended 2026-11-17 (owner): T6.1 vendored Hashi's pre-release commit `abd92d6`, because Hashi releases only after the joint test-vault run that needs Tomo's v4 sets; byte-identity is re-checked against the released tag before merge.
   - Trade-offs: inbox and `/note` sets need the new Hashi too; about 14 test files and the 038 wire baselines hard-code `"3"` and move with the bump.
   - User confirmed: 2026-11-14
 

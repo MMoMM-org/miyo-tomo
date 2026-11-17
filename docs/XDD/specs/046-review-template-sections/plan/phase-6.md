@@ -73,6 +73,18 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
   3. Implement: record every run in `live-walk.md` (counts only, no journal text); file walk-found fixes as tasks with RED tests. Notes from Phase 4: record the context use (tokens) and cost of the quarter's Pass 1 beside the ≤ $5 / ≤ 20 min KPI; the mapped callout's target stem and not-read / partly-read paths are still raw (path-derived, low risk) — check them in the walk or note them in the close-out.
   Carried from Phase 5: the live walk records the quarter's context use (tokens) and cost beside the KPI (already named above from Phase 4; check it is recorded); a section stop beside the "Tomo Review" place problem is reported together with it and costs one extra round (the skill asks the place first) — watch for it.
 
+  Walk so far (2026-11-17, details go to `live-walk.md`):
+  - W13 re-run stopped `landing-off-limits` on the old spec 045 "Tomo Review" right after off-limits "Check My Own Words". This is intended (SDD Complex Logic, test `sibling-body`). The owner removed the old section, and W13 was delivered as a first delivery.
+  - Joint run round 1 (Hashi `feat/179`, own test vault): 10/10 actions applied; W13 passed every check. The 1 line changed outside the blocks was Obsidian's link update after the month move.
+  - Fixes from round 1, owner decisions:
+    - Review peers carry `tomo.sources` for Hashi's cleanup (01e75566, e5f6f95d).
+    - `end` at a heading with sub-headings is sent `before` the first sub-heading (ada56fc6, 408b457f).
+    - Quality review: PASS after the level-jump test.
+  - Advisory for T6.4:
+    - `section-ambiguous` also stops when the first sub-heading is the first occurrence of its text.
+    - `peer_sources` does not check that paths are under the inbox.
+    - The landing wording in `review_doc.py` ("at the end of").
+
   4. Validate: KPIs — weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.75, quarterly Pass 1 ≤ $5.00 and ≤ 20 min; 0 changed characters of user text outside markers; 0 sections with two blocks; 0 writes to off-limits.
   5. Success: Tomo and Hashi work together on all three kinds, first delivery and re-run `[ref: PRD/Success Metrics; PRD/Constraints]`
 

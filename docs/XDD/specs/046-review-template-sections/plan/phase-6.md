@@ -39,7 +39,7 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
   4. Validate: the full suite GREEN with no named exception.
   5. Success: Tomo and Hashi share wire v4 `[ref: SDD/ADR-5; PRD/Constraints]`
 
-- [ ] **T6.2 End-to-end tests and documentation** `[activity: testing]`
+- [x] **T6.2 End-to-end tests and documentation** `[activity: testing]`
 
   1. Prime: `tests/test_review_e2e*.py`, `tests/review_e2e_walk.py`, `tests/test_review_sdd_map.py:35-50`, `tests/test_review_why_docs.py`; README, `docs/tomo/`, PRIVACY.md `[ref: SDD/Directory Map; PRD/F6-AC6]`
   2. Test: e2e on fake Kado for week, month and quarter: setup with a mapping → Pass 1 document → edits (untick one section, add a user item, edit an item) → Pass 2 → set; then a re-run producing `replace_between_markers` for kept sections and nothing for an unticked one; a reference applier implementing Hashi's documented semantics shows the user's text unchanged and one block per section; the unmapped e2e paths unchanged; `test_review_sdd_map.py` repointed to spec 046's Directory Map (or both maps); WHY-doc mirror test covers the new libs.
@@ -48,6 +48,8 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
   5. Success: week, month and quarter run end to end as a month does `[ref: PRD/F6-AC6]`
 
   Carried from Phase 5: PRIVACY.md rows for the mapped stdout fields (`sections[].lines` in preview, `block_at.heading`); the `review-instructions.py` `SECTION_KEY` pattern is looser than the real `^s\d{1,3}$`; file room is nil (`review-instructions.py` 536/540, `review_section_set.py` 199/200, `review_delivery.py` 348/350), so split before adding; `_Note.read` walks the heading tree a second time like `review_mapping._tree` (share it); an `under` insert can leave two blank lines; the e2e walk covers a section stop beside the "Tomo Review" place problem, which asks the section choices first (one extra round).
+
+  Done (2026-11-17): debt pass 808c94ce…0de1ca7e; docs 0fef6f55 + 63c232ba (README, PRIVACY, tomo-help 0.2.24, vault-example 1.11, SDD component rows); e2e 88696093 + 6fcabb9c (`tests/test_046_t6_2_e2e_sections.py`, `tests/e2e_046_sections_walk.py`, WHY-mirror glob in `test_review_why_docs.py`; 9 mutations RED). Correction to the note above: the first preview reports `place-missing` and `section-missing` together and the skill asks the place first; still one extra round, both answer orders tested. Open for T6.4: `tomo-help.md:123` "a rerun replaces Tomo's section" could read as covering mapped blocks — say "Tomo's review section" when T6.1 lands.
 
 - [ ] **T6.3 Live walk with Hashi in the test vault (owner-run)** `[activity: validate]`
 
@@ -65,7 +67,7 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
         - costs and durations per pass from `tomo-session-stats.py`.
      Writes reach the test vault only through Hashi's apply; nothing edits it directly.
   3. Implement: record every run in `live-walk.md` (counts only, no journal text); file walk-found fixes as tasks with RED tests. Notes from Phase 4: record the context use (tokens) and cost of the quarter's Pass 1 beside the ≤ $5 / ≤ 20 min KPI; the mapped callout's target stem and not-read / partly-read paths are still raw (path-derived, low risk) — check them in the walk or note them in the close-out.
-  Carried from Phase 5: the live walk records the quarter's context use (tokens) and cost beside the KPI (already named above from Phase 4; check it is recorded); a section stop beside the "Tomo Review" place problem asks the section choices first, one extra round — watch for it.
+  Carried from Phase 5: the live walk records the quarter's context use (tokens) and cost beside the KPI (already named above from Phase 4; check it is recorded); a section stop beside the "Tomo Review" place problem is reported together with it and costs one extra round (the skill asks the place first) — watch for it.
 
   4. Validate: KPIs — weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.75, quarterly Pass 1 ≤ $5.00 and ≤ 20 min; 0 changed characters of user text outside markers; 0 sections with two blocks; 0 writes to off-limits.
   5. Success: Tomo and Hashi work together on all three kinds, first delivery and re-run `[ref: PRD/Success Metrics; PRD/Constraints]`

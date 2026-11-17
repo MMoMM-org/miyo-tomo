@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t6_3_end_own_text.py — `end` means the end of the heading's own text (spec 046 T6.3, owner 2026-11-17).
 
 The joint run with Hashi (round 1) delivered `end` as Hashi `inside`, which appends at the end of the heading's
@@ -99,6 +99,12 @@ def test_end_without_sub_headings_stays_inside():
     assert (p.anchor, p.hashi_placement) == ("A", "inside")
     out = apply(note(lines), p.action("I01", "w.md")).split("\n")
     assert out[:7] == ["## A", "a text", "", *block("s1"), ""] and out[7] == "## B"
+
+
+def test_a_first_sub_heading_two_levels_deeper_still_takes_the_block_before_it():
+    lines = ["# M", "## G", "#### G1a", "deep", "## Next"]
+    p = rsp.plan_section(row("s1", "G", 2), note(lines), WEEK, ITEMS)
+    assert (p.anchor, p.hashi_placement, p.insert_at) == ("G1a", "before", 2)
 
 
 def test_an_empty_own_body_puts_the_block_right_under_the_heading_line():

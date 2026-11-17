@@ -86,17 +86,17 @@ quarter:
   document and tells the model only counts and ids: how many items you kept,
   unticked, deleted or added. The model then sees the preview of the review
   section as it will land in your weekly, monthly or quarterly note — the items
-  you kept and added, in your wording, the habit averages among them (a line such as
-  "Energy: average 3 over 6 days" is part of the section) — with the note's
-  path and the heading it goes under; when the place cannot be resolved (the
-  heading is missing, too deep, or clashes with one of your own), the note's
-  headings too, so you can pick one. When you mapped template sections, a
-  script reads the note to find each section's heading and Tomo's own block in
-  it, and the preview shows for each mapped section the lines that will land
-  between Tomo's markers; if a block Tomo wrote earlier was moved, the preview
-  names the heading it now sits under, so you can confirm the move — nothing
-  else of the note's text. The instruction set is written to your inbox by a
-  script and is not shown to the model.
+  you kept and added, in your wording, the habit averages among them (a line
+  such as "Energy: average 3 over 6 days" is part of the section) — with the
+  note's path and the heading it goes under; when the place cannot be resolved
+  (the heading is missing, too deep, or clashes with one of your own), the
+  note's headings too, so you can pick one. When you mapped template sections,
+  a script reads the note to find each section's heading and Tomo's own block
+  in it, and the preview shows for each mapped section the lines that will
+  land between Tomo's markers; if a block Tomo wrote earlier was moved, the
+  preview names the heading it now sits under, so you can confirm the move —
+  nothing else of the note's text. The instruction set is written to your
+  inbox by a script and is not shown to the model.
 
 A review reads your journal, so it reaches the most personal content a vault
 holds. Folders you do not want reviewed — a therapy journal, client notes —
@@ -157,17 +157,16 @@ what to do with them:
   and one `read-<YYYY-MM>.json` per month instead of `read.json`, deleted
   together with it in the same cases. During the setup, `rows-<kind>.json` in
   `tomo-tmp/review/` holds the headings of the template and the section rows
-  offered for mapping — setup text, no note text — until the
-  setup is saved or the next `/review` starts. What stays afterwards
-  (`meta.json`) is metadata only. Other
-  commands keep their working files there too, for example the per-item
-  results of `/inbox` and the draft of `/note`.
+  offered for mapping — setup text, no note text — until the setup is saved
+  or the next `/review` starts. What stays afterwards (`meta.json`) is
+  metadata only. Other commands keep their working files there too, for
+  example the per-item results of `/inbox` and the draft of `/note`.
 - **Your inbox.** The review document (`<period> Review.md`) holds the
   proposals built from your journal; the instruction set
   (`<period>_review_instructions.json` and `.md`) holds the items you
   approved, in your wording; a review of a week, month or quarter without a
-  note yet adds that new note. They stay in the inbox after you applied them, like
-  every other document Tomo delivers — removing them is yours to do.
+  note yet adds that new note. They stay in the inbox after you applied them,
+  like every other document Tomo delivers — removing them is yours to do.
 
 Beyond those two working files, Tomo does not remove any of this; whether and
 when to remove it is **your choice**. Because the transcripts and the working folder can hold your journal

@@ -629,6 +629,7 @@ daily_log:
 #       anchor: "Conclusions"
 #       placement: "before"
 #     own_sections: ["Conclusions"]
+#     template_variant: null
 #     sections:
 #       "Quarterly Note.md":
 #         - id: "s1"

@@ -131,10 +131,17 @@ def _git(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
 
 
-def _changed_managed_files() -> list[str]:
+def _merge_base() -> str:
     if _git("rev-parse", "--verify", "--quiet", "main").returncode:
         pytest.skip("no local main branch to compare against")
-    out = _git("diff", "--name-only", "main", "--", "tomo/")
+    base = _git("merge-base", "main", "HEAD")
+    if base.returncode:
+        pytest.skip("no merge base between main and HEAD")
+    return base.stdout.strip()
+
+
+def _changed_managed_files(base: str) -> list[str]:
+    out = _git("diff", "--name-only", base, "--", "tomo/")
     return sorted(p for p in out.stdout.splitlines() if (ROOT / p).is_file())
 
 
@@ -144,15 +151,19 @@ def _version(text: str):
 
 
 def test_every_changed_managed_file_carries_a_greater_version() -> None:
-    stale = []
-    for path in _changed_managed_files():
-        before = _git("show", f"main:{path}")
+    base = _merge_base()
+    stale, checked = [], 0
+    for path in _changed_managed_files(base):
+        before = _git("show", f"{base}:{path}")
         if before.returncode:
             continue                                   # new on this branch: nothing to compare
         old = _version(before.stdout)
         if old is None:
-            continue                                   # no version header on main (e.g. JSON schemas)
+            continue                                   # no version header at the base (e.g. JSON schemas)
+        checked += 1
         new = _version((ROOT / path).read_text(encoding="utf-8"))
         if new is None or new <= old:
             stale.append(f"{path}: {old} -> {new}")
+    if not checked:
+        pytest.skip("no versioned managed file changed since the merge base")
     assert not stale, f"version not bumped: {stale}"

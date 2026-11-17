@@ -339,8 +339,16 @@ graph LR
     Actions --> SectionSet
     SectionSet --> SectionPlan[lib/review_section_plan.py NEW]
     SectionPlan --> HashiText[lib/review_hashi_text.py NEW]
-    Instr --> Delivery[lib/review_delivery.py]
-    Instr --> RenderMD[lib/render_md.py]
+    Instr --> TargetRead[lib/review_target_read.py NEW]
+    TargetRead --> Delivery[lib/review_delivery.py]
+    Instr --> Delivery
+    Instr --> Args[lib/review_instructions_args.py NEW]
+    Instr --> KadoConflict[lib/review_kado_conflict.py NEW]
+    Delivery --> Actions
+    Delivery --> SectionReport[lib/review_section_report.py NEW]
+    SectionReport --> SectionPlan
+    SectionPlan --> Mapping
+    Delivery --> RenderMD[lib/render_md.py]
 ```
 
 | Component | Single responsibility |
@@ -348,7 +356,7 @@ graph LR
 | `skills/periodic-review/SKILL.md` | The dialogue: the setup confirm table and its corrections, the model's proposal writing (what each section's description asks for, one place per item, reminders not finished text), the rewrite-once loop, the quarter branch of step 5, wording the stops and asking the per-section choices |
 | `review-session.py` | Setup entry points: `match` (writes and reads `rows-<kind>.json`), `setup-input` (refusals: not found, left out, off-limits, not in template, duplicate, bad id) |
 | `vault-config-writer.py` | Saving the confirmed setup through `review_config.writer_edits` with the read-back check |
-| `review-instructions.py` | Pass 2 entry points: `preview`, `deliver`, `drop`; parses the choice flags; the stops, notices and `nothing-to-deliver` live in `review_delivery` |
+| `review-instructions.py` | Pass 2 entry points: `preview`, `deliver`, `drop`; the choice flags come from `lib/review_instructions_args`, the target reads from `lib/review_target_read`, the refused-guard reading from `lib/review_kado_conflict`; the stops, notices and `nothing-to-deliver` live in `review_delivery` |
 | `lib/review_mapping.py` (new) | Template analysis (offered / left-out headings with reasons), heading identity (text, level, parent, occurrence), row ids, off-limits resolution incl. the physical landing check of a placement, dropped headings after a template change |
 | `lib/review_config.py` | Reading and validating `review.<g>.*` incl. `sections` and `off_limits`; writer edits |
 | `lib/vault_config_edit.py` | YAML rendering: block-style list of mappings, quoted keys, removal on empty |
@@ -364,7 +372,11 @@ graph LR
 | `lib/review_section_plan.py` (new) | `plan_section` only: Pass 2 per kept section on an existing note's text — heading resolution as Hashi does, own-block detection by line range, the off-limits landing check, the mode (insert / replace / skip / review / broken / moved / stops), the section's action, notices (`block-replaced`, `block-moved-confirmed`), the choices a stop offers; `place_off_limits` / `review_off_limits` for the "Tomo Review" place |
 | `lib/review_hashi_text.py` (new, T5.2) | The Hashi-parse mirror (`split_lines`, `fenced_mask`, `hashi_headings`, `marker_index`, `JS_WS`) and `item_lines` |
 | `lib/review_new_note.py` (new, T5.2) | The new note's text: template choice, splice, stamp |
-| `lib/review_section_set.py` (new, T5.4) | The delivery's sections as a set: `plan_existing` / `plan_new_note` (routing), `routed_keys`, `review_parts`, `compose`, `report`, `record`, `lands`; the `section-dropped` and `section-empty` notices come from the parse counts |
+| `lib/review_section_set.py` (new, T5.4) | The delivery's sections as a set: `plan_existing` / `plan_new_note` (routing), `routed_keys`, `review_parts`, `compose`, `lands` |
+| `lib/review_section_report.py` (new, T6.2) | What the delivery reports and records of the section plans: the per-section output (`report`), `delivered_plan.sections` (`record`), the choices no plan took, the dropped and empty sections (the `section-dropped` and `section-empty` notices come from the parse counts); split out of `review_section_set` |
+| `lib/review_target_read.py` (new, T6.2) | Pass 2's Kado reads of the target note, the period's note among the configured paths and elsewhere, and the new note's template; split out of `review-instructions.py` |
+| `lib/review_instructions_args.py` (new, T6.2) | The `--stem` type and the flags `preview` and `deliver` share (`--place-anchor`, `--section-choice`, `--confirm-moved`); split out of `review-instructions.py` |
+| `lib/review_kado_conflict.py` (new, T6.2) | Whether a caught `KadoError` is Kado's refused write guard, and its reason as a name; split out of `review_delivery` |
 | `lib/review_actions.py` | The "Tomo Review" section as today plus its analysis sub-parts; composes the whole plan through `review_section_set` (section actions first, then Tomo Review), numbered `I01…In` — Hashi then runs them by kind (`insert_under_marker`, then `replace_section`, then `replace_between_markers`, `planner.ts:39-56`), which is why a section never lands inside "Tomo Review"; the `review-section-kept` notice |
 | `lib/review_delivery.py` | Refusals, `delivered_plan` incl. `sections`, overwrite of a partly applied set |
 | `lib/render_md.py` | Readable instructions incl. `replace_between_markers` |

@@ -56,7 +56,8 @@ Canvas) and write it to your inbox:
   every other Tomo command: Kado on loopback and the Anthropic API. No
   additional endpoints are contacted.
 
-During **`/review`** — when you ask Tomo to review a finished week or month:
+During **`/review`** — when you ask Tomo to review a finished week, month or
+quarter:
 
 - **Your daily notes of the period** — from every daily note dated in the
   period, the sections you named in the setup (for example the Daily Log, the
@@ -68,24 +69,34 @@ During **`/review`** — when you ask Tomo to review a finished week or month:
   This Day" sections do not.
 - **Living task notes** you named in the setup (for example a `Next Todos`
   note), so the review can tell which tasks were done in the period.
-- **Weekly notes** of the weeks that overlap the month, for a monthly review.
+- **Weekly notes** of the weeks that overlap the month or quarter, for a
+  monthly or quarterly review, and for a quarterly review the **monthly notes**
+  of the quarter's three months.
 - **Vault growth** — the **paths** of the notes created in the period and of
   the MOCs changed in it, not their content.
-- **The weekly or monthly note itself**, so the review section can be placed
-  under the right heading, and during the setup its template. During the setup
-  the model also sees the names of the templates in your templates folder and,
-  when no heading for the review's place can be proposed, the headings of your
-  two most recent weekly or monthly notes — their headings, not their text.
+- **The weekly, monthly or quarterly note itself**, so the review section can
+  be placed under the right heading, and during the setup its template. During
+  the setup the model also sees the names of the templates in your templates
+  folder, the headings of the template it offers you to map to review sections,
+  and, when no heading for the review's place can be proposed, the headings of
+  your two most recent weekly, monthly or quarterly notes — their headings, not
+  their text. The descriptions and keywords you confirm for the mapped sections
+  are saved in your vault config and reach the model with the period read.
 - **The review document you edited** — in Pass 2 a script reads the edited
   document and tells the model only counts and ids: how many items you kept,
   unticked, deleted or added. The model then sees the preview of the review
-  section as it will land in your weekly or monthly note — the items you kept
-  and added, in your wording, the habit averages among them (a line such as
+  section as it will land in your weekly, monthly or quarterly note — the items
+  you kept and added, in your wording, the habit averages among them (a line such as
   "Energy: average 3 over 6 days" is part of the section) — with the note's
   path and the heading it goes under; when the place cannot be resolved (the
   heading is missing, too deep, or clashes with one of your own), the note's
-  headings too, so you can pick one. The instruction set is written to your
-  inbox by a script and is not shown to the model.
+  headings too, so you can pick one. When you mapped template sections, a
+  script reads the note to find each section's heading and Tomo's own block in
+  it, and the preview shows for each mapped section the lines that will land
+  between Tomo's markers; if a block Tomo wrote earlier was moved, the preview
+  names the heading it now sits under, so you can confirm the move — nothing
+  else of the note's text. The instruction set is written to your inbox by a
+  script and is not shown to the model.
 
 A review reads your journal, so it reaches the most personal content a vault
 holds. Folders you do not want reviewed — a therapy journal, client notes —
@@ -142,14 +153,20 @@ what to do with them:
   `proposals.json` once the review document is written to the inbox or the
   run is aborted; a session that ended without writing or aborting leaves
   `read.json` and `proposals.json` there until the next `/review` of that
-  period. What stays afterwards (`meta.json`) is metadata only. Other
+  period. A quarterly review keeps what it read split into `read-index.json`
+  and one `read-<YYYY-MM>.json` per month instead of `read.json`, deleted
+  together with it in the same cases. During the setup, `rows-<kind>.json` in
+  `tomo-tmp/review/` holds the headings of the template and the section rows
+  offered for mapping — setup text, no note text — until the
+  setup is saved or the next `/review` starts. What stays afterwards
+  (`meta.json`) is metadata only. Other
   commands keep their working files there too, for example the per-item
   results of `/inbox` and the draft of `/note`.
 - **Your inbox.** The review document (`<period> Review.md`) holds the
   proposals built from your journal; the instruction set
   (`<period>_review_instructions.json` and `.md`) holds the items you
-  approved, in your wording; a review of a week or month without a note yet
-  adds that new note. They stay in the inbox after you applied them, like
+  approved, in your wording; a review of a week, month or quarter without a
+  note yet adds that new note. They stay in the inbox after you applied them, like
   every other document Tomo delivers — removing them is yours to do.
 
 Beyond those two working files, Tomo does not remove any of this; whether and

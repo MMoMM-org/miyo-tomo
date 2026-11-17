@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.23
+# version: 0.2.24
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -30,7 +30,7 @@ The user just wants the menu. Show this (keep formatting tight):
     4. /inbox — process inbox items (2-pass workflow)
     5. /moc-propose — propose a new MOC for a topic, folder, classification, or whole-vault scan
     6. /garden-audit — audit the vault for orphans, dead links, broken up::, stale MOCs (+ configure/suggest/stats)
-    7. /review — weekly or monthly review of your daily notes into the periodic note (2-pass, + setup)
+    7. /review — weekly, monthly or quarterly review of your daily notes into the periodic note (2-pass, + setup)
 
   Concepts
     8. Lifecycle state machine (`tomo.state` frontmatter)
@@ -116,11 +116,11 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - `/garden-audit stats` — read-only overview relayed to chat (no vault write): open findings by area × check, totals per check/tier, active exclusions, temporaries on pushback (with days remaining), and reappeared (expired) exclusions
   - Point at: `.claude/agents/garden-auditor.md`, `.claude/commands/garden-audit.md`
 
-- **review / weekly review / monthly review / periodic note / week / month / review setup / W13 / 2026-W13** →
-  - `/review` reviews the last finished week; `/review month` the last finished month; `/review 2026-W13`, `/review W13`, `/review 2026-03` or an `@`-picked weekly or monthly note name a period
-  - First run per period kind: `/review` proposes the setup (folder, name format, first day of the week, template, review heading and place, daily sections, language) against your existing notes and saves it only after you confirm; `/review setup` shows the saved values and runs the same dialogue again
+- **review / weekly review / monthly review / quarterly review / periodic note / week / month / quarter / review setup / template sections / W13 / 2026-W13 / 2026-Q1** →
+  - `/review` reviews the last finished week; `/review month` the last finished month; `/review quarter` the last finished quarter; `/review 2026-W13`, `/review W13`, `/review 2026-03`, `/review 2026-Q1` or an `@`-picked weekly, monthly or quarterly note name a period
+  - First run per period kind: `/review` proposes the setup (folder, name format, first day of the week, template, review heading and place, daily sections, language, and which headings of your template the review fills or must never touch) against your existing notes and saves it only after you confirm; `/review setup` shows the saved values and runs the same dialogue again
   - 2-pass: Pass 1 writes `<period> Review.md` to your inbox — edit the items, tick `[x] Approved`, run `/review` again; Pass 2 shows the section as it will land and delivers the instruction set for Hashi (readable instructions included for applying by hand)
-  - Open reviews are always offered first (continue, start over, resume or drop); one review per period — a rerun replaces Tomo's section, never adds a second
+  - Open reviews are always offered first (continue, start over, resume or drop); one review per period — a rerun replaces Tomo's section and its blocks in mapped sections, never adds a second (replacing a block in a mapped section needs a Hashi release with `replace_between_markers`)
   - Point at: `.claude/skills/periodic-review/SKILL.md`, `.claude/commands/review.md`, `config/vault-config.yaml` (`review:`)
 
 ### Concepts

@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.10
+# version: 1.11
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -629,3 +629,15 @@ daily_log:
 #       anchor: "Conclusions"
 #       placement: "before"
 #     own_sections: ["Conclusions"]
+#     sections:
+#       "Quarterly Note.md":
+#         - id: "s1"
+#           heading: "Goals Reached"
+#           level: 3
+#           parent: "Review of the Quarter"
+#           occurrence: 1
+#           description: "Which goals of the quarter were reached, and through what"
+#           keywords: ["Ziel", "erreicht"]
+#           groups: ["done", "monthly_only"]
+#           placement: "end"
+#           cap: 10

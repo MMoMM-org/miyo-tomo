@@ -492,6 +492,7 @@ tests/
 ├── test_review_mapping.py                       # NEW: template analysis, off-limits, landing check
 ├── test_review_sections.py                      # NEW: proposal section checks and section parts
 ├── test_review_section_plan.py                  # NEW: plan_section on numbered-line layouts
+├── test_review_e2e_cleanup.py                   # NEW (spec 046 T6.3): review peers' tomo.sources and the state after Hashi's cleanup
 ├── test_review_session_sections.py             # NEW (implemented, spec 046 T2.1): match sections, rows file, template_not_found, quarter
 ├── test_review_setup_input_rows.py             # NEW (spec 046 T2.2): setup-input refusals, ids, rows file deleted on save
 ├── test_review_skill_sections.py               # NEW (spec 046 T2.3): skill pins for the setup mapping table and the quarter routing

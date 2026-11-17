@@ -1,6 +1,6 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-11-17 (046: wire `schema_version` "4" and the new `replace_between_markers` action, emitted by `/review`).
+> Last reviewed: 2026-11-17 (046: wire `schema_version` "4" and the new `replace_between_markers` action, emitted by `/review`; the MD peer's `tomo.sources` per producer, which Hashi's cleanup trashes — `/review` peers now carry it, T6.3).
 > Prior: 2026-09-05 (031: `move_asset`'s "Who emits it" updated — the deterministic
 > `/inbox` pipeline now emits it via `_build_move_asset_actions`, not only session-composed sets).
 > Prior: 2026-05-27 (018: supporting_items accepts string|array|null; related:: aggregation confirmed Tomo-side per §882-886; add_relationship mode field NOT added — Hashi always replaces; up:: regex handles callout/list prefixes).
@@ -200,9 +200,25 @@ is safe — but it also removes the coverage record, so a still-present approved
 would be synthesised again.
 
 See [tier-3 instruction-set-cleanup](XDD/reference/tier-3/inbox/instruction-set-cleanup.md),
-whose "Not implemented" banner (2026-05-27) is the authoritative statement, and
+whose "Not implemented" banner (2026-05-27) is the authoritative statement for Tomo, and
 [state-tag-lifecycle](XDD/reference/tier-3/inbox/state-tag-lifecycle.md) for the same note about
 the `active` transition.
+
+### The MD peer's `tomo.sources` — what Hashi's cleanup trashes
+
+Hashi (not Tomo) has a cleanup after a full apply (`cleanupAfterFullApply`, Hashi ADR-018 §4,
+#146). Its only input is the `tomo.sources[]` array in the `.md` peer's frontmatter `tomo:`
+block: it merges `tomo.state: applied` into the peer, trashes every `sources[].path` (a path
+already gone only warns), then the peer, then the `.json`. A peer without the array is left
+alone. Every entry is `{path}` with an optional `checksum` (`doc-frontmatter.schema.json`);
+`sources` follows `updated_at` in the block.
+
+| Producer | `sources` of the peer |
+|---|---|
+| `/inbox` | the suggestions document the set was rendered from (`path` + `checksum`) |
+| `/review` | the review document `<inbox>/<period> Review.md`, then — for a new-note delivery — the new note's inbox copy (`<inbox>/<period>.md`, gone after the move). **Never** the week, month or quarter note itself. |
+| `/review` withdrawn set (`drop`) | `[]`: the cleanup removes only the set pair; the document stays |
+| `/note` | none (the peer has no `sources`) |
 
 ---
 

@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.4.0
+# version: 0.5.0
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -31,10 +31,12 @@ without a setup); ``set_paths`` gives both set paths through
 ``ReviewSetup.inbox_path``; ``delivery_paths`` adds the new note's path when the plan
 creates it and ``public_paths`` keeps the three a delivery output reports; ``template_paths`` the template's and the
 variant's vault paths. ``set_md`` renders the readable
-peer through ``render_md`` with the stable tomo block; ``withdrawn_set`` and
-``withdrawn_md`` are what ``drop`` writes over a set Tomo already delivered:
-the envelope with an empty ``actions`` list and an MD that names the files
-to delete.
+peer through ``render_md`` with the stable tomo block, whose ``sources``
+(``peer_sources``) are the review document and, for a new note, its inbox
+copy — never ``plan.target``: Hashi's cleanup trashes every listed path;
+``withdrawn_set`` and ``withdrawn_md`` are what ``drop`` writes over a set Tomo
+already delivered: the envelope with an empty ``actions`` list and an MD that
+names the files to delete, with ``sources: []``.
 
 ``plan_record``, ``replan_differs``,
 ``resume_refusal`` and ``report_delivered_plan`` are the ``delivered_plan``
@@ -142,6 +144,11 @@ class ReviewMeta:
     def generated(self) -> str:
         return str(self.data.get("generated") or "")
 
+    @property
+    def doc_path(self) -> Optional[str]:
+        path = self.data.get("doc_path")
+        return path if isinstance(path, str) and path else None
+
     def started(self) -> bool:
         """Whether a delivery began: a step done or one in flight."""
         return bool(self.steps_done) or bool(self.failed_step)
@@ -203,11 +210,19 @@ def template_paths(setup: rc.ReviewSetup) -> Tuple[Optional[str], Optional[str]]
 
 # --- the peers ------------------------------------------------------------------------
 
+def peer_sources(plan: ra.ReviewPlan, meta: ReviewMeta) -> List[Dict[str, str]]:
+    """What Hashi's cleanup may trash after a full apply: the review document, then the new note's inbox
+    copy; never the review target."""
+    paths = [meta.doc_path, plan.note_path if plan.mode == ra.NEW_NOTE else None]
+    return [{"path": path} for path in paths if path and path != plan.target]
+
+
 def set_md(plan: ra.ReviewPlan, meta: ReviewMeta, profile: Optional[str]) -> str:
-    """The readable instructions of ``plan`` with the stable tomo block."""
+    """The readable instructions of ``plan`` with the stable tomo block and its ``sources``."""
     md = render_instructions_md(plan.actions, {"generated": meta.generated, "profile": profile},
                                 {"templater_hint": plan.templater_hint})
-    return merge_tomo_block_into_markdown(md, stable_block("instructions", "pending-apply", meta))
+    block = stable_block("instructions", "pending-apply", meta, sources=peer_sources(plan, meta))
+    return merge_tomo_block_into_markdown(md, block)
 
 
 def withdrawn_set(stem: str, meta: ReviewMeta, profile: Optional[str]) -> dict:
@@ -225,7 +240,7 @@ def withdrawn_md(stem: str, meta: ReviewMeta, profile: Optional[str], files: Seq
              "Hashi applies nothing from it. Delete these files:", ""]
     lines += [f"- `{path}`" for path in files]
     text = md.rstrip("\n") + "\n\n" + "\n".join(lines) + "\n"
-    return merge_tomo_block_into_markdown(text, stable_block("instructions", "pending-apply", meta))
+    return merge_tomo_block_into_markdown(text, stable_block("instructions", "pending-apply", meta, sources=[]))
 
 
 # --- the delivered plan and the resume (#258) -----------------------------------------

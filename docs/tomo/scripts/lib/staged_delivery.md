@@ -75,6 +75,16 @@ does and why (a rebuilt payload must be byte-identical to the landed one, so
 `docs/tomo/scripts/note-instructions.md`, "WHY Every Generated File Is
 Byte-Stable".
 
+### WHY stable_block Takes `sources` (spec 046 T6.3)
+
+A review set's MD peer must carry `tomo.sources` for Hashi's cleanup
+(owner 2026-11-17; `docs/tomo/scripts/lib/review_delivery.md`). The list goes
+through `build_tomo_block` rather than being added to the returned dict, so the
+schema validation (`TOMO_SCHEMA_STRICT`) covers it and the key order is the
+`/inbox` peer's (`sources` after `updated_at`, which `stable_block` overwrites
+in place). The default `None` omits the key, so `/note`'s stamped note and
+peer stay byte-identical.
+
 ## WHY the stderr Line Carries the Caller's Script Name
 
 The failed-step line (`<script>: delivery failed at <step> (<ErrorClass>)`)

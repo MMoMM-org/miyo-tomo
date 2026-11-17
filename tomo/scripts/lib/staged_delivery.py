@@ -1,5 +1,5 @@
 # staged_delivery.py — the staged, resumable deliver loop shared by /note and /review.
-# version: 0.1.1
+# version: 0.2.0
 """Write a set of vault files one step at a time, resumable without duplicates.
 
 ``note-instructions.py deliver`` and the /review delivery write their files in
@@ -25,9 +25,10 @@ keeps the draft. A KadoError records the step as failed, prints
 
 ``record`` and ``fail`` serve steps the caller performs itself (a frontmatter
 merge, for instance): they mark the step and persist the same way.
-``stable_block(doc_type, state, meta)`` builds a ``tomo:`` block whose
-``updated_at`` is ``meta.generated``, so a rebuilt payload is byte-identical
-to the landed one.
+``stable_block(doc_type, state, meta, sources=None)`` builds a ``tomo:`` block
+whose ``updated_at`` is ``meta.generated``, so a rebuilt payload is
+byte-identical to the landed one; ``sources`` (``[{path}]``) is validated with
+the block, None omits the key.
 
 A step the caller did not declare, or a target for one, is refused with
 ValueError; the message names the problem class only, never the name.
@@ -56,9 +57,9 @@ class DeliveryStop(Exception):
         self.reason: Optional[str] = None
 
 
-def stable_block(doc_type: str, state: str, meta) -> dict:
-    """A tomo: block whose updated_at is meta.generated, so a rebuild is byte-identical."""
-    block = build_tomo_block(doc_type, state, meta.run_id)
+def stable_block(doc_type: str, state: str, meta, sources: Optional[list] = None) -> dict:
+    """A tomo: block whose updated_at is meta.generated, so a rebuild is byte-identical; ``sources`` when given."""
+    block = build_tomo_block(doc_type, state, meta.run_id, sources=sources)
     block["updated_at"] = meta.generated
     return block
 

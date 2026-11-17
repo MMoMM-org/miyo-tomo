@@ -117,6 +117,51 @@ copy-ready fenced block, or the move with its destination and the Templater
 line when the note keeps Templater code. The tomo block is merged afterwards
 through `stable_block` so a rebuild is byte-identical.
 
+## WHY the MD Peer Carries `tomo.sources` — and Never the Review Target (spec 046 T6.3)
+
+WHY: owner decision 2026-11-17, from the Hashi joint run round 1. Hashi's
+cleanup after a full apply (Hashi ADR-018 §4, #146, `cleanupAfterFullApply`)
+takes `tomo.sources[]` from the peer's frontmatter as its only source of truth:
+it merges `tomo.state: applied` into the peer, **trashes every
+`sources[].path`**, then the peer, then the set JSON. A peer without the array
+makes Hashi write and trash nothing ("no cleanup: no tomo.sources"), so review
+sets stayed in the inbox after every apply while `/inbox` sets left.
+
+What `set_md` lists, in this order (`peer_sources`):
+
+1. the review document (`<inbox>/<period> Review.md`) — `meta.json`'s
+   `doc_path`, the same path `review-instructions.py` read the plan from, so
+   the list needs no extra argument and no Kado call;
+2. for a new-note delivery, the new note's inbox copy (`plan.note_path`) —
+   after the move it is already gone, which Hashi only warns about. It is
+   Tomo's own file: the `note` step is delivered before `set_md`, so the
+   peer is never written unless the copy at that path is Tomo's.
+
+**Never the review target** (the week, month or quarter note). Hashi trashes
+every listed path, and the target is the user's own note. Neither listed path
+is the target by construction (both sit in the inbox, the target in the
+calendar folders), and `peer_sources` still drops any path equal to
+`plan.target`: one comparison is cheap beside a trashed note. Entry shape is the `/inbox`
+peer's (`render_md._build_tomo_block_for_instructions`): `{path}` objects,
+`sources` after `updated_at`, validated by `build_tomo_block` against
+`doc-frontmatter.schema.json`. The optional `checksum` is left out: the
+`/inbox` checksum feeds triage's coverage record, and nothing reads a review
+peer's sources but Hashi's cleanup. A meta without `doc_path` gives
+`sources: []` — still valid for Hashi, which then trashes only the pair.
+
+The withdrawn peer (`withdrawn_md`) lists nothing: `sources: []`. A drop
+consumes no input. The document stays for the user (a drop is not a finished
+review), and the new note's inbox copy is not listed because a drop may follow
+a `note` step that failed in flight, where Tomo cannot prove the file at that
+path is its own; the withdrawn MD already names it under "delete these
+files", so the user decides. With `[]` a cleanup removes only the set pair,
+the files the MD asks the user to delete anyway.
+
+Resume note: the peer changes bytes. A `set_md` landed before this change
+(no `sources`) and resumed after it is reported `name-taken` at `set_md`, the
+ordinary "an earlier set waits" path; it only concerns sets delivered by a
+pre-release build.
+
 ## WHY the Withdrawn Set Is Built From `meta.json`
 
 `drop` may run on a document that is no longer readable or approved; the

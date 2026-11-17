@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.11
+# version: 0.2.12
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -292,7 +292,7 @@ def test_deliver_writes_the_set_in_order_and_marks_the_document_last(schema, doc
     assert schema_errors(doc, schema) == [], schema.name
     front, body = split_frontmatter(fake.text(SET_MD))
     assert front["tomo"] == {"doc_type": "instructions", "state": "pending-apply", "run_id": "r-test",
-                             "updated_at": meta["generated"]}
+                             "updated_at": meta["generated"], "sources": [{"path": DOC}]}   # T6.3: never TARGET
     assert "### I01 — " in body and "- [ ] Applied" in body and f"`{OWN}`" in body
     assert "```" in body and REVIEW_MARKER in body
     front, body = split_frontmatter(fake.text(DOC))

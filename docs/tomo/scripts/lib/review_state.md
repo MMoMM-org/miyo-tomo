@@ -245,6 +245,27 @@ seventh state, or listing it `applied` once more — was rejected: the review
 was already applied and, when `start` listed it, already reported; a
 deleted set is the user's tidy-up, not news.
 
+### WHY Hashi's Cleanup Needs No New State (spec 046 T6.3)
+
+WHY: owner decision 2026-11-17. Since review peers carry `tomo.sources`
+(`review_delivery.md`), Hashi's cleanup after a full apply trashes the review
+document, the peer and the set JSON — the paragraph above ("Hashi never
+deletes a set") holds only for a Hashi with `cleanupAfterFullApply` off. No
+code here changed; the three outcomes are pinned in
+`tests/test_review_e2e_cleanup.py`:
+
+| Document | Set JSON | Listing | `status` | Next `/review` of the period |
+|---|---|---|---|---|
+| gone | gone (full cleanup) | not listed | `not-found` | `write` finds no document, writes it and resets `meta.json`; `deliver` meets no set → re-run against the note |
+| gone | left (cleanup stopped after the sources, peer left or gone) | not listed | `not-found` | as above; the applied set is written over (`second_set` is False for an applied set) |
+| left | gone (the document trash warned, cleanup went on) | not listed (step 3b) | `state: null` | `write` refuses `review-exists`; `replace --confirm`, then delivers |
+
+The listing is driven by the inbox's review documents: a stem whose document
+is gone is never classified, so it cannot read `failed-delivery`, whatever
+its `meta.json` says. The re-run needs neither the old document nor the old
+set: `write` keys on the document path, and the plan reads the target note's
+markers.
+
 ## WHY a Begun Delivery Is Read Through `ReviewMeta.started()`
 
 WHY: coordinator decision 2026-11-12, from the T4.2 fix round. The SDD's

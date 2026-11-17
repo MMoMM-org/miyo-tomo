@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_note_actions.py — Behavioural tests for lib.note_actions (spec 044 T2.5).
 
 Covers the instruction set a /note draft delivers (SDD NoteInstructionSet):
@@ -92,7 +92,8 @@ def test_no_delete_source_and_null_inbox_item_for_text_in_call():
 def test_set_top_level_fields():
     doc = note_actions.build_note_instruction_set(_meta())
     assert doc["type"] == "tomo-instructions"
-    assert doc["schema_version"] == _schema()["properties"]["schema_version"]["const"]
+    assert doc["schema_version"] == "4"
+    assert doc["schema_version"] in _schema()["properties"]["schema_version"]["enum"]
     assert doc["generated"] == "2026-11-04T17:30:05Z"
     assert doc["profile"] == "miyo"
     assert doc["md_peer"] == f"{STEM}_instructions"

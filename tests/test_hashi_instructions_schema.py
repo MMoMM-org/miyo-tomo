@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test_hashi_instructions_schema.py — JSON Schema validation tests for hashi-instructions.schema.json.
 
 Covers T4.0 (XDD 024 Phase 4): insert_under_marker action $def.
@@ -50,7 +50,7 @@ def producer_schema() -> dict:
 def _make_instructions(actions: list) -> dict:
     """Return a minimal valid instruction-set envelope wrapping the given actions."""
     return {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "generated": "2026-06-23T14:00:00Z",
         "profile": "miyo",

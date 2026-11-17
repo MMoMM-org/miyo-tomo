@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_032_t6_1_end_to_end_routing.py — end-to-end routing test (T6.1).
 
 Drives the PUBLIC entry points of the garden-audit Pass-1/Pass-2 pipeline
@@ -202,7 +202,7 @@ def test_edit_frontmatter_expected_matches_observed_value_order_intact():
 def _instructions_envelope(parsed: dict, actions: list[dict]) -> dict:
     """Wrap actions exactly as instruction-render.py does for garden-audit."""
     return {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "source_suggestions": "garden-audit-report",
         "generated": "2026-09-02T10:05:00Z",

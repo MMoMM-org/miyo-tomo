@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_instructions_diff_skipped_daily.py — coverage-audit vs. dropped daily notes.
 
 The renderer drops update_* daily-note actions whose target daily note does not
@@ -142,7 +142,7 @@ def test_full_doc_with_skipped_daily_validates():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(open(REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"))
     doc = {
-        "schema_version": "3", "type": "tomo-instructions",
+        "schema_version": "4", "type": "tomo-instructions",
         "generated": "2026-07-09T08:00:00Z", "profile": "miyo",
         "action_count": 0, "actions": [],
         "tomo": {"run_id": "r1", "skipped_daily": [

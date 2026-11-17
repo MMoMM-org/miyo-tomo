@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """review_deliver_helpers.py — the shared fixtures, constants and helpers of the review-instructions delivery tests.
 
 Moved out of test_review_deliver.py (#260) so test_review_deliver.py, test_review_deliver_report.py,
@@ -8,20 +8,11 @@ instead of from a test module. Holds the guarded fake vault (Kado's write guard 
 ``ins``/``doc_mod``/``instance`` fixtures, the synthetic week and the helpers that run Pass 1 and the CLI against
 the fake. Importing it puts tomo/scripts and tests/ on ``sys.path``. All data is synthetic.
 
-The v4 candidate (spec 046 T5.3, ADR-5): Hashi has not released ``replace_between_markers``, and no committed schema
-changes before it does (T6.1). ``candidate_schema`` builds the test-only schema
-``instructions-v4-candidate.schema.json`` in memory from a committed schema (default: the vendored Hashi copy
-``tomo/schemas/hashi-instructions.schema.json``) plus ``REPLACE_BETWEEN_MARKERS`` — the handoff ``$def`` of the SDD's
-Integration Points, held as data, never parsed from the SDD. Built, not committed, so it can never go stale against
-the vendored file; ``write_candidate_schema`` writes it into a test's tmp dir when a file is wanted. It keeps the base's
-``schema_version`` const "3": the producer writes "3" until T6.1 bumps the producer, the vendored copy and the
-candidate's reason to exist together. ``schema_errors`` validates a set that carries the new action against the
-candidate built on the schema it was asked for, and every other set against that schema unchanged. When the base
-already defines the action (Hashi's checkout after its release) it is used as it is.
+``schema_errors`` validates a set against one committed schema: since spec 046 T6.1 (wire v4) both of Tomo's
+instruction schemas define ``replace_between_markers``, so no test-only schema exists any more.
 """
 from __future__ import annotations
 
-import copy
 import importlib.util
 import json
 import sys
@@ -47,31 +38,6 @@ DOC_SCRIPT = SCRIPTS_DIR / "review-doc.py"
 INS_SCRIPT = SCRIPTS_DIR / "review-instructions.py"
 SCHEMAS = [REPO / "tomo" / "schemas" / "instructions.schema.json",
            REPO / "tomo" / "schemas" / "hashi-instructions.schema.json"]
-VENDORED = REPO / "tomo" / "schemas" / "hashi-instructions.schema.json"
-CANDIDATE_NAME = "instructions-v4-candidate.schema.json"
-NEW_ACTION = "replace_between_markers"
-REPLACE_BETWEEN_MARKERS = {
-    "type": "object",
-    "required": ["id", "action", "target_path", "start_marker", "end_marker", "content"],
-    "additionalProperties": False,
-    "description": "Replace only the lines strictly between a start-marker line and its end-marker line in an "
-                   "existing note; the marker lines and every other line stay byte-identical. Modify-only.",
-    "properties": {
-        "id": {"$ref": "#/$defs/action_id"},
-        "action": {"const": NEW_ACTION},
-        "target_path": {"type": "string", "minLength": 1},
-        "start_marker": {"type": "string", "minLength": 1, "pattern": "^\\S([^\\n]*\\S)?$"},
-        "end_marker": {"type": "string", "minLength": 1, "pattern": "^\\S([^\\n]*\\S)?$"},
-        "scope": {
-            "type": "object", "required": ["heading", "level"], "additionalProperties": False,
-            "properties": {"heading": {"type": "string", "minLength": 1},
-                           "level": {"type": "integer", "minimum": 1, "maximum": 6}},
-        },
-        "content": {"type": "string",
-                    "description": "Lines between the markers joined by \\n, no trailing newline; \"\" = zero lines."},
-        "applied": {"$ref": "#/$defs/applied_field"},
-    },
-}
 HASHI_VENDORED = Path("/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json")
 # Every schema a delivered set must satisfy: Tomo's two, and Hashi's own vendored copy when the sibling checkout
 # exists. Without the checkout the vendored case is reported as skipped, never silently left out (#261).
@@ -213,26 +179,9 @@ def meta_of(instance) -> dict:
     return json.loads((instance / "tomo-tmp" / "review" / STEM / "meta.json").read_text(encoding="utf-8"))
 
 
-def candidate_schema(base: Path = VENDORED) -> dict:
-    """``base`` plus the ``replace_between_markers`` ``$def`` and its ``oneOf`` entry; ``base`` itself once it has one."""
-    schema = json.loads(base.read_text(encoding="utf-8"))
-    if NEW_ACTION in schema["$defs"]:
-        return schema
-    schema["$defs"][NEW_ACTION] = copy.deepcopy(REPLACE_BETWEEN_MARKERS)
-    schema["properties"]["actions"]["items"]["oneOf"].append({"$ref": f"#/$defs/{NEW_ACTION}"})
-    return schema
-
-
-def write_candidate_schema(directory: Path) -> Path:
-    path = directory / CANDIDATE_NAME
-    path.write_text(json.dumps(candidate_schema(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return path
-
-
 def schema_errors(doc: dict, path: Path) -> list[str]:
-    """Errors of ``doc`` against ``path``; against its v4 candidate when ``doc`` carries the new action."""
-    uses_new = any(a.get("action") == NEW_ACTION for a in doc.get("actions") or [])
-    schema = candidate_schema(path) if uses_new else json.loads(path.read_text(encoding="utf-8"))
+    """Errors of ``doc`` against the committed schema at ``path``."""
+    schema = json.loads(path.read_text(encoding="utf-8"))
     validator = jsonschema.Draft202012Validator(schema)
     return [e.message for e in validator.iter_errors(doc)]
 

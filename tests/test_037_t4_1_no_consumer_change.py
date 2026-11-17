@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_037_t4_1_no_consumer_change.py — spec 037 T4.1.
 
 ADR-5 (`solution.md:506`) says spec 037 reaches Hashi through no new wire
@@ -97,7 +97,7 @@ def _instructions_envelope(actions: list[dict], skipped_assets: list[dict]) -> d
     exactly `source`/`destination`/`reason` (instruction-render.py:1004-1010;
     `kind` is deliberately not projected onto the wire)."""
     doc = {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "generated": "2026-09-27T09:00:00Z",
         "profile": "miyo",

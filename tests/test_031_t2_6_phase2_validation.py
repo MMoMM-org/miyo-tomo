@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_031_t2_6_phase2_validation.py — spec 031 T2.6 Phase 2 validation.
 
 End-to-end check that an instructions.json produced by build_actions() with a
@@ -70,7 +70,7 @@ def _confirmed_entry(*, source_path) -> dict:
 
 def _instructions_envelope(actions: list[dict]) -> dict:
     return {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "generated": "2026-09-05T12:00:00Z",
         "profile": "miyo",
@@ -101,11 +101,12 @@ def test_schema_version_const_matches_current_wire_version():
     Spec 031 originally asserted this stayed "2" — that "unchanged" guarantee
     was local to spec 031's own scope, not a permanent freeze. Spec 036 T4.1
     has since bumped the instruction wire schema_version "2" -> "3" for an
-    unrelated reason (delete_source's new required depends_on), so this test
-    tracks the current const rather than asserting it never moves again.
+    unrelated reason (delete_source's new required depends_on), and spec 046
+    T6.1 "3" -> "4" (replace_between_markers), so this test tracks the
+    current const rather than asserting it never moves again.
     """
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    assert schema["properties"]["schema_version"] == {"const": "3"}
+    assert schema["properties"]["schema_version"] == {"const": "4"}
 
 
 def test_zero_delete_source_actions_reference_an_attachment_path():

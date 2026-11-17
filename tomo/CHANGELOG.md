@@ -31,7 +31,7 @@ Classify the change before bumping anything:
 | Change a field's type or shape                          | **Breaking**   | bump             |
 | Change the canonical execution order of action kinds    | **Breaking**   | bump             |
 
-`schema_version` is a string `const` in the schema (currently `"2"`).
+`schema_version` is a string `const` in the producer schema (currently `"4"`; Hashi's vendored copy declares the versions it accepts as an `enum`).
 Bumping = update the `const` value and ship a coordinated Hashi release.
 
 ## Coordination rule for breaking changes
@@ -58,6 +58,7 @@ Most-recent first. Format:
 
 | Date       | Tomo commit / version       | Classification | Schema version  | Summary | Notes |
 |------------|-----------------------------|----------------|-----------------|---------|-------|
+| 2026-11-17 | spec 046 T6.1 (#263)        | **Breaking** (new action kind the consumer did not accept) | `"3"` → `"4"`  | Added `replace_between_markers` (replace only the lines strictly between two opaque marker lines; optional level-aware `scope`) to both schemas; the producer `const` moves to `"4"`, so `/inbox`, `/note` and `/review` emit `"4"` through `wire_schema_version`. The vendored copy is Hashi `feat/179-replace-between-markers` commit `abd92d6`, byte for byte (pre-release), whose `schema_version` is `{"enum": ["3", "4"]}`. | Release notes: Hashi from release X onward executes both v3 and v4 instruction sets; older Hashi releases refuse v4 sets with a version message. Waiting v3 sets apply unchanged; Tomo builds no converter. Re-check the vendored copy against Hashi's released tag before merge. Handoffs: `_outbox/for-hashi/2026-11-14_tomo-to-hashi_replace-between-markers.md`, `_inbox/from-hashi/2026-11-17_hashi-to-tomo_replace-between-markers-built-v3-stays-valid.md`. |
 | 2026-06-30 | 618c881 / render 0.36.0     | **Breaking**   | `"1"` → `"2"`  | Renamed `move_note.origin_inbox_item` → `source_inbox_item` in both schemas (instructions + hashi-instructions). `additionalProperties: false` actively rejects the old key. `schema_version` const bumped from `"1"` to `"2"`. `instructions-diff.py` indexing key updated to match. | Tomo+Hashi lockstep deploy required — apply all pending instruction sets before upgrading. Hashi handoff: `_outbox/for-hashi/2026-06-30_tomo-to-hashi_source-inbox-item-schema-v2.md` (T4.5). |
 | 2026-04-26 | `feat/hashi-path-contract-and-changelog` | Process | v1 (unchanged) | Documented Path Shape Contract in `docs/instructions-json.md`; added renderer-side `_validate_action_paths` guard in `instruction-render.py` v0.7.1 (aborts Pass-2 with exit 2 on non-conforming path emission). Codified the schema-change discipline this file embodies. | No schema field change; defensive guard only. Hashi handoffs `path-emission-contract` + `schema-changelog-discipline`. |
 | 2026-04-25 | `f3ad49d` / v0.7.0          | Additive       | v1 (unchanged) | Added optional `applied: boolean` (default `false`) to every action kind via `$defs/applied_field`. Hashi flips `false → true` after a successful apply; monotonic. | Consumers can ignore until they want partial-resume. Missing field tolerated as `false` for v0.5.x backwards-compat. Handoff: `_outbox/for-tomo/2026-04-25_hashi-to-tomo_applied-field.md`. |

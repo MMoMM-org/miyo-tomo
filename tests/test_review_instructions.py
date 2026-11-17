@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.5
+# version: 0.4.6
 r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -722,6 +722,6 @@ def test_actions_every_set_validates_against_both_schemas(mode, schema):
          "new-note": lambda: plan(target_text=None, template=rnn.Template(raw=RAW_TEMPLATE))}[mode]()
     assert p.mode == mode and len(p.actions) == 1
     doc = instruction_set(p)
-    assert doc["schema_version"] == "3" and doc["type"] == "tomo-instructions"
+    assert doc["schema_version"] == "4" and doc["type"] == "tomo-instructions"
     assert doc["md_peer"] == f"{PERIOD}_review_instructions" and doc["generated"] == GENERATED
     assert schema_errors(doc, schema) == []

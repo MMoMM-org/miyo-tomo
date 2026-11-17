@@ -44,6 +44,7 @@ sys.path.insert(0, str(TESTS_DIR))
 from attachment_plan_fakes import FakeVault, plan_from_remedies  # noqa: E402
 from lib.render_actions import build_actions  # noqa: E402
 from lib.render_resolve import _strip_internal_link_fields  # noqa: E402
+from lib.wire_version import wire_schema_version  # noqa: E402
 
 SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "hashi-instructions.schema.json"
 
@@ -154,7 +155,8 @@ def test_produced_set_validates_against_vendored_schema(actions, schema):
     wire = json.loads(json.dumps(actions))
     _strip_internal_link_fields(wire)
     envelope = {
-        "schema_version": schema["properties"]["schema_version"]["const"],
+        # the version Tomo emits; the vendored contract accepts "3" and "4" (spec 046 T6.1)
+        "schema_version": wire_schema_version("instructions.schema.json"),
         "type": "tomo-instructions",
         "generated": "2026-10-12T00:00:00Z",
         "profile": "miyo",

@@ -1,6 +1,7 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-09-05 (031: `move_asset`'s "Who emits it" updated — the deterministic
+> Last reviewed: 2026-11-17 (046: wire `schema_version` "4" and the new `replace_between_markers` action, emitted by `/review`).
+> Prior: 2026-09-05 (031: `move_asset`'s "Who emits it" updated — the deterministic
 > `/inbox` pipeline now emits it via `_build_move_asset_actions`, not only session-composed sets).
 > Prior: 2026-05-27 (018: supporting_items accepts string|array|null; related:: aggregation confirmed Tomo-side per §882-886; add_relationship mode field NOT added — Hashi always replaces; up:: regex handles callout/list prefixes).
 
@@ -48,7 +49,7 @@ re-run.
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "4",
   "type": "tomo-instructions",
   "source_suggestions": "2026-04-21_0918_suggestions",
   "generated": "2026-04-21T11:13:18Z",
@@ -62,7 +63,7 @@ re-run.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema_version` | `"2"` (const) | Bumps when the structure becomes incompatible. Reject with a clear error if you see a version you don't understand. |
+| `schema_version` | `"4"` (const in the producer schema) | Bumps when the structure changes in a way an older consumer would refuse (spec 046: v4 adds `replace_between_markers`). Hashi accepts `"3"` and `"4"`, since a v3 set is also a valid v4 set. Reject with a clear error if you see a version you don't understand. |
 | `type` | `"tomo-instructions"` (const) | Discriminator in case multiple JSON artefacts share the inbox folder. |
 | `source_suggestions` | string \| null | Stem(s) of the suggestions doc(s) this set was derived from — traceability only. A normal Pass-2 run produces a single stem. An XDD-012 Force-Atomic reconciliation run (primary doc + companion `*_suggestions-fan.md`) produces a comma-separated list: `"2026-04-21_0918_suggestions, 2026-04-21_1330_suggestions-fan"`. Tomo Hashi SHOULD treat this as opaque text; it's for human trace only and does not affect execution. |
 | `generated` | ISO-8601 UTC | Use this (not file mtime) when comparing action sets. |
@@ -1391,6 +1392,42 @@ permanently. This is disclosed to the user in the garden-audit report
 *before* the Apply checkbox — see `_render_property_edit_disclosure` in
 `garden-audit-render.py` — because a post-hoc note would be too late.
 
+### `replace_between_markers` — replace a block between two marker lines
+
+Introduced by spec 046 (`/review` fills sections of the user's weekly, monthly
+or quarterly note) and the reason the wire moved to `schema_version` "4". The
+first delivery lands Tomo's block with `insert_under_marker`, wrapped in an
+opaque start marker (`%% tomo:s<N> <period> %%`) and end marker
+(`%% /tomo:s<N> <period> %%`). A re-run refreshes only the lines strictly
+between the two, so the user's own text in the same section stays byte for
+byte. The `$def` mirrors Hashi's (Hashi #179) and has the final say.
+
+```json
+{
+  "id": "I01",
+  "action": "replace_between_markers",
+  "target_path": "Calendar/Weekly/2026-W13.md",
+  "start_marker": "%% tomo:s1 2026-W13 %%",
+  "end_marker": "%% /tomo:s1 2026-W13 %%",
+  "scope": {"heading": "What Went Well This Week?", "level": 4},
+  "content": "- one\n- two"
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `target_path` | string | The existing note to modify. Modify-only. |
+| `start_marker` / `end_marker` | string | Whole marker lines: unfenced, at column 0, compared after trimming trailing whitespace. The start occurs once in the note; the end is the first end marker after it, and any other end-marker line is an error. |
+| `scope` | object, optional | `heading` + `level` (1-6): both markers must sit inside that section (level-aware, no callout fallback). It can only turn an apply into a failure. |
+| `content` | string | The new lines joined by `\n`, no trailing newline; `""` means zero lines. Hashi gives new lines the start-marker line's line ending, so a CRLF note stays CRLF. |
+
+Outcomes: `applied`; `skipped-already` when the block already equals
+`content`; `failed` (target note missing, start marker not found or
+duplicated, end marker missing, duplicated or out of order, markers equal,
+scope heading not found, markers outside scope), writing nothing. Hashi's
+planner runs it after `insert_under_marker` and `replace_section`, whatever
+the action ids say.
+
 ---
 
 ## Worked example (abridged)
@@ -1400,7 +1437,7 @@ A Pass-2 run with 9 confirmed items (8 atomic + 1 new MOC), 2 daily updates,
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "4",
   "type": "tomo-instructions",
   "source_suggestions": "2026-04-21_0918_suggestions",
   "generated": "2026-04-21T11:13:18Z",
@@ -1486,9 +1523,12 @@ python3 tests/test-instructions-diff.py
 
 ## Schema and version evolution
 
-- `schema_version` is a monotonically increasing string. v2 is the current
-  contract (renamed `origin_inbox_item` → `source_inbox_item` in v2; v1
-  docs no longer accepted — see `tomo/CHANGELOG.md` for the history).
+- `schema_version` is a monotonically increasing string. v4 is the current
+  contract (v2 renamed `origin_inbox_item` → `source_inbox_item`; v3 made
+  `delete_source.depends_on` required; v4 added `replace_between_markers` —
+  see `tomo/CHANGELOG.md` for the history). Hashi from the release carrying
+  v4 executes both v3 and v4 sets; older Hashi releases refuse v4 sets with a
+  version message.
 - Breaking changes (field removal, type change, new required field) bump
   the version. Tomo Hashi **must** reject unknown versions explicitly.
 - Additive changes (new optional field, new action kind) are v1-compatible;

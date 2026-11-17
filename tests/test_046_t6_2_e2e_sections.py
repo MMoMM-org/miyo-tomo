@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_046_t6_2_e2e_sections.py — a mapped /review end to end for week, month and quarter (spec 046 T6.2;
 PRD F6-AC6, F4-AC2, F4-AC3, F5-AC1, F5-AC2; SDD Runtime View "a mapped month, first review then re-run").
 
@@ -7,8 +7,8 @@ Every scenario drives the four review scripts in-process through tests/e2e_046_s
 tests/review_e2e_walk.Walk), exactly as tomo/dot_claude/skills/periodic-review/SKILL.md calls them: the setup
 dialogue with a mapping (`match` → confirmed table → `setup-input` → `vault-config-writer.py review`), `review-read`,
 `review-doc write`, the user's edits in Obsidian, `review-instructions preview` / `deliver`, and the reference applier
-of Hashi's documented semantics. Every set is validated against the test-only v4 candidate schema
-(tests/review_deliver_helpers.candidate_schema; tomo/schemas stays untouched). Mechanisms a mutation falsifies:
+of Hashi's documented semantics. Every set is validated against both committed instruction schemas (wire v4
+since T6.1). Mechanisms a mutation falsifies:
 
 - `test_a_mapped_review_runs_end_to_end_and_a_rerun_replaces_between_markers` (week, month, quarter):
   the unticked section's absence from the set (`review_section_set` routing a dropped section), the user's added
@@ -67,7 +67,7 @@ def _checkbox(sid: str, ticked: bool = True) -> str:
 
 
 def _validated_actions(walk: SectionWalk, k: Kind) -> list[tuple]:
-    """(id, action, anchor or start marker) per action, after the set passed every candidate schema."""
+    """(id, action, anchor or start marker) per action, after the set passed every committed schema."""
     doc = walk.set_json(k.stem)
     for schema in SCHEMAS:
         assert schema_errors(doc, schema) == [], (schema.name, schema_errors(doc, schema))

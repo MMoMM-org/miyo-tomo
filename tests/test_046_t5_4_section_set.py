@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_046_t5_4_section_set.py — composing the instruction set of a mapped delivery (046 T5.4).
 
 PRD F4-AC1; SDD ADR-12 ("ids I01…In in a fixed order: sections in mapping order, then Tomo Review"),
@@ -16,7 +16,7 @@ Integration Points data_flow, the Hashi kind order. The approved review is built
   sections are planned twice (a new "Tomo Review" re-plans with `review_at`);
 - a new note stays one `move_note`; an empty section gets no marker pair spliced into it (`lands` is shared
   with `compose`), so a re-run finds no block for it and plans a first insert;
-- every composed set validates against Tomo's schemas through the T5.3 test-only v4 candidate.
+- every composed set validates against Tomo's schemas (the committed v4 schemas since T6.1).
 
 All data is synthetic.
 """

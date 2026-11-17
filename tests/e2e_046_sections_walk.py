@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """e2e_046_sections_walk.py — the driver of the mapped /review end-to-end tests (spec 046 T6.2).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not named `test_*`, so pytest does not
@@ -24,7 +24,8 @@ range level-aware; only the lines strictly between replaced). Actions run in Has
 or skipped-already action is marked `applied: true` in the set JSON.
 
 `user_text` strips every Tomo block (start marker to end marker) and the "Tomo Review" section from a note, so
-a test can compare what is left with the note before Tomo touched it. All text is synthetic.
+a test can compare what is left with the note before Tomo touched it; `blank_runs` and `after_end_markers` give the
+blank-line layout the tests pin around each block. All text is synthetic.
 """
 from __future__ import annotations
 
@@ -124,6 +125,7 @@ class SectionWalk(Walk):
                 self.vault.modified.setdefault(path, 0)
 
         self.vault._record = self.vault.recorded.append     # per test only: the e2e sweeps own review_e2e_walk.WRITES
+        self.own_blank: dict[str, set] = {}                 # target → section ids whose insert ended with an empty line
 
     def setup_mapped(self, k: Kind) -> dict:
         """match → the user confirms the table as proposed (rows in template order, none off-limits)."""
@@ -161,6 +163,10 @@ class SectionWalk(Walk):
                 action["applied"] = True
             if result == "applied":
                 self.vault.files[target] = text
+                lines = action["content"].split("\n")
+                m = _START_RE.match(lines[0])
+                if action["action"] == "insert_under_marker" and m and lines[-1] == "":
+                    self.own_blank.setdefault(target, set()).add(m.group(1))
                 self.vault._bump(target)
         self.vault.files[path] = (json.dumps(doc, indent=2) + "\n").encode("utf-8")
         self.vault._bump(path)
@@ -294,27 +300,50 @@ def marker_count(text: str, sid: str, period: str) -> tuple[int, int]:
     return lines.count(f"%% tomo:{sid} {period} %%"), lines.count(f"%% /tomo:{sid} {period} %%")
 
 
-def user_text(text: str) -> str:
-    """The note without the "Tomo Review" section and without Tomo's blocks: start marker to end marker inclusive,
-    plus the one empty line after the end marker that a first insert's content carries (it ends with `\\n`)."""
+def blank_runs(text: str) -> int:
+    """The longest run of consecutive empty lines in the note (its final newline is not a line)."""
+    longest = run = 0
+    for line in _body(text)[0]:
+        run = run + 1 if line == "" else 0
+        longest = max(longest, run)
+    return longest
+
+
+def after_end_markers(text: str) -> dict[str, list[list[str]]]:
+    """Per section id, the lines after each end marker up to and including the next non-empty one."""
+    lines = _body(text)[0]
+    out: dict[str, list[list[str]]] = {}
+    for i, line in enumerate(lines):
+        m = re.match(r"^%% /tomo:(s\d+) \S+ %%$", line)
+        if m:
+            nxt = next((j for j in range(i + 1, len(lines)) if lines[j] != ""), len(lines) - 1)
+            out.setdefault(m.group(1), []).append(lines[i + 1:nxt + 1])
+    return out
+
+
+def user_text(text: str, own_blank: frozenset = frozenset()) -> str:
+    """The note without the "Tomo Review" section and without Tomo's blocks (start marker to end marker inclusive),
+    and without the one empty line after the end marker of each section in `own_blank` (`SectionWalk.own_blank`:
+    the blocks whose inserted content brought that line). No other empty line is dropped, so a user's empty line
+    deleted or added beside a block still shows."""
     lines = text.split("\n")
     found = _range(lines, REVIEW_HEADING)
     if found is not None:
         lines = lines[:found[0]] + lines[found[1]:]
-    kept, inside, closed = [], None, False
+    kept, inside, eat = [], None, False
     for line in lines:
         m = _START_RE.match(line)
         if inside is None and m:
-            inside = f"%% /tomo:{m.group(1)} {m.group(2)} %%"
+            inside, sid = f"%% /tomo:{m.group(1)} {m.group(2)} %%", m.group(1)
             continue
         if inside is not None:
             if line == inside:
-                inside, closed = None, True
+                inside, eat = None, sid in own_blank
             continue
-        if closed and line == "":
-            closed = False
+        if eat:
+            assert line == "", ("the block's own empty line is missing", sid, text)
+            eat = False
             continue
-        closed = False
         kept.append(line)
     assert inside is None, "an end marker is missing"
     return "\n".join(kept)

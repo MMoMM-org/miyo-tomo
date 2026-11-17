@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t6_2_e2e_sections.py — a mapped /review end to end for week, month and quarter (spec 046 T6.2;
 PRD F6-AC6, F4-AC2, F4-AC3, F5-AC1, F5-AC2; SDD Runtime View "a mapped month, first review then re-run").
 
@@ -16,7 +16,8 @@ of Hashi's documented semantics. Every set is validated against the test-only v4
   `insert_under_marker` with both markers, the re-run's `replace_between_markers` for a section holding its block
   (`review_section_plan.plan_section` replace branch), nothing for a section unticked on the re-run (its block kept
   byte for byte), an insert for a section delivered for the first time, the ids `I01…In` in mapping order with the
-  "Tomo Review" last; the applier shows the user's text unchanged and one block per section after each apply.
+  "Tomo Review" last; the applier shows the user's text unchanged, one block per section and exactly one empty
+  line after each block (no new run of empty lines: `SectionPlan.blank_after`) after each apply.
 - `test_a_section_stop_beside_the_place_problem_takes_one_extra_round` (place first, as SKILL.md step 7 orders it,
   and section first): the first preview reports both `place-missing` and the stop of a section with lines, and
   `deliver` refuses both before any write (`review_delivery.classify` adding the section stop); answering one leaves
@@ -40,7 +41,8 @@ if str(TESTS_DIR) not in sys.path:
 
 from review_deliver_helpers import SCHEMAS, schema_errors  # noqa: E402
 from e2e_046_sections_walk import (  # noqa: E402
-    KINDS, REVIEW_HEADING, Kind, SectionWalk, blocks, marker_count, proposals, user_text,
+    KINDS, REVIEW_HEADING, Kind, SectionWalk, after_end_markers, blank_runs, blocks, marker_count, proposals,
+    user_text,
 )
 from review_e2e_walk import INBOX, TICKED, tomo_sections  # noqa: E402
 
@@ -64,7 +66,8 @@ def _checkbox(sid: str, ticked: bool = True) -> str:
     return f"- [{'x' if ticked else ' '}] Use this section %%{sid}%%"
 
 
-def _actions(walk: SectionWalk, k: Kind) -> list[tuple]:
+def _validated_actions(walk: SectionWalk, k: Kind) -> list[tuple]:
+    """(id, action, anchor or start marker) per action, after the set passed every candidate schema."""
     doc = walk.set_json(k.stem)
     for schema in SCHEMAS:
         assert schema_errors(doc, schema) == [], (schema.name, schema_errors(doc, schema))
@@ -75,13 +78,27 @@ def _markers(k: Kind, sid: str) -> tuple[str, str]:
     return f"%% tomo:{sid} {k.period} %%", f"%% /tomo:{sid} {k.period} %%"
 
 
-def _assert_one_block_each(text: str, k: Kind, expected: dict) -> None:
-    """Exactly one marker pair per section in `expected` (with those lines), none for the others."""
+def _assert_one_blank_after_each_block(text: str, before: str) -> None:
+    """After every end marker exactly one empty line, then the next non-empty line (or the note ends); and no run
+    of empty lines the note before the review did not already have."""
+    for sid, tails in after_end_markers(text).items():
+        for tail in tails:
+            assert tail in ([], [""]) or (len(tail) == 2 and tail[0] == "" and tail[1] != ""), (sid, tail, text)
+    assert blank_runs(text) <= blank_runs(before), ("a new run of empty lines", text)
+
+
+def _assert_one_block_each(walk: SectionWalk, k: Kind, expected: dict) -> str:
+    """Exactly one marker pair per section in `expected` (with those lines), none for the others, one empty line
+    after each block; the applied note."""
+    text = walk.vault.text(k.target)
     for sid in ("s1", "s2", "s3"):
         assert marker_count(text, sid, k.period) == ((1, 1) if sid in expected else (0, 0)), (sid, text)
     assert blocks(text) == {sid: [lines] for sid, lines in expected.items()}, text
     assert tomo_sections(text) == 1 and text.count(f"## {REVIEW_HEADING}\n") == 1, "one Tomo Review section"
-    assert user_text(text) == k.target_text, "the user's text outside Tomo's blocks is unchanged"
+    _assert_one_blank_after_each_block(text, k.target_text)
+    own = frozenset(walk.own_blank[k.target])
+    assert user_text(text, own) == k.target_text, "the user's text outside Tomo's blocks is unchanged"
+    return text
 
 
 # ── F6-AC6: week, month and quarter run end to end as a month does ─────────────────────────
@@ -91,7 +108,7 @@ def _assert_one_block_each(text: str, k: Kind, expected: dict) -> None:
 def test_a_mapped_review_runs_end_to_end_and_a_rerun_replaces_between_markers(walk: SectionWalk, name: str):
     k = KINDS[name]
     (h1, _), (h2, _), (h3, _) = k.rows
-    a, b, c = k.sources
+    a, _, c = k.sources
     # setup with a mapping: the confirmed table is saved by the writer
     saved = walk.setup_mapped(k)
     assert saved["status"] == "written" and any(key.endswith(f".sections.{k.template}") for key in saved["keys"])
@@ -118,17 +135,17 @@ def test_a_mapped_review_runs_end_to_end_and_a_rerun_replaces_between_markers(wa
     assert walk.deliver(k.stem)["status"] == "delivered"
     s1_start, s1_end = _markers(k, "s1")
     s2_start, _ = _markers(k, "s2")
-    assert _actions(walk, k) == [("I01", "insert_under_marker", h1), ("I02", "insert_under_marker", h2),
-                                 ("I03", "insert_under_marker", walk.meta(k.stem)["delivered_plan"]["place"]["anchor"])]
+    place = walk.meta(k.stem)["delivered_plan"]["place"]["anchor"]
+    assert _validated_actions(walk, k) == [("I01", "insert_under_marker", h1), ("I02", "insert_under_marker", h2),
+                                           ("I03", "insert_under_marker", place)]
     first = walk.set_json(k.stem)["actions"]
     assert first[0]["content"].startswith(f"{s1_start}\n") and f"\n{s1_end}\n" in first[0]["content"]
     assert first[1]["content"].startswith(f"{s2_start}\n") and "Rewritten by me" in first[1]["content"]
     assert not any(f"{h3} item" in act["content"] for act in first), "the unticked section is not delivered"
     # Hashi applies
     assert walk.hashi_apply(k.stem) == ["applied"] * 3
-    applied = walk.vault.text(k.target)
-    _assert_one_block_each(applied, k, {"s1": [f"- {h1} item v1 ([[{a}]])", "- A line of my own"],
-                                        "s2": ["- Rewritten by me"]})
+    applied = _assert_one_block_each(walk, k, {"s1": [f"- {h1} item v1 ([[{a}]])", "- A line of my own"],
+                                               "s2": ["- Rewritten by me"]})
     s2_block = blocks(applied)["s2"]
     # the re-run: replace the document, untick s2 this time, keep s1 and s3
     out = walk.pass1(k.period, k.kind, proposals(k, "v2"))
@@ -140,18 +157,16 @@ def test_a_mapped_review_runs_end_to_end_and_a_rerun_replaces_between_markers(wa
     assert {s["key"]: s["mode"] for s in out["sections"]} == {"s1": "replace", "s3": "insert"}, out["sections"]
     assert out["dropped"] == [{"key": "s2", "added": 0}] and "block-replaced" in out["notices"]
     assert walk.deliver(k.stem)["status"] == "delivered"
-    s3_anchor = h3
-    assert _actions(walk, k) == [("I01", "replace_between_markers", s1_start), ("I02", "insert_under_marker", s3_anchor),
-                                 ("I03", "replace_section", REVIEW_HEADING)]
+    assert _validated_actions(walk, k) == [("I01", "replace_between_markers", s1_start),
+                                           ("I02", "insert_under_marker", h3), ("I03", "replace_section", REVIEW_HEADING)]
     [replace] = [act for act in walk.set_json(k.stem)["actions"] if act["action"] == "replace_between_markers"]
     assert replace["end_marker"] == s1_end and replace["scope"] == {"heading": h1, "level": 2}
     assert replace["content"] == f"- {h1} item v2 ([[{a}]])"
     assert walk.hashi_apply(k.stem) == ["applied"] * 3
-    rerun = walk.vault.text(k.target)
-    _assert_one_block_each(rerun, k, {"s1": [f"- {h1} item v2 ([[{a}]])"], "s2": s2_block[0],
-                                      "s3": [f"- {h3} item v2 ([[{c}]])"]})
+    rerun = _assert_one_block_each(walk, k, {"s1": [f"- {h1} item v2 ([[{a}]])"], "s2": s2_block[0],
+                                             "s3": [f"- {h3} item v2 ([[{c}]])"]})
     assert blocks(rerun)["s2"] == s2_block, "the section unticked on the re-run keeps its block"
-    assert f"{h2} item v2" not in rerun and f"[[{b}]]" not in rerun.split(f"## {REVIEW_HEADING}")[0]
+    assert f"{h2} item v2" not in rerun
     assert "Group item v2" in rerun and "Group item v1" not in rerun, "the Tomo Review section was replaced"
     assert walk.listing() == [(k.stem, "applied")]
 
@@ -204,12 +219,14 @@ def test_a_section_stop_beside_the_place_problem_takes_one_extra_round(walk: Sec
         "s1": "insert", "s2": "skip", "s3": "insert"}, third
     out = walk.deliver(k.stem, "--section-choice", "s2=skip", "--place-anchor", "Own words")
     assert out["status"] == "delivered", out
-    assert _actions(walk, k) == [("I01", "insert_under_marker", "Wins"), ("I02", "insert_under_marker", "Next"),
-                                 ("I03", "insert_under_marker", "Own words")]
+    assert _validated_actions(walk, k) == [("I01", "insert_under_marker", "Wins"),
+                                           ("I02", "insert_under_marker", "Next"),
+                                           ("I03", "insert_under_marker", "Own words")]
     assert walk.hashi_apply(k.stem) == ["applied"] * 3
     text = walk.vault.text(k.target)
     assert marker_count(text, "s2", k.period) == (0, 0) and "Lessons item" not in text
-    assert user_text(text) == note
+    _assert_one_blank_after_each_block(text, note)
+    assert user_text(text, frozenset(walk.own_blank[k.target])) == note
 
 
 # ── the unmapped e2e path: spec 045's shape ───────────────────────────────────────────────

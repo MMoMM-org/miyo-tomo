@@ -102,6 +102,11 @@ After Tomo rendering, the file contains resolved `{{tokens}}` and untouched
 Templater expressions. The user runs `Templater: Replace Templates in Active File`
 (Cmd+P) after moving the note to its target folder.
 
+> **Templater's "Trigger on new file creation"** runs this code as soon as Tomo
+> writes the note, before the move. A template that calls `tp.file.move` then
+> moves a file too early, sometimes the wrong one. See
+> [Vault Compatibility → Templater runs on new files](vault-compatibility.md#templater-runs-on-new-files).
+
 ### What is preserved
 
 | Syntax | Preserved | Example |

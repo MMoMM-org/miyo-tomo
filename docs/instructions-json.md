@@ -63,7 +63,7 @@ re-run.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema_version` | `"4"` (const in the producer schema) | Bumps when the structure changes in a way an older consumer would refuse (spec 046: v4 adds `replace_between_markers`). Hashi accepts `"3"` and `"4"`, since a v3 set is also a valid v4 set. Reject with a clear error if you see a version you don't understand. |
+| `schema_version` | `"4"` (const in the producer schema) | Bumps when the structure changes in a way an older consumer would refuse (spec 046: v4 adds `replace_between_markers`). Hashi 0.33.0 and later accept `"3"` and `"4"`, since a v3 set is also a valid v4 set. Reject with a clear error if you see a version you don't understand. |
 | `type` | `"tomo-instructions"` (const) | Discriminator in case multiple JSON artefacts share the inbox folder. |
 | `source_suggestions` | string \| null | Stem(s) of the suggestions doc(s) this set was derived from — traceability only. A normal Pass-2 run produces a single stem. An XDD-012 Force-Atomic reconciliation run (primary doc + companion `*_suggestions-fan.md`) produces a comma-separated list: `"2026-04-21_0918_suggestions, 2026-04-21_1330_suggestions-fan"`. Tomo Hashi SHOULD treat this as opaque text; it's for human trace only and does not affect execution. |
 | `generated` | ISO-8601 UTC | Use this (not file mtime) when comparing action sets. |
@@ -1542,8 +1542,8 @@ python3 tests/test-instructions-diff.py
 - `schema_version` is a monotonically increasing string. v4 is the current
   contract (v2 renamed `origin_inbox_item` → `source_inbox_item`; v3 made
   `delete_source.depends_on` required; v4 added `replace_between_markers` —
-  see `tomo/CHANGELOG.md` for the history). Hashi from the release carrying
-  v4 executes both v3 and v4 sets; older Hashi releases refuse v4 sets with a
+  see `tomo/CHANGELOG.md` for the history). Hashi 0.33.0 and later
+  execute both v3 and v4 sets; older Hashi releases refuse v4 sets with a
   version message.
 - Breaking changes (field removal, type change, new required field) bump
   the version. Tomo Hashi **must** reject unknown versions explicitly.

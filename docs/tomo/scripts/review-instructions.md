@@ -303,7 +303,25 @@ beside them. Keeping it only while a delivery is open keeps that exception
 as short as the need.
 
 A stage without the file (a delivery begun before this change), or with a
-file of another shape, keeps the #258 path above unchanged.
+file of another shape, keeps the #258 path above unchanged. That includes a
+new-note record whose stored paths lack the note.
+
+Review round (2026-11-18):
+
+- **Approval still counts.** The stored payloads are what the user
+  approved, so a stored-payload resume still refuses `not-approved`
+  (or `approved-line-missing`) when the Approved box was unticked since
+  the first attempt. An edit to the document's content alone is ignored:
+  it changes nothing the stored payloads say.
+- **No notices.** The rebuilt plan's notices are dropped from the output
+  as well, because they describe a plan this run never writes.
+- **Cleanup on the next run.** A kill between the mark's record (or
+  `drop`'s withdrawn record) and the cleanup would leave the file next to
+  a closed delivery that nothing resumes. So `deliver` and `status` both
+  remove it first whenever the record is finished or withdrawn.
+- **Cleanup never fails the run.** Removing the file ignores an
+  `OSError`. Housekeeping never turns a finished delivery into exit 1 or
+  costs it its `delivered` output; the next run tries again.
 
 The skill's step 8 now asks `1 Retry · 2 Drop · 3 Abort` on any `stopped`.
 Retry reruns `deliver` in place, which this change makes safe whatever the

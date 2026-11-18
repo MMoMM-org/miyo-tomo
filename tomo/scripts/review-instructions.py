@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.5.0
+# version: 0.5.1
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13; spec 046 ADR-12: section stops, choices).
 
@@ -70,7 +70,9 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     a resumed output reports the recorded delivered_plan (mode, target, place; target_appeared against the
     recorded mode), the rebuilt plan without a record; on a delivery still open (begun, doc_mark undone, not
     withdrawn, no set-withdrawn, no set-exists) whose stage holds payloads.json the undone steps upload the stored
-    payloads and nothing of the rebuilt plan refuses (output problems []); without payloads.json a record with anchor_picked needs --place-anchor (anchor-needed, with headings),
+    payloads and nothing of the rebuilt plan refuses (output problems [], notices []) except an Approved box
+    unticked since (not-approved / approved-line-missing); deliver and status first remove payloads.json of a
+    finished or withdrawn record; without payloads.json a record with anchor_picked needs --place-anchor (anchor-needed, with headings),
     one with choices_given needs choices (choices-needed), then a record with an undone step of its own (note for
     a new-note record, set_json, set_md) refuses replan-differs when the rebuilt mode, target, place.placement,
     place.level, place.anchor (when recorded) or sections (keys and modes, when recorded) differ — before the
@@ -117,6 +119,7 @@ from lib import review_target_read as rtr  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.note_io import ConfigError, load_vault_config  # noqa: E402
 from lib import review_state as rs  # noqa: E402
+from lib.review_doc_parse import APPROVED_MISSING  # noqa: E402
 from lib.review_doc_read import DocRead, doc_path_of, read_document  # noqa: E402
 from lib.review_vault import Stopped, Vault  # noqa: E402
 from lib.staged_delivery import DeliveryStop, StagedDelivery  # noqa: E402
@@ -333,17 +336,29 @@ def _write_steps(run: Run, paths: Dict[str, str], payloads: Dict[str, str], set_
     return rdl.report_delivered_plan(run.meta, out) if resumed else out
 
 
+def _approval_problem(run: Run) -> Optional[str]:
+    """Why the document no longer approves what was stored: its Approved line unreadable or unticked."""
+    review = run.read.parsed.approved_review()
+    if APPROVED_MISSING in review["warnings"]:
+        return APPROVED_MISSING
+    return None if review["approved"] else ra.NOT_APPROVED
+
+
 def _resume_stored(run: Run, paths: Dict[str, str], payloads: Dict[str, str]) -> dict:
     """An open delivery resumed with the payloads its first attempt stored: the rebuilt plan's problems and the
     resume refusals do not apply, the stored texts are uploaded unchanged."""
+    approval = _approval_problem(run)
+    if approval is not None:
+        return {"status": "refused", "stem": run.stem, "problems": [approval], "notices": []}
     replaces_set = run.meta.data.get(SET_REPLACED) is True or (run.held is not None and rs.any_applied(run.held.data))
-    run.problems = []
+    run.problems, run.notices = [], []
     return _write_steps(run, paths, payloads, json.loads(payloads[rdl.SET_JSON]), replaces_set, resumed=True)
 
 
 def deliver(args: argparse.Namespace) -> dict:
+    rdl.clear_closed_payloads(Path(args.tmp) / args.stem, rs.read_meta(Path(args.tmp), args.stem))
     run = load_run(args)
-    stored = rdl.read_payloads(run.stage) if rdl.delivery_open(run.meta, run.problems) else None
+    stored = rdl.read_payloads(run.stage, run.meta) if rdl.delivery_open(run.meta, run.problems) else None
     if stored is not None:
         return _resume_stored(run, *stored)
     refusal = (rdl.resume_refusal(run.meta, run.plan, run.problems, run.anchor_picked, bool(run.choices))
@@ -427,6 +442,7 @@ def drop(args: argparse.Namespace) -> dict:
 
 def status(args: argparse.Namespace) -> dict:
     meta = rs.read_meta(Path(args.tmp), args.stem)
+    rdl.clear_closed_payloads(Path(args.tmp) / args.stem, meta)
     doc_path = doc_path_of(meta)
     if doc_path is None:
         raise NotFound()

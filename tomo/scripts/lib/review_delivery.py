@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.6.0
+# version: 0.6.1
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -47,7 +47,8 @@ Reading a ``KadoError`` the delivery caught is ``review_kado_conflict``'s (T6.2)
 ``delivery_open`` says whether a resume continues the delivery (begun, the mark undone, not withdrawn, no
 ``set-withdrawn`` or ``set-exists``). ``save_payloads`` keeps the paths and texts of the uploaded steps the first
 attempt builds in ``<stage>/payloads.json``; ``read_payloads`` returns them, or None for a stage without them or
-with a file of another shape; ``remove_payloads`` deletes the file once nothing resumes (spec 046 T6.3).
+with a file of another shape (a new-note record needs the note); ``remove_payloads`` deletes the file once nothing
+resumes, ignoring an ``OSError``; ``clear_closed_payloads`` removes it for a finished or withdrawn record (spec 046 T6.3).
 
 No Kado call, no clock. Design notes: docs/tomo/scripts/lib/review_delivery.md
 """
@@ -316,21 +317,24 @@ def save_payloads(stage: Path, paths: Dict[str, str], payloads: Dict[str, str]) 
     atomic_write_text(Path(stage) / PAYLOADS_FILE, json.dumps(data, ensure_ascii=True, indent=2) + "\n")
 
 
-def _stored_shape(data: object) -> bool:
+def _stored_shape(data: object, new_note: bool) -> bool:
     if not isinstance(data, dict) or not isinstance(data.get("paths"), dict) or not isinstance(data.get("payloads"), dict):
         return False
     paths, payloads = data["paths"], data["payloads"]
-    return (SET_JSON in paths and SET_MD in paths and set(paths) == set(payloads) and set(paths) <= set(UPLOADED)
+    return (SET_JSON in paths and SET_MD in paths and (NOTE in paths or not new_note)
+            and set(paths) == set(payloads) and set(paths) <= set(UPLOADED)
             and all(isinstance(v, str) and v for v in paths.values())
             and all(isinstance(v, str) for v in payloads.values()))
 
 
-def read_payloads(stage: Path) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
-    """``(paths, payloads)`` the first attempt stored; None when absent or not of that shape (a stage from before
-    the store keeps the re-plan)."""
+def read_payloads(stage: Path, meta: ReviewMeta) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
+    """``(paths, payloads)`` the first attempt stored; None when absent or not of that shape — a new-note record
+    needs the note — (a stage from before the store keeps the re-plan)."""
+    record = meta.data.get(DELIVERED_PLAN)
+    new_note = isinstance(record, dict) and record.get("mode") == ra.NEW_NOTE
     try:
         data = json.loads((Path(stage) / PAYLOADS_FILE).read_text(encoding="utf-8"))
-        if _stored_shape(data) and isinstance(json.loads(data["payloads"][SET_JSON]), dict):
+        if _stored_shape(data, new_note) and isinstance(json.loads(data["payloads"][SET_JSON]), dict):
             return dict(data["paths"]), dict(data["payloads"])
     except (OSError, ValueError):
         pass
@@ -338,8 +342,22 @@ def read_payloads(stage: Path) -> Optional[Tuple[Dict[str, str], Dict[str, str]]
 
 
 def remove_payloads(stage: Path) -> None:
-    """Remove the stored payloads: nothing resumes the delivery any more."""
-    (Path(stage) / PAYLOADS_FILE).unlink(missing_ok=True)
+    """Remove the stored payloads: nothing resumes the delivery any more. A failure is ignored — housekeeping
+    never turns a finished run into an error; the next run's ``clear_closed_payloads`` tries again."""
+    try:
+        (Path(stage) / PAYLOADS_FILE).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def clear_closed_payloads(stage: Path, meta_data: Optional[dict]) -> None:
+    """Remove the stored payloads of a delivery nothing resumes: the mark recorded or the delivery withdrawn
+    (a kill between that record and the cleanup left them). Reads the raw ``meta.json`` dict, never changes it."""
+    if not isinstance(meta_data, dict):
+        return
+    steps = meta_data.get("steps_done")
+    if (isinstance(steps, list) and DOC_MARK in steps) or meta_data.get("withdrawn") is True:
+        remove_payloads(stage)
 
 
 def report_delivered_plan(meta: ReviewMeta, out: dict) -> dict:

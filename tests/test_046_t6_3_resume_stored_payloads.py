@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_046_t6_3_resume_stored_payloads.py — a resume of an open delivery uploads the payloads the first attempt
 built, never a re-plan (spec 046 T6.3 live walk 2026-11-18, owner decision; SDD amendment "Resume uploads the stored
 payloads"; docs/tomo/scripts/review-instructions.md "WHY a Resume Uploads the Stored Payloads").
@@ -19,14 +19,26 @@ guarded fake (tests/review_deliver_helpers). Mechanisms a mutation falsifies:
   resumes with them (`test_a_kill_during_the_first_upload_still_resumes_with_the_stored_payloads`);
 - removing the stored payloads once the mark is recorded (`test_a_finished_delivery_keeps_no_stored_payload`).
 
+Review round: `clear_closed_payloads` in `deliver` / `status` (`test_a_closed_delivery_never_keeps_its_payloads`);
+`remove_payloads` ignoring OSError (`test_a_cleanup_that_fails_keeps_the_delivered_output`); the name-taken cleanup
+(`test_a_first_deliver_refused_name_taken_at_the_set_json_leaves_no_payloads`); `_stored_shape` (the
+`read_payloads` cases set-md-missing, keys-differ, empty-path, unknown-step, new-note-without-note — truncated-json,
+paths-not-a-dict and set-json-not-an-object are also caught by the JSON parse, `dict()` and the set-object check);
+ValueError caught (`test_a_corrupted_payloads_file_takes_the_legacy_path`); `_overwrite_step` writing to the stored
+path (`test_a_resume_after_the_inbox_moved_writes_to_the_stored_paths`); notices cleared
+(`test_a_stored_resume_reports_no_notice_of_the_rebuilt_plan`); the approval refusal
+(`test_a_stored_resume_refuses_a_document_no_longer_approved`).
+
 All data is synthetic.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 if str(TESTS_DIR) not in sys.path:
@@ -193,3 +205,187 @@ def test_a_finished_delivery_keeps_no_stored_payload(doc_mod, ins, instance, mon
     _clear(fake)
     assert cli("deliver", "--stem", STEM)[1]["status"] == "resumed"
     assert sorted(p.name for p in stage.iterdir()) == ["meta.json"]
+
+
+# ---------------------------------------------------------------- review round: cleanup, shape, coverage
+
+
+def _stage(instance) -> Path:
+    return instance / "tomo-tmp" / "review" / STEM
+
+
+def _payloads(instance) -> Path:
+    return _stage(instance) / "payloads.json"
+
+
+def _stopped_at_set_md_of_an_insert(cli, fake, instance):
+    fake.fail[("write_note", SET_MD)] = KadoError("503")
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "stopped" and out["failed_step"] == "set_md", out
+    _clear(fake)
+
+
+@pytest.mark.parametrize("closed", ["finished", "withdrawn"])
+@pytest.mark.parametrize("sub", ["deliver", "status"])
+def test_a_closed_delivery_never_keeps_its_payloads(doc_mod, ins, instance, monkeypatch, capsys, closed, sub):
+    """A kill between the mark's record and the cleanup (or between drop's meta write and its cleanup) leaves
+    payloads.json beside a closed record; the next `deliver` or `status` removes it, whatever it answers."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault())
+    if closed == "finished":
+        assert cli("deliver", "--stem", STEM)[1]["status"] == "delivered"
+    else:
+        _stopped_at_set_md_of_an_insert(cli, fake, instance)
+        assert cli("drop", "--stem", STEM)[1]["status"] == "withdrawn"
+    _payloads(instance).write_text('{"paths": {}, "payloads": {}}\n', encoding="utf-8")   # the killed cleanup
+    code, out, _ = cli(sub, "--stem", STEM)
+    assert code == 0, out
+    assert not _payloads(instance).exists()
+
+
+def test_a_cleanup_that_fails_keeps_the_delivered_output(doc_mod, ins, instance, monkeypatch, capsys):
+    """Removing the file is housekeeping: an OSError there never turns a finished delivery into exit 1."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault())
+    real_unlink = Path.unlink
+
+    def unlink(self, *args, **kwargs):
+        if self.name == "payloads.json":
+            raise PermissionError("denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    code, out, _ = cli("deliver", "--stem", STEM)
+    assert code == 0 and out["status"] == "delivered", out
+    assert meta_of(instance)["steps_done"] == ["set_json", "set_md", "doc_mark"]
+
+
+class RaceVault(GuardedVault):
+    """A set lands at the set JSON path right after `load_run` probed it absent."""
+
+    def __init__(self, files=None):
+        super().__init__(files)
+        self.probed = False
+
+    def read_file(self, path):
+        if path == SET_JSON and not self.probed:
+            self.probed = True
+            from lib.kado_client import KadoNotFoundError
+            self._call("read_file", path)
+            raise KadoNotFoundError("not found")
+        return super().read_file(path)
+
+
+def test_a_first_deliver_refused_name_taken_at_the_set_json_leaves_no_payloads(doc_mod, ins, instance, monkeypatch,
+                                                                                capsys):
+    """Nothing began, so nothing resumes: the stored payloads go with the refusal."""
+    fake = RaceVault({"Templates/t_week.md": TEMPLATE, TARGET: NOTE, SET_JSON: b'{"other": true}\n'})
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, fake)
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "refused" and out["problems"] == ["name-taken"] and out["step"] == "set_json", out
+    assert meta_of(instance)["steps_done"] == [] and meta_of(instance)["failed_step"] == ""
+    assert not _payloads(instance).exists()
+
+
+def test_a_corrupted_payloads_file_takes_the_legacy_path(doc_mod, ins, instance, monkeypatch, capsys):
+    """A damaged store is read as none: the #258 comparison answers (`replan-differs`), never exit 1."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault())
+    _stopped_at_set_md_of_an_insert(cli, fake, instance)
+    _payloads(instance).write_text('{"paths": {"set_json": "x", ', encoding="utf-8")
+    fake.files[TARGET] = NOTE.replace(f"## {OWN}", f"### {OWN}")
+    fake.modified[TARGET] += 1
+    code, out, err = cli("deliver", "--stem", STEM)
+    assert code == 0 and out["status"] == "refused" and out["problems"] == ["replan-differs"], (out, err)
+    assert writes(fake) == []
+
+
+def _old_applied_set() -> bytes:
+    action = {"id": "I01", "action": "replace_section", "target_path": "x.md",
+              "anchor": {"type": "heading", "value": "Tomo Review"}, "content": "## Tomo Review\n", "applied": True}
+    return (json.dumps({"schema_version": "3", "type": "tomo-instructions", "generated": "2026-01-01T00:00:00Z",
+                        "profile": "miyo", "md_peer": f"{STEM}_instructions", "actions": [action]}, indent=2)
+            + "\n").encode("utf-8")
+
+
+def test_a_resume_after_the_inbox_moved_writes_to_the_stored_paths(doc_mod, ins, instance, monkeypatch, capsys):
+    """The set_replaced path: the delivery writes over an earlier applied set and stops at the MD; the configured
+    inbox changes before the resume. The MD lands where the first attempt's set JSON already is."""
+    fake = vault(**{SET_JSON: _old_applied_set(), SET_MD: "# old readable instructions\n"})
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, fake)
+    _stopped_at_set_md_of_an_insert(cli, fake, instance)
+    assert meta_of(instance)["set_replaced"] is True
+    cfg_path = instance / "config" / "vault-config.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    cfg["concepts"]["inbox"] = "200 Moved/"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "resumed", out
+    assert [w[1] for w in writes(fake)] == [SET_MD, DOC]
+    assert "old readable instructions" not in fake.text(SET_MD)
+    assert not any(path.startswith("200 Moved/") for path in fake.files)
+
+
+def test_a_stored_resume_reports_no_notice_of_the_rebuilt_plan(doc_mod, ins, instance, monkeypatch, capsys):
+    """Insert mode stopped at the set MD, then the target note was deleted: the rebuilt plan is a new note from a
+    Templater template and carries `templater_hint`, a notice about a plan this run never writes."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault())
+    _stopped_at_set_md_of_an_insert(cli, fake, instance)
+    del fake.files[TARGET]
+    assert cli("preview", "--stem", STEM)[1]["notices"], "the rebuilt plan has a notice"
+    fake.events.clear()
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "resumed" and out["notices"] == [], out
+
+
+def test_a_stored_resume_refuses_a_document_no_longer_approved(doc_mod, ins, instance, monkeypatch, capsys):
+    """The stored payloads are what was approved: unticking Approved since the first attempt refuses
+    `not-approved` and writes nothing; an edit to the content alone is ignored."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys,
+                      RecordingVault({"Templates/t_week.md": TEMPLATE, TARGET: NOTE}))
+    _stopped_at_set_md_of_an_insert(cli, fake, instance)
+    first_md = fake.handed[SET_MD][0]
+    fake.files[DOC] = fake.files[DOC].replace("- [x] Approved", "- [ ] Approved", 1)
+    fake.modified[DOC] += 1
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "refused" and out["problems"] == ["not-approved"], out
+    assert writes(fake) == []
+    fake.files[DOC] = fake.files[DOC].replace("- [ ] Approved", "- [x] Approved", 1) + "\nnoch ein Satz\n"
+    fake.modified[DOC] += 1
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "resumed", out
+    assert fake.text(SET_MD) == first_md
+
+
+_VALID_PATHS = {"set_json": SET_JSON, "set_md": SET_MD}
+_VALID_PAYLOADS = {"set_json": '{"actions": []}\n', "set_md": "# md\n"}
+_SHAPES = {
+    "truncated-json": '{"paths": {"set_json": ',
+    "paths-not-a-dict": json.dumps({"paths": [SET_JSON], "payloads": _VALID_PAYLOADS}),
+    "set-md-missing": json.dumps({"paths": {"set_json": SET_JSON}, "payloads": {"set_json": '{"a": 1}'}}),
+    "keys-differ": json.dumps({"paths": _VALID_PATHS, "payloads": {**_VALID_PAYLOADS, "note": "x"}}),
+    "empty-path": json.dumps({"paths": {**_VALID_PATHS, "set_md": ""}, "payloads": _VALID_PAYLOADS}),
+    "unknown-step": json.dumps({"paths": {**_VALID_PATHS, "doc_mark": "d.md"},
+                                "payloads": {**_VALID_PAYLOADS, "doc_mark": "x"}}),
+    "set-json-not-an-object": json.dumps({"paths": _VALID_PATHS, "payloads": {**_VALID_PAYLOADS, "set_json": "[1]"}}),
+}
+
+
+def _meta(mode: str):
+    from lib import review_delivery as rdl
+    return rdl.ReviewMeta({"delivered_plan": {"mode": mode, "target": TARGET, "place": PLACE}})
+
+
+@pytest.mark.parametrize("text", list(_SHAPES.values()) + [json.dumps({"paths": _VALID_PATHS,
+                                                                        "payloads": _VALID_PAYLOADS})],
+                         ids=list(_SHAPES) + ["new-note-without-note"])
+def test_read_payloads_answers_none_for_any_other_shape(tmp_path, text):
+    from lib import review_delivery as rdl
+    (tmp_path / "payloads.json").write_text(text, encoding="utf-8")
+    mode = "new-note" if text == json.dumps({"paths": _VALID_PATHS, "payloads": _VALID_PAYLOADS}) else "insert"
+    assert rdl.read_payloads(tmp_path, _meta(mode)) is None
+
+
+def test_read_payloads_returns_a_valid_store(tmp_path):
+    """The control of the parametrized test: the same shapes, valid, are read."""
+    from lib import review_delivery as rdl
+    (tmp_path / "payloads.json").write_text(json.dumps({"paths": _VALID_PATHS, "payloads": _VALID_PAYLOADS}),
+                                            encoding="utf-8")
+    assert rdl.read_payloads(tmp_path, _meta("insert")) == (_VALID_PATHS, _VALID_PAYLOADS)

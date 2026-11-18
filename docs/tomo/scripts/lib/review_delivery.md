@@ -213,4 +213,7 @@ file is damaged, then falls back to the #258 path instead of uploading
 half a set. `delivery_open` is the "still open" condition of
 `resume_refusal` with `set-exists` added. A set of another delivery at
 the path is refused as before and is never written over from a stored
-payload.
+payload. `remove_payloads` ignores an `OSError`, and `clear_closed_payloads`
+reads the raw `meta.json` dict, so a finished or withdrawn record loses a
+leftover file on the next `deliver` or `status` without `ReviewMeta`
+filling in defaults on a dict `status` passes on.

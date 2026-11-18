@@ -158,8 +158,12 @@ what to do with them:
   together with it in the same cases. During the setup, `rows-<kind>.json` in
   `tomo-tmp/review/` holds the headings of the template and the section rows
   offered for mapping — setup text, no note text — until the setup is saved
-  or the next `/review` starts. What stays afterwards (`meta.json`) is
-  metadata only. Other commands keep their working files there too, for
+  or the next `/review` starts. While a delivery to the inbox is under way,
+  `payloads.json` beside `meta.json` holds the texts that delivery writes
+  (the new note, the instruction set and its readable instructions), so a
+  stopped delivery can be retried without being planned again; Tomo deletes
+  it once the delivery is complete or withdrawn. What stays afterwards
+  (`meta.json`) is metadata only. Other commands keep their working files there too, for
   example the per-item results of `/inbox` and the draft of `/note`.
 - **Your inbox.** The review document (`<period> Review.md`) holds the
   proposals built from your journal; the instruction set

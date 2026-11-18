@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.15
+# version: 0.2.16
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.2.10")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.2.11")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -86,9 +86,23 @@ def test_help_version_was_bumped():
     assert tuple(int(p) for p in version.split(".")) > (0, 2, 22)
 
 
+# The one STRICT line of the skill (spec 046 T6.3): the model hand-wrote the document mark and edited meta.json
+# after a refused resume in the live walk. Its `Why:` is the one rationale the runtime text may carry.
+STRICT_LINE = ("# STRICT — never write the review document, the instruction set, the new note or a file under "
+               "`tomo-tmp/` other than the two named at the top yourself, not through Kado and not with Write; only the review scripts write "
+               "them. Why: a hand-written document mark and a hand-edited `meta.json` "
+               "make the next deliver or drop act on a delivery that never happened.")
+
+
+def test_the_skill_carries_one_strict_line_in_the_deliver_step():
+    text = _text(SKILL)
+    assert text.count("# STRICT") == 1 and text.count(STRICT_LINE) == 1
+    assert STRICT_LINE.split(" Why:")[0][:60] in _section("8. Deliver")
+
+
 @pytest.mark.parametrize("path", [COMMAND, SKILL], ids=["command", "skill"])
 def test_has_no_rationale_prose(path):
-    text = _text(path)
+    text = _text(path).replace(STRICT_LINE, "")
     for pattern in (r"\bF\d+-AC\d+\b", r"\bADR-\d+\b", r"\bWhy:", r"\bWHY\b", r"\b20\d\d-\d\d-\d\d\b",
                     r"#31\b", r"\b[Ss]pec 0\d\d\b", r"\bT\d\.\d\b", r"\b[Bb]ecause\b", r"\b[Rr]ationale\b",
                     r"# STRICT"):

@@ -830,6 +830,27 @@ through. `changed-since-read` and `unknown` keep the earlier wording: for a stal
 is right, and for an unknown conflict nothing more specific is known. The reason is read from Kado's message in the
 script, never shown: Kado's message names the document's path, and stdout carries problem classes only.
 
+### Why a `stopped` Delivery Asks Retry, Drop or Abort in Place (Spec 046 T6.3 Live Walk)
+
+WHY: the walk of 2026-11-18 stopped at the mark with `open-unsaved`, and the skill sent the user to "run `/review`
+and choose Resume". In the two minutes before that Resume, something in Obsidian moved a file onto the target path,
+and the Resume refused `place-missing` from a plan rebuilt against that vault. With no line telling it what to do, the
+model hand-wrote the document mark through Kado and edited `meta.json`. Two changes answer it. First, the script now
+resumes from the payloads its first attempt stored, so a rerun is safe whatever the vault did meanwhile
+(docs/tomo/scripts/review-instructions.md, "WHY a Resume Uploads the Stored Payloads"). Second, every `stopped`
+branch keeps its explanation (for `open-unsaved`: save or close the document first) and then asks
+`1 Retry · 2 Drop · 3 Abort` in place. Retry reruns `deliver --stem <stem>` and branches by the same step 8 list;
+Drop is step 9; Abort stops, and the next `/review` still lists the stem as `failed-delivery`, whose Resume is the
+same `deliver` rerun. A round trip through the listing was the gap in which the vault changed. Asking in place keeps
+the retry next to the cause the user has just fixed.
+
+The step also carries the skill's one `STRICT` line: never write the review document, the instruction set, the new
+note or a stage file other than `proposals.json` and `confirmed-<kind>.json` by hand; only the
+review scripts write them. The line exists because this deviation was observed. A hand-written mark and a hand-edited `meta.json`
+describe a delivery the script never made, so the next `deliver` or `drop` acts on a state that did not happen. The
+owner's wording was "anything under `tomo-tmp/`". The line excludes the two files the skill's top paragraph tells
+the model to write, so the two imperatives cannot contradict each other.
+
 ### Why a `resumed` Report Is the Plan the Delivery Wrote (Phase 6 Live Walk)
 
 WHY: the skill repeats `target`, `place` and the `target_appeared` line from the `deliver` output as what Tomo did.
@@ -962,6 +983,10 @@ The runtime text holds imperatives only; every rationale lives in this file. The
 block (decided at T5.2): the deviation spec 044 observed was a dialog called after a bare Read, and this skill has no
 dialog to call — `AskUserQuestion` is not in its tools and every question is the plain-text form. A `STRICT` is
 added only when a `/review` run shows a deviation of its own.
+
+The one `STRICT` it carries is in step 8 (spec 046 T6.3). The 2026-11-18 live walk observed the model hand-writing the
+document mark and editing `meta.json` after a refused resume (see "Why a `stopped` Delivery Asks Retry, Drop or Abort
+in Place").
 
 ## Why There Is No Eval Gate
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.9
+# version: 0.1.10
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -305,12 +305,13 @@ def test_deliver_branches_on_status_then_problems_or_failed_step():
             "beside it), then runs `/review` and chooses Resume; stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs`, `anchor-needed` or `choices-needed` "
             "→ the lines below. Any other → the step 7 lines; nothing was written.") in text
     assert ("- `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with "
-            "unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then "
-            "run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` "
-            "`changed-since-read` or `unknown` → say the document was edited, or is open with unsaved edits, since the "
-            "preview: save it and run `/review` again; the payloads in `paths` already written count as done, and "
-            "the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at "
-            "`failed_step`; nothing more was written; the next `/review` offers Resume or Drop. Stop.") in text
+            "unsaved changes (a plugin that stamps the note on edit can cause that): the user saves it (Cmd+S) or "
+            "closes it first; the payloads in `paths` already written count as done. `reason` `changed-since-read` "
+            "or `unknown` → say the document was edited, or is open with unsaved edits, since the preview: the user "
+            "saves it first; the payloads in `paths` already written count as done. `kado-write-failed` → say Kado "
+            "refused or failed at `failed_step`; nothing more was written. Then ask `1 Retry · 2 Drop · 3 Abort`. "
+            "Retry → rerun `deliver --stem <stem>` and branch on it by this list. Drop → step 9 with `<stem>`. "
+            "Abort → stop; the next `/review` offers Resume or Drop.") in text
 
 
 def test_drop_reports_withdrawn_dropped_already_applied_and_set_changed():

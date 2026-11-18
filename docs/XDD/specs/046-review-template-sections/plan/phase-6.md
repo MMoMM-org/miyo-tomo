@@ -80,6 +80,7 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
     - Review peers carry `tomo.sources` for Hashi's cleanup (01e75566, e5f6f95d).
     - `end` at a heading with sub-headings is sent `before` the first sub-heading (ada56fc6, 408b457f).
     - Quality review: PASS after the level-jump test.
+  - Quarter 2026-Q1 (2026-11-18, new-note): `deliver` stopped at `doc_mark` (`doc-changed`, `open-unsaved`). A file then landed on the target path, and Resume refused `place-missing` + `section-missing` from the rebuilt plan. The model hand-wrote the mark and edited `meta.json`. Fix, owner decision: a resume of an open delivery uploads the payloads the first attempt stored in `payloads.json`, with no re-plan; step 8 asks `1 Retry · 2 Drop · 3 Abort` on `stopped`, plus one STRICT line against hand writes (`tests/test_046_t6_3_resume_stored_payloads.py`).
   - Advisory for T6.4:
     - `section-ambiguous` also stops when the first sub-heading is the first occurrence of its text.
     - `peer_sources` does not check that paths are under the inbox.

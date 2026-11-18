@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.10
+# version: 0.2.11
 
 Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -227,13 +227,15 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
 python3 scripts/review-instructions.py deliver --stem <stem>
 ```
 
+# STRICT — never write the review document, the instruction set, the new note or a file under `tomo-tmp/` other than the two named at the top yourself, not through Kado and not with Write; only the review scripts write them. Why: a hand-written document mark and a hand-edited `meta.json` make the next deliver or drop act on a delivery that never happened.
+
 Add `--place-anchor "<heading>"` when a heading was chosen in step 7, and the section choice flags of the last `preview` of step 7, unchanged. Branch on `status` first:
 - `delivered` or `resumed` → report `target`, `place`, `paths.set_json`, `paths.set_md` and `paths.note` when set, and "Next: review and apply the instruction set in Hashi, or by hand with the readable instructions." Then the step 7 notice lines for `notices` and `target_appeared`.
 - `refused` → `name-taken` with `step` `note` → say a note at `exists_path` is not Tomo's and nothing was overwritten; stop. `name-taken` with `step` `set_json` or `set_md` → say an earlier instruction set of this review waits at `exists_path` and nothing was overwritten; for a fresh delivery the user applies that set in Hashi, or deletes it in Obsidian (with `step` `set_json` also the readable instructions beside it), then runs `/review` and chooses Resume; stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs`, `anchor-needed` or `choices-needed` → the lines below. Any other → the step 7 lines; nothing was written.
   - `replan-differs` → say the vault changed since the stopped delivery: the target note or its place is not what the first attempt wrote for; nothing more was written, and Resume would refuse again. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
   - `anchor-needed` → say the stopped delivery used a chosen heading that is asked again: print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` of step 7 with that heading as `--place-anchor`, keep it for this step and branch on the rerun by the step 7 list. 0 → stop.
   - `choices-needed` → say the stopped delivery was begun with section choices that are asked again: rerun `preview` of step 7 and branch by its list.
-- `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` `changed-since-read` or `unknown` → say the document was edited, or is open with unsaved edits, since the preview: save it and run `/review` again; the payloads in `paths` already written count as done, and the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at `failed_step`; nothing more was written; the next `/review` offers Resume or Drop. Stop.
+- `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that): the user saves it (Cmd+S) or closes it first; the payloads in `paths` already written count as done. `reason` `changed-since-read` or `unknown` → say the document was edited, or is open with unsaved edits, since the preview: the user saves it first; the payloads in `paths` already written count as done. `kado-write-failed` → say Kado refused or failed at `failed_step`; nothing more was written. Then ask `1 Retry · 2 Drop · 3 Abort`. Retry → rerun `deliver --stem <stem>` and branch on it by this list. Drop → step 9 with `<stem>`. Abort → stop; the next `/review` offers Resume or Drop.
 - `not-found` → as in step 6.
 
 ## 9. Drop a failed delivery

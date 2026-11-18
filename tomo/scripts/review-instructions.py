@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.4.0
+# version: 0.5.0
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13; spec 046 ADR-12: section stops, choices).
 
@@ -12,9 +12,13 @@ the notices — nothing is written. ``deliver`` builds the same plan and writes,
 saw; ``meta.json`` records every step so a failed delivery resumes without a duplicate, and the plan the delivery
 writes (``delivered_plan``: mode, target, place, ``anchor_picked`` when ``--place-anchor`` was given — never the
 heading), recorded with the first step, so a resume reports what was written rather than the plan rebuilt against
-the vault now; the undone steps write the rebuilt payloads, so a resume with an undone set step whose rebuilt plan
-differs from the record refuses ``replan-differs``, and a resume of a picked-anchor record without
-``--place-anchor`` refuses ``anchor-needed`` with the ``headings`` of the pick (nothing written either way). A set
+the vault now. With the record the first attempt stores its paths and payloads in ``<stage>/payloads.json``
+(``lib/review_delivery.save_payloads``, before the first in-flight mark); a resume of an open delivery whose stage
+holds them uploads the undone steps' stored payloads unchanged and marks the document — the rebuilt plan's problems
+and the resume refusals do not apply; the file is removed when the mark is recorded or the delivery withdrawn. A
+stage without it (a delivery begun before spec 046 T6.3) writes the rebuilt payloads: a resume with an undone set
+step whose rebuilt plan differs from the record refuses ``replan-differs``, and a resume of a picked-anchor record
+without ``--place-anchor`` refuses ``anchor-needed`` with the ``headings`` of the pick (nothing written either way). A set
 at the stem's path that this delivery did not write refuses ``set-exists`` while no action in it is applied; once
 any is (``lib/review_state.any_applied``: an earlier run's finished or partly applied set, spec 046 ADR-12)
 ``deliver`` writes the new set JSON over it, guarded by the ``modified`` the probe read, and the new MD over the old
@@ -65,7 +69,8 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     message), changed-since-read (the guard's message, or KadoConcurrencyError), unknown — never Kado's message;
     a resumed output reports the recorded delivered_plan (mode, target, place; target_appeared against the
     recorded mode), the rebuilt plan without a record; on a delivery still open (begun, doc_mark undone, not
-    withdrawn, no set-withdrawn) a record with anchor_picked needs --place-anchor (anchor-needed, with headings),
+    withdrawn, no set-withdrawn, no set-exists) whose stage holds payloads.json the undone steps upload the stored
+    payloads and nothing of the rebuilt plan refuses (output problems []); without payloads.json a record with anchor_picked needs --place-anchor (anchor-needed, with headings),
     one with choices_given needs choices (choices-needed), then a record with an undone step of its own (note for
     a new-note record, set_json, set_md) refuses replan-differs when the rebuilt mode, target, place.placement,
     place.level, place.anchor (when recorded) or sections (keys and modes, when recorded) differ — before the
@@ -281,7 +286,7 @@ def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str,
     """A set step written over the finished set of an earlier run: the set JSON under the ``modified`` the probe
     read, the MD plain; the set this delivery landed itself (the same actions, ``applied`` aside) is never
     rewritten. Recorded like an uploaded step."""
-    path = run.paths[step]
+    path = delivery.targets[step]
     if step == rdl.SET_JSON and run.held is not None and rs.without_applied(run.held.data) == rs.without_applied(set_doc):
         delivery.record(step)
         return
@@ -297,8 +302,50 @@ def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str,
     delivery.record(step)
 
 
+def _write_steps(run: Run, paths: Dict[str, str], payloads: Dict[str, str], set_doc: dict, replaces_set: bool,
+                 resumed: bool) -> dict:
+    """Upload the undone steps of ``payloads`` in order, then mark the document; the output of the run."""
+    delivery = StagedDelivery(run.vault.client, rdl.STEPS, paths, run.meta,
+                              lambda: rdl.save_meta(run.stage, run.meta), script=SCRIPT)
+    try:
+        for step in (rdl.NOTE, rdl.SET_JSON, rdl.SET_MD):
+            if step not in paths or step in run.meta.steps_done:
+                continue
+            if replaces_set and step != rdl.NOTE:
+                _overwrite_step(run, delivery, step, payloads[step], set_doc)
+            else:
+                delivery.deliver_step(step, payloads[step])
+        _mark_document(run, delivery)
+    except DeliveryStop as stop:
+        if stop.status == "exists":
+            if not run.meta.started():
+                rdl.remove_payloads(run.stage)                 # nothing began: a fresh delivery builds them again
+            return {"status": "refused", "stem": run.stem, "problems": [NAME_TAKEN], "exists_path": stop.exists_path,
+                    "step": stop.step}
+        stopped = {"status": "stopped", "stem": run.stem, "step": stop.step, "failed_step": run.meta.failed_step,
+                   "paths": rdl.public_paths(paths), "problems": [KADO_WRITE_FAILED]}
+        if stop.reason is not None:
+            stopped["problems"], stopped["reason"] = [DOC_CHANGED], stop.reason
+        return stopped
+    rdl.remove_payloads(run.stage)
+    out = run.output(section=False, status="resumed" if resumed else "delivered", step="",
+                     paths=rdl.public_paths(paths), next=NEXT)
+    return rdl.report_delivered_plan(run.meta, out) if resumed else out
+
+
+def _resume_stored(run: Run, paths: Dict[str, str], payloads: Dict[str, str]) -> dict:
+    """An open delivery resumed with the payloads its first attempt stored: the rebuilt plan's problems and the
+    resume refusals do not apply, the stored texts are uploaded unchanged."""
+    replaces_set = run.meta.data.get(SET_REPLACED) is True or (run.held is not None and rs.any_applied(run.held.data))
+    run.problems = []
+    return _write_steps(run, paths, payloads, json.loads(payloads[rdl.SET_JSON]), replaces_set, resumed=True)
+
+
 def deliver(args: argparse.Namespace) -> dict:
     run = load_run(args)
+    stored = rdl.read_payloads(run.stage) if rdl.delivery_open(run.meta, run.problems) else None
+    if stored is not None:
+        return _resume_stored(run, *stored)
     refusal = (rdl.resume_refusal(run.meta, run.plan, run.problems, run.anchor_picked, bool(run.choices))
                if run.meta.started() else None)
     if refusal is not None:
@@ -319,32 +366,11 @@ def deliver(args: argparse.Namespace) -> dict:
     resumed = run.meta.started()
     if run.replaces_set:
         run.meta.data[SET_REPLACED] = True                     # persisted with the first step's in-flight mark
-    if not resumed:                                            # the plan this run writes, persisted the same way
+    if not resumed:                                            # the plan and payloads this run writes, stored the same way
         run.meta.data[rdl.DELIVERED_PLAN] = rdl.plan_record(run.plan, run.setup.anchor, run.anchor_picked,
                                                             bool(run.choices))
-    delivery = StagedDelivery(run.vault.client, rdl.STEPS, paths, run.meta,
-                              lambda: rdl.save_meta(run.stage, run.meta), script=SCRIPT)
-    try:
-        for step in (rdl.NOTE, rdl.SET_JSON, rdl.SET_MD):
-            if step not in paths or step in run.meta.steps_done:
-                continue
-            if run.replaces_set and step != rdl.NOTE:
-                _overwrite_step(run, delivery, step, payloads[step], set_doc)
-            else:
-                delivery.deliver_step(step, payloads[step])
-        _mark_document(run, delivery)
-    except DeliveryStop as stop:
-        if stop.status == "exists":
-            return {"status": "refused", "stem": run.stem, "problems": [NAME_TAKEN], "exists_path": stop.exists_path,
-                    "step": stop.step}
-        stopped = {"status": "stopped", "stem": run.stem, "step": stop.step, "failed_step": run.meta.failed_step,
-                   "paths": rdl.public_paths(paths), "problems": [KADO_WRITE_FAILED]}
-        if stop.reason is not None:
-            stopped["problems"], stopped["reason"] = [DOC_CHANGED], stop.reason
-        return stopped
-    out = run.output(section=False, status="resumed" if resumed else "delivered", step="",
-                     paths=rdl.public_paths(paths), next=NEXT)
-    return rdl.report_delivered_plan(run.meta, out) if resumed else out
+        rdl.save_payloads(run.stage, paths, payloads)
+    return _write_steps(run, paths, payloads, set_doc, run.replaces_set, resumed)
 
 
 # ---------------------------------------------------------------- drop
@@ -393,6 +419,7 @@ def drop(args: argparse.Namespace) -> dict:
     meta.data["withdrawn"] = True
     meta.failed_step = ""
     rdl.save_meta(stage, meta)
+    rdl.remove_payloads(stage)
     return {"status": "withdrawn", "stem": args.stem, "paths": rdl.public_paths(paths)}
 
 

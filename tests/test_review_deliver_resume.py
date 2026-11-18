@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_review_deliver_resume.py — a resume never writes a set that contradicts what the first attempt delivered
 (fix #258; spec 045 SDD Error Handling rows `replan-differs` and `anchor-needed`; PRD F5-AC10).
 
@@ -19,6 +19,10 @@ B. a delivery begun with `--place-anchor` records `anchor_picked: true` — neve
 C. both resume refusals guard what a resume would write, so a delivery nothing can resume — finished (`doc_mark`
    done), withdrawn, or a drop that did not finish — keeps today's `set-exists` / `set-withdrawn` and asks for no
    heading.
+Since spec 046 T6.3 a first attempt stores its payloads (`payloads.json`) and a resume of an open delivery uploads
+them without a re-plan (tests/test_046_t6_3_resume_stored_payloads.py). Every stop below therefore removes that file
+first (`_legacy_stage`): A to C pin a stage from before the store, whose behaviour is unchanged.
+
 D. the skill's step 8 says what each refusal means: `replan-differs` → the vault changed, nothing more was written,
    Drop or Abort; `anchor-needed` → the step 7 heading pick, then deliver again with `--place-anchor`.
 
@@ -63,6 +67,11 @@ def _meta_text(instance) -> str:
     return (instance / "tomo-tmp" / "review" / STEM / "meta.json").read_text(encoding="utf-8")
 
 
+def _legacy_stage(instance) -> None:
+    """The stage of a delivery begun before spec 046 T6.3: no stored payloads."""
+    (instance / "tomo-tmp" / "review" / STEM / "payloads.json").unlink()
+
+
 def _stopped_after_the_note(doc_mod, ins, instance, monkeypatch, capsys):
     """A new-note delivery stopped at the set JSON: the note landed in the inbox, no set exists."""
     cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault(None))
@@ -72,6 +81,7 @@ def _stopped_after_the_note(doc_mod, ins, instance, monkeypatch, capsys):
     assert meta_of(instance)["steps_done"] == ["note"]
     assert meta_of(instance)["delivered_plan"] == {"mode": "new-note", "target": TARGET, "place": PLACE}
     assert NEW_NOTE in fake.files and SET_JSON not in fake.files
+    _legacy_stage(instance)
     fake.fail.clear()
     fake.events.clear()
     return cli, fake
@@ -167,6 +177,7 @@ def _stopped_at_the_set_md(doc_mod, ins, instance, monkeypatch, capsys, record_p
     assert out["status"] == "stopped" and out["failed_step"] == "set_md", out
     assert meta_of(instance)["steps_done"] == ["set_json"]
     assert meta_of(instance)["delivered_plan"] == {"mode": "insert", "target": TARGET, "place": record_place}
+    _legacy_stage(instance)
     fake.fail.clear()
     fake.events.clear()
     return cli, fake
@@ -279,6 +290,7 @@ def _stopped_with_a_picked_anchor(doc_mod, ins, instance, monkeypatch, capsys):
     assert out["status"] == "stopped" and out["failed_step"] == "set_md", out
     assert meta_of(instance)["steps_done"] == ["set_json"]
     assert set_json_of(fake)["actions"][0]["anchor"]["value"] == PICKED
+    _legacy_stage(instance)
     fake.fail.clear()
     fake.events.clear()
     return cli, fake

@@ -265,6 +265,51 @@ in `set-exists` anyway. The order inside `deliver` is therefore: closed
 delivery → its own problems; open delivery → `anchor-needed`, then
 `replan-differs`, then the re-plan's own problems.
 
+## WHY a Resume Uploads the Stored Payloads (spec 046 T6.3)
+
+Live walk 2026-11-18, owner decision. A quarter review in new-note mode
+stopped at `doc_mark` (`doc-changed`, `open-unsaved`: a plugin had stamped
+the open document). Two minutes later something in Obsidian moved a file
+onto the target path. The Resume rebuilt the plan against that vault and
+refused `place-missing` + `section-missing`, the rebuilt plan's own
+problems, although the only undone step was the mark, which needs no plan.
+With no way to retry, the model hand-wrote the mark through Kado and edited
+`meta.json`. The re-plan was the wrong input: what a resume must write is
+what the first attempt began, not what the vault would plan now.
+
+So the first attempt stores its payloads. When `deliver` persists
+`delivered_plan` it also writes `<stage>/payloads.json`, before the first
+step's in-flight mark: the vault path and the text of every uploaded step
+(`note` for new-note, `set_json`, `set_md`). A kill during the first upload
+still leaves them. A resume of an open delivery (begun, `doc_mark` undone,
+not withdrawn, no `set-withdrawn` and no `set-exists`) whose stage holds
+them reads the document fresh and builds the plan only for the output's
+shape. It does not refuse on the rebuilt plan's problems or on
+`resume_refusal`: `replan-differs`, `anchor-needed` and `choices-needed`
+are moot because nothing of the re-plan is written. It uploads each undone
+step's stored text through the same `StagedDelivery` rules: done steps
+skipped, a step in flight compared or uploaded, the `set_replaced`
+overwrite path kept and compared against the stored set. Then
+`_mark_document` runs as before, on the fresh read and guarded by its
+`modified`. The output is `resumed` with the recorded `delivered_plan` and
+no `problems`.
+
+The file is removed once the mark is recorded, once `drop` withdraws the
+delivery, and after a `name-taken` refusal on a delivery that never began.
+It holds the note's and the set's text, the same content the inbox
+receives. It is the one content-bearing file under `tomo-tmp/review/`
+besides `read.json` and `proposals.json`, so the privacy walk names it
+beside them. Keeping it only while a delivery is open keeps that exception
+as short as the need.
+
+A stage without the file (a delivery begun before this change), or with a
+file of another shape, keeps the #258 path above unchanged.
+
+The skill's step 8 now asks `1 Retry · 2 Drop · 3 Abort` on any `stopped`.
+Retry reruns `deliver` in place, which this change makes safe whatever the
+vault did meanwhile. One STRICT line forbids writing the document, the set,
+the note or the stage by hand, the deviation the live walk observed.
+
 ## WHY a Picked Anchor Is Recorded as a Flag and Asked Again (fix #258)
 
 The second half of #258. The listing's Resume (SKILL step 1,

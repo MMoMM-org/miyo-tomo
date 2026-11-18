@@ -199,3 +199,18 @@ helpers they call (`record`, `report`, `untaken`) live in
 `review_section_report` (in `review_section_set` until T6.2), so this
 module stays under that line.
 
+
+## WHY the Stored Payloads Live Here (spec 046 T6.3)
+
+`save_payloads`, `read_payloads`, `remove_payloads` and `delivery_open`
+serve the resume that uploads the first attempt's payloads instead of a
+re-plan (docs/tomo/scripts/review-instructions.md, "WHY a Resume Uploads
+the Stored Payloads"). They sit beside `save_meta` because they are the
+same kind of thing: a stage file of the delivery, written atomically,
+with no Kado call. `read_payloads` checks the file's shape and returns
+None for any other shape. A stage written before the store, or one whose
+file is damaged, then falls back to the #258 path instead of uploading
+half a set. `delivery_open` is the "still open" condition of
+`resume_refusal` with `set-exists` added. A set of another delivery at
+the path is refused as before and is never written over from a stored
+payload.

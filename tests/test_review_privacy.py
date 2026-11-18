@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.7
+# version: 0.3.8
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -33,6 +33,11 @@ which marker kinds it may carry and why. The walk then asserts:
   carried its marker (no stale entry): the allowlist and the walk's stdout are compared both ways, so the
   table needs no test of its own;
 - no marker in any file under tomo-tmp/review/ that a step leaves behind;
+- (spec 046 T6.3, owner decision 2026-11-18) `payloads.json`, the paths and texts the first delivery
+  attempt stores for its resume, carries the set and note text by design and is exempt like read.json
+  and proposals.json; it exists while a delivery is open and is gone once every delivery of the walk
+  finished or was withdrawn. The week's stop at the set MD removes it before the resume, so the walk
+  keeps covering the legacy `anchor-needed` refusal with its `headings`;
 - the readable tracker value reaches read.json and the document's habits
   line, and nothing else of Tomo's: not stderr, not stdout outside the named
   fields, no working file but read.json;
@@ -204,7 +209,7 @@ class Walk:
         reads and writes by design."""
         leaks = []
         for path in sorted((self.root / "tomo-tmp").rglob("*")):
-            if path.is_file() and path.name not in ("read.json", "proposals.json"):
+            if path.is_file() and path.name not in ("read.json", "proposals.json", "payloads.json"):
                 kinds = _kinds_and_readable(path.read_text(encoding="utf-8", errors="replace"))
                 if kinds:
                     leaks.append((str(path.relative_to(self.root)), sorted(kinds)))
@@ -364,6 +369,9 @@ def _week(w: Walk) -> None:
     rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
     assert rc == 0 and out["status"] == "stopped" and out["failed_step"] == "set_md", out
     w.vault.fail.clear()
+    payloads = w.stage(WEEK_STEM) / "payloads.json"
+    assert payloads.is_file(), "an open delivery stores its payloads"
+    payloads.unlink()                                   # a stage begun before spec 046 T6.3: the re-plan path
     rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM])
     assert rc == 0 and out["status"] == "refused" and out["problems"] == ["anchor-needed"], out
     assert ANCHOR in out["headings"], out
@@ -611,6 +619,11 @@ def test_no_marker_in_tomos_working_files_after_any_step(walk):
     calls = _calls(walk) + walk.bad_calls + walk.forced_calls
     leaks = [(_label(c), c["tmp_leaks"]) for c in calls if c["tmp_leaks"]]
     assert leaks == []
+
+
+def test_no_stored_payload_outlives_its_delivery(walk):
+    """Every delivery of the walk finished or was withdrawn, so no `payloads.json` is left under tomo-tmp/."""
+    assert sorted(str(p) for p in (walk.root / "tomo-tmp").rglob("payloads.json")) == []
 
 
 def test_a_readable_tracker_value_stays_in_read_json_and_the_document(walk):

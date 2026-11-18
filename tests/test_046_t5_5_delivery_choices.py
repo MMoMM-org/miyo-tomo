@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_046_t5_5_delivery_choices.py — Pass 2 of a mapped review: section stops, choices, notices (spec 046 T5.5).
 
 SDD Internal API `review-instructions.py preview|deliver --stem <stem> [--section-choice <key>=skip|review ...]
@@ -326,15 +326,28 @@ def test_both_flags_parse_into_one_mapping(ins):
 # ---------------------------------------------------------------- the record and the resume
 
 
-def _stopped_at_set_md(script, inst, ins, monkeypatch, capsys):
+def _stopped_at_set_md(script, inst, ins, monkeypatch, capsys, *, legacy=True):
+    """Stopped at the set MD; ``legacy`` removes the stored payloads, a stage begun before spec 046 T6.3 (a stage
+    with them resumes without a re-plan: tests/test_046_t6_3_resume_stored_payloads.py)."""
     from lib.kado_client import KadoError
     fake = approved(script, inst, monkeypatch, capsys, note=NOTE.replace("## Notes\nnote text\n\n", ""))
     fake.fail[("write_note", SET_MD)] = KadoError("503")
     _, out, _ = cli(ins, monkeypatch, capsys, fake, "deliver", "--stem", STEM, "--section-choice", "s4=skip")
     assert out["status"] == "stopped" and out["failed_step"] == "set_md", out
     del fake.fail[("write_note", SET_MD)]
+    if legacy:
+        (inst / "tomo-tmp" / "review" / STEM / "payloads.json").unlink()
     fake.events.clear()
     return fake
+
+
+def test_a_resume_with_stored_payloads_needs_no_choices_again(script, inst, ins, monkeypatch, capsys):
+    """Since spec 046 T6.3 the stored payloads carry the choices' effect: the resume uploads the set MD as built."""
+    fake = _stopped_at_set_md(script, inst, ins, monkeypatch, capsys, legacy=False)
+    _, out, _ = cli(ins, monkeypatch, capsys, fake, "deliver", "--stem", STEM)
+    assert out["status"] == "resumed", out
+    landed = [w[1] for w in writes(fake)]
+    assert landed[0] == SET_MD and len(landed) == 2 and landed[1].endswith(" Review.md"), landed
 
 
 def test_a_resume_without_the_original_choices_refuses_choices_needed(script, inst, ins, monkeypatch, capsys):

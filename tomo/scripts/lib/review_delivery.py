@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.5.0
+# version: 0.6.0
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -44,6 +44,11 @@ record of ``meta.json`` and what a resumed run does with it (#258). They take
 the plan, the meta and the problems they need, never the script's ``Run``.
 Reading a ``KadoError`` the delivery caught is ``review_kado_conflict``'s (T6.2).
 
+``delivery_open`` says whether a resume continues the delivery (begun, the mark undone, not withdrawn, no
+``set-withdrawn`` or ``set-exists``). ``save_payloads`` keeps the paths and texts of the uploaded steps the first
+attempt builds in ``<stage>/payloads.json``; ``read_payloads`` returns them, or None for a stage without them or
+with a file of another shape; ``remove_payloads`` deletes the file once nothing resumes (spec 046 T6.3).
+
 No Kado call, no clock. Design notes: docs/tomo/scripts/lib/review_delivery.md
 """
 from __future__ import annotations
@@ -83,6 +88,8 @@ INSTRUCTIONS_SUFFIX = "_instructions"
 DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes
 ANCHOR_PICKED = "anchor_picked"                         # delivered_plan: --place-anchor was given (never the heading)
 SECTIONS, CHOICES_GIVEN = "sections", "choices_given"   # delivered_plan: section keys + modes; choices were given
+PAYLOADS_FILE = "payloads.json"                         # stage: the first attempt's paths and payloads, while open
+UPLOADED = (NOTE, SET_JSON, SET_MD)                     # the steps that upload a payload
 
 
 # --- the classification --------------------------------------------------------------
@@ -291,6 +298,48 @@ def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str
     if all(step in meta.steps_done for step in steps):
         return None
     return REPLAN_DIFFERS if replan_differs(plan, record) else None
+
+
+def delivery_open(meta: ReviewMeta, problems: Sequence[str]) -> bool:
+    """Whether a resume continues this delivery: begun, the mark undone, not withdrawn, no emptied set and no set
+    of another delivery at the path."""
+    return (meta.started() and DOC_MARK not in meta.steps_done and not meta.withdrawn()
+            and SET_WITHDRAWN not in problems and SET_EXISTS not in problems)
+
+
+# --- the stored payloads (spec 046 T6.3) ----------------------------------------------
+
+def save_payloads(stage: Path, paths: Dict[str, str], payloads: Dict[str, str]) -> None:
+    """Persist the vault path and the text of every uploaded step the first attempt builds."""
+    data = {"paths": {step: paths[step] for step in UPLOADED if step in paths},
+            "payloads": {step: payloads[step] for step in UPLOADED if step in payloads}}
+    atomic_write_text(Path(stage) / PAYLOADS_FILE, json.dumps(data, ensure_ascii=True, indent=2) + "\n")
+
+
+def _stored_shape(data: object) -> bool:
+    if not isinstance(data, dict) or not isinstance(data.get("paths"), dict) or not isinstance(data.get("payloads"), dict):
+        return False
+    paths, payloads = data["paths"], data["payloads"]
+    return (SET_JSON in paths and SET_MD in paths and set(paths) == set(payloads) and set(paths) <= set(UPLOADED)
+            and all(isinstance(v, str) and v for v in paths.values())
+            and all(isinstance(v, str) for v in payloads.values()))
+
+
+def read_payloads(stage: Path) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
+    """``(paths, payloads)`` the first attempt stored; None when absent or not of that shape (a stage from before
+    the store keeps the re-plan)."""
+    try:
+        data = json.loads((Path(stage) / PAYLOADS_FILE).read_text(encoding="utf-8"))
+        if _stored_shape(data) and isinstance(json.loads(data["payloads"][SET_JSON]), dict):
+            return dict(data["paths"]), dict(data["payloads"])
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def remove_payloads(stage: Path) -> None:
+    """Remove the stored payloads: nothing resumes the delivery any more."""
+    (Path(stage) / PAYLOADS_FILE).unlink(missing_ok=True)
 
 
 def report_delivered_plan(meta: ReviewMeta, out: dict) -> dict:

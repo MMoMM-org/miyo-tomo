@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.6
+# version: 0.1.7
 """test_046_t5_2_new_note_sections.py — new notes, analysis rows and the "Tomo Review" interplay (046 T5.2).
 
 PRD F4-AC5, F2-AC12, F2-AC7; SDD Runtime View / Complex Logic "New note", the off-limits landing
@@ -328,7 +328,7 @@ def test_pass1_names_the_routed_section_of_a_new_note_in_its_landing_line(script
     _, out, fake = write(script, monkeypatch, capsys, inst, week_read(sections=definitions_of(rows)), props, fake)
     assert out["status"] == "written" and out["target_exists"] is False, out
     lines = body_of(fake)
-    assert "*Landet: am Ende des Texts unter „Highlights“ (Ebene 2)*" in lines
+    assert "*Landet: am Ende des eigenen Texts von „Highlights“ (Ebene 2)*" in lines
     assert "*Landet: im Abschnitt „Tomo Review“ unter „Gone“*" in lines
     assert "## Tomo Review %%review%%" in lines                  # a routed part alone opens the divider
 

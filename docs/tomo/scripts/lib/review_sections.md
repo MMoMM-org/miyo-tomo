@@ -156,7 +156,7 @@ sees where the section lands before approving (F3-AC3).
 A heading text can occur twice in a note ("Notes" under two parents); the
 level and the parent the row was mapped with say which one is meant. The
 wording follows the placement: `before` → "vor „X“" / `before "X"`, `under`
-→ "direkt unter" / "right under", `end` → "am Ende des Texts unter" / "at the end of the text under" (since T6.3, `end` lands before the first sub-heading).
+→ "direkt unter" / "right under", `end` → "am Ende des eigenen Texts von" / "at the end of the own text of" (since T6.3, `end` lands before the first sub-heading).
 An analysis row (`review`) and a routed section (its heading missing in a
 new note, set by delivery planning in Phase 5) land inside Tomo's own section
 under a sub-heading named after them, so their line says "im Abschnitt „Tomo

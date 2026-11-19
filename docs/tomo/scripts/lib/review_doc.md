@@ -269,6 +269,6 @@ read them (repo rule: JSON schemas have no version header).
 
 Since spec 046 T6.3 (`end_own_text`), `end` at a heading that has sub-headings lands at the end of the heading's own
 text, before its first sub-heading, not at the end of its whole subtree. "At the end of "H"" read as the subtree end
-and so promised the wrong place. The `end_h` label now says `at the end of the text under "H"` /
-`am Ende des Texts unter „H“`. Tests: `test_046_t4_2_doc_sections.py`, `test_046_t5_2_new_note_sections.py`.
-`docs/tomo/scripts/lib/review_sections.md` still quotes the old German/English words (outside this change).
+and so promised the wrong place. The `end_h` label now says `at the end of the own text of "H"` /
+`am Ende des eigenen Texts von „H“`. Tests: `test_046_t4_2_doc_sections.py`, `test_046_t5_2_new_note_sections.py`.
+The owner chose the wording (2026-11-19): "the text under H" still read as covering the sub-headings.

@@ -5,7 +5,9 @@
 > F3-AC5, F3-AC6, F3-AC7, F3-AC9; SDD Complex Logic "month reading"):
 > finding the dailies of every day (flat and year folders, duplicates), the
 > daily of the day after the period, the link stems a day asks for, the
-> living task notes, the weekly notes a month overlaps and their day blocks,
+> living task notes, the child-review notes (for a month the weekly notes it
+> overlaps and their day blocks; for a quarter the weekly notes as sources
+> and the monthly notes with their marks),
 > the two link differences, vault growth, and the per-source part of the
 > report `review-read.py` prints. Reading one day is `lib/review_day.py`'s;
 > parsing a weekly note is `lib/review_weekly.py`'s; reaching Kado is
@@ -75,6 +77,35 @@ the first asks for setup, the second for writing weekly notes. The two
 link-difference lists (`only_in_weekly_links`, `dailies_not_in_weekly`) are
 present only when a weekly note was read, in every state.
 
+## WHY a `CHILD` Table Decides What a Period Marks Against
+
+WHY: spec 046 ADR-6, PRD F6-AC4. A quarter is read like a month — every
+daily, the day after — and also reads the weekly notes of the weeks it
+overlaps and the monthly notes of its months. Its marks are made against the
+monthly notes, not the weekly ones: what the monthly reviews hold that no
+daily does, and what the dailies held that the monthly review of their
+month does not mention. `CHILD = {MONTH: WEEK, QUARTER: MONTH}` names the
+marked level; every period above a week also reads the weekly level, as
+sources only when it is not the marked one. A month therefore reads
+`[weekly (marked)]` exactly as in spec 045, and a quarter reads
+`[weekly, monthly (marked)]`.
+
+The keys follow the level's `GRANULARITY` label: a month keeps
+`weekly`, `only_in_weekly_links`, `dailies_not_in_weekly`,
+`report.weekly_status`, `report.weekly_notes` (the golden test,
+`tests/test_review_period_golden.py`, pins them); a quarter writes
+`weekly` and `report.weekly_*` without marks, and `monthly`,
+`only_in_monthly_links`, `dailies_not_in_monthly`, `report.monthly_status`,
+`report.monthly_notes`. For each day, `Period.containing(child_kind, day)`
+picks the child note whose links it is compared with; only child notes that
+were read count, as for a month's weeks. Finding, reading and the status of
+a level are `lib/review_children.py`'s (see `review_children.md`).
+
+Why the weekly notes of a quarter carry no marks: F6-AC4 ("the weekly notes
+are read as sources, not marked separately"). Two mark pairs over the same
+dailies would show most links twice, once per level, and the quarterly
+review sums up months, not weeks.
+
 ## WHY the Day After the Period Is Read for Its Yesterday Fields Only
 
 WHY: SDD same-day reading, step 5. `yesterday_fields` of a daily describe
@@ -122,12 +153,24 @@ WHY: SDD month reading, steps 3–4. `only_in_weekly_links` = links in the
 kept weekly text − links in any daily of the month; `dailies_not_in_weekly`
 = content links of a daily − links in the weekly note of its week, only for
 days whose weekly note was read (a missing weekly note is reported as such,
-not as 31 days of "not mentioned"). Links to daily and weekly notes
-themselves are navigation — `[[2026-03-25]]`, `[[2026-W13]]` — and are left
-out of both lists; a weekly's day headings link every daily by design. A
+not as 31 days of "not mentioned"). Links to periodic notes
+themselves are navigation — `[[2026-03-25]]`, `[[2026-W13]]`, `[[2026-02]]`,
+`[[2026-Q1]]` — and are left out of both lists; a weekly's day headings link
+every daily by design. `_is_periodic` therefore parses a stem against the
+daily, weekly, monthly and quarterly formats (spec 046 SDD "Quarter marks"),
+each only when configured: a month or quarter format the vault does not use
+names no note, and guessing the default would drop a real note that happens
+to be called `2026-02`. The same rules hold for a quarter's
+`only_in_monthly_links` / `dailies_not_in_monthly`. A
 daily's `links` also hold the same-day notes it read or missed
 (`DP-2026-03-23`): those are structure the weekly never mentions, so they
-are not "left out" either. Targets compare by `review_weekly.link_key`.
+are not "left out" either. Links to attachments (`![[snow.png]]`, `[[scan.pdf]]`)
+are left out of both lists too. They are files, not notes a review could miss:
+the spec 046 live walk found a daily template's weather icons in
+`dailies_not_in_monthly`. An attachment is a target whose extension is in
+`lib/file_extensions.KNOWN_FILE_EXTENSIONS`, other than `md`. That is the same
+allowlist the renderer uses, because Obsidian allows dots in note names
+(`v1.2 Plan` stays a note). Targets compare by `review_weekly.link_key`.
 
 ## WHY Growth Is Two Listings, Not a History
 
@@ -210,17 +253,18 @@ named, not spread over the assembly.
 
 #### WHY `not_read` Is One List, Assigned Last
 
-WHY: review of T3.3 (blocking). The weekly notes of a recovered weekly
-listing are read by `_weekly_entries` while the report is assembled — after
-the end pass, so a note that fails then is final. The first version
-snapshotted `result["not_read"]` before that, and `report["not_read"]` after:
-a weekly note that failed at that point was `failed` in `weekly_notes` and in
-`report.not_read` but absent from `result["not_read"]`, the list
-`review-read.py` hands to `pacer.summary` — the summary said nothing was
-unread while the report named a failed note. `run()` now assembles the weekly
-entries first and sets `result["not_read"]` and `report["not_read"]` from one
-list as its last statement, after the last read of the run; the two can no
-longer differ.
+WHY: review of spec 045 T3.3 (blocking). The child-level notes of a
+recovered listing (a month's weekly notes, a quarter's weekly and monthly
+notes) are read by `review_children.read`, which `_child_result` calls while
+the report is assembled — after the end pass, so a note that fails then is
+final. The first version snapshotted `result["not_read"]` before that, and
+`report["not_read"]` after: a weekly note that failed at that point was
+`failed` in `weekly_notes` and in `report.not_read` but absent from
+`result["not_read"]`, the list `review-read.py` hands to `pacer.summary` —
+the summary said nothing was unread while the report named a failed note.
+`run()` now assembles every child level first and sets `result["not_read"]`
+and `report["not_read"]` from one list as its last statement, after the last
+read of the run; the two can no longer differ.
 
 A listing that is still not read after the end pass stays exactly that: the
 folder is in `not_read`, `kado_empty` and the advice stay empty (Kado never
@@ -251,7 +295,9 @@ where no DST exists, so the DST case is tested under an explicitly set
 ## WHY `sources_from_config` Lives Here
 
 WHY: a month read needs the weekly setup (folder, format, own sections) next
-to the monthly one, the daily folder and format, and the MOC folders — five
+to the monthly one, the daily folder and format, and the MOC folders; a
+quarter adds the monthly folder, format and own sections
+(`review.monthly.own_sections`) and the quarterly format (spec 046 T3.2) — five
 config lookups `review_config` already owns the keys for (`folder_for`,
 `configured_formats`, `get_path`). Building `PeriodSources` here keeps
 `review-read.py` a CLI over the libs and keeps the key paths in one place;

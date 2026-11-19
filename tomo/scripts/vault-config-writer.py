@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.6.1
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -943,8 +943,10 @@ def _refused(reason: str, **extra) -> int:
 
 
 def _leaf_holds(parsed, path: tuple[str, ...], value) -> bool:
+    """The parsed config holds ``value`` at ``path``; None and ``[]`` are held by an absent key."""
     found, current = get_path(parsed, path)
-    return (value is None and not found) or (found and current == value)
+    removes = value is None or value == []
+    return (removes and not found) or (found and current == value)
 
 
 def cmd_review(args: argparse.Namespace) -> int:

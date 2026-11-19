@@ -22,6 +22,9 @@ Mechanisms a mutation of the parsers falsifies:
 - ``test_every_review_script_span_is_a_contract_mention`` — a backtick span that
   names a review script but matches no mention form (wrapped, reworded) fails,
   so it cannot slip past the sweeps above silently.
+- ``test_every_review_script_and_lib_has_its_why_mirror`` (spec 046 T6.2) — a
+  review script or lib under ``tomo/scripts/`` without its ``docs/tomo/`` mirror
+  fails; the glob is pinned to find the four libs of the T6.2 split.
 - ``test_skill_doc_attaches_every_visible_flag_of_match`` — a flag added to
   ``review-session.py match`` (``--template none`` / ``--anchor``, fix round 1 of
   the Phase 6 live-walk fix) without a ``match …`` mention naming it fails; the
@@ -78,6 +81,23 @@ def command_doc() -> str:
 def test_both_why_documents_exist():
     assert COMMAND_DOC.is_file(), f"missing WHY document: {COMMAND_DOC.relative_to(REPO)}"
     assert SKILL_DOC.is_file(), f"missing WHY document: {SKILL_DOC.relative_to(REPO)}"
+
+
+REVIEW_CODE = sorted([*(REPO / "tomo" / "scripts").glob("review-*.py"),
+                      *(REPO / "tomo" / "scripts" / "lib").glob("review_*.py")])
+
+
+def test_the_glob_finds_the_review_scripts_and_the_spec_046_libs():
+    names = {p.stem for p in REVIEW_CODE}
+    assert {"review-instructions", "review_section_report", "review_kado_conflict", "review_target_read",
+            "review_instructions_args"} <= names, sorted(names)
+
+
+@pytest.mark.parametrize("code", REVIEW_CODE, ids=lambda p: p.name)
+def test_every_review_script_and_lib_has_its_why_mirror(code):
+    """Spec 046 T6.2: each runtime review file has its docs/tomo/<mirrored path>.md (CLAUDE.md, the WHY layer)."""
+    mirror = REPO / "docs" / "tomo" / code.relative_to(REPO / "tomo").with_suffix(".md")
+    assert mirror.is_file(), f"missing WHY document: {mirror.relative_to(REPO)}"
 
 
 def test_parsers_are_the_source_of_the_subcommand_list(subcommands):

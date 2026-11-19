@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test_period.py — Behavioural tests for lib.period (spec 045 T1.1).
 
 Covers the period arithmetic behind /review:
@@ -593,3 +593,236 @@ def test_anything_else_is_an_unknown_argument():
 def test_arguments_are_trimmed():
     assert _parse("  2026-W13  ").period == Period.week(2026, 13)
     assert _parse("  month ").period == Period.month(2026, 10)
+
+
+# --- the quarter (spec 046 T1.4, ADR-6) --------------------------------------------
+
+Q_TODAY = date(2026, 11, 14)  # inside 2026-Q4; the last finished quarter is 2026-Q3
+
+
+def _parse_q(raw: str, **overrides):
+    return _parse(raw, today=Q_TODAY, **overrides)
+
+
+@pytest.mark.parametrize("number, start, end", [
+    (1, date(2026, 1, 1), date(2026, 3, 31)),
+    (2, date(2026, 4, 1), date(2026, 6, 30)),
+    (3, date(2026, 7, 1), date(2026, 9, 30)),
+    (4, date(2026, 10, 1), date(2026, 12, 31)),
+])
+def test_a_quarter_is_three_calendar_months(number, start, end):
+    quarter = Period.quarter(2026, number)
+    assert (quarter.kind, quarter.year, quarter.number) == (period.QUARTER, 2026, number)
+    assert (quarter.start, quarter.end) == (start, end)
+    assert quarter.name == f"2026-Q{number}"
+
+
+@pytest.mark.parametrize("number", [0, 5, -1])
+def test_a_quarter_number_outside_1_to_4_is_invalid(number):
+    with pytest.raises(InvalidPeriod):
+        Period.quarter(2026, number)
+
+
+def test_a_quarter_year_outside_the_supported_range_is_invalid():
+    for year in (0, 1, 9999):
+        with pytest.raises(InvalidPeriod):
+            Period.quarter(year, 1)
+
+
+def test_containing_and_previous_quarter():
+    assert Period.containing(period.QUARTER, date(2026, 5, 15)) == Period.quarter(2026, 2)
+    assert Period.containing(period.QUARTER, date(2026, 3, 31)) == Period.quarter(2026, 1)
+    assert Period.containing(period.QUARTER, date(2026, 4, 1)) == Period.quarter(2026, 2)
+    assert Period.quarter(2026, 1).previous() == Period.quarter(2025, 4)
+    assert Period.quarter(2026, 3).previous() == Period.quarter(2026, 2)
+
+
+def test_last_finished_quarter():
+    assert period.last_finished(period.QUARTER, Q_TODAY) == Period.quarter(2026, 3)
+    assert period.last_finished(period.QUARTER, date(2026, 10, 1)) == Period.quarter(2026, 3)
+    assert period.last_finished(period.QUARTER, date(2026, 9, 30)) == Period.quarter(2026, 2)
+
+
+def test_a_quarter_has_its_three_months():
+    assert Period.quarter(2026, 1).months() == [Period.month(2026, m) for m in (1, 2, 3)]
+    assert Period.quarter(2026, 4).months() == [Period.month(2026, m) for m in (10, 11, 12)]
+
+
+def test_only_a_quarter_has_months():
+    for p in (Period.week(2026, 13), Period.month(2026, 3)):
+        with pytest.raises(ValueError):
+            p.months()
+
+
+def test_the_weeks_overlapping_2026_q1_cross_both_ends():
+    weeks = Period.quarter(2026, 1).weeks_overlapping(ISO)
+    assert [w.name for w in weeks] == [f"2026-W{n:02d}" for n in range(1, 15)]
+    assert weeks[0].start == date(2025, 12, 29)
+    assert weeks[-1].end == date(2026, 4, 5)
+
+
+def test_the_weeks_overlapping_a_quarter_follow_the_rule():
+    weeks = Period.quarter(2026, 1).weeks_overlapping(SUNDAY_FIRST)
+    assert weeks[0].start == date(2025, 12, 28)
+    assert weeks[-1].start <= date(2026, 3, 31) <= weeks[-1].end
+
+
+def test_quarter_note_paths_use_the_calendar_year_folder():
+    assert Period.quarter(2026, 1).note_paths("Calendar/304 Quarterly", "YYYY-[Q]Q") == [
+        "Calendar/304 Quarterly/2026-Q1.md", "Calendar/304 Quarterly/2026/2026-Q1.md"]
+
+
+def test_the_default_quarter_format_renders_and_parses():
+    fmt = period.DEFAULT_FORMATS[period.QUARTER]
+    assert fmt == "YYYY-[Q]Q"
+    assert render_name(Period.quarter(2026, 1), fmt) == "2026-Q1"
+    assert parse_name("2026-Q1", fmt) == Period.quarter(2026, 1)
+    assert parse_name("2026-Q4", fmt) == Period.quarter(2026, 4)
+
+
+def test_other_quarter_formats_render_and_parse():
+    assert render_name(Period.quarter(2026, 2), "[Q]Q YYYY") == "Q2 2026"
+    assert parse_name("Q2 2026", "[Q]Q YYYY") == Period.quarter(2026, 2)
+    assert render_name(Period.quarter(2026, 3), "YYYY-[Quartal ]Q") == "2026-Quartal 3"
+
+
+def test_a_quarter_name_that_does_not_exist_does_not_parse():
+    for name in ("2026-Q5", "2026-Q0", "2026-Q12", "2026-03", "2026-W13", "0000-Q1"):
+        assert parse_name(name, "YYYY-[Q]Q") is None, name
+
+
+@pytest.mark.parametrize("fmt, expected", [
+    ("YYYY-[Q]Q", "quarter"),
+    ("GGGG-[W]WW", "week"),
+    ("gggg-[W]ww", "week"),
+    ("YYYY-MM", "month"),
+    ("YYYY-MM-Q", None),
+    ("GGGG-[W]WW-Q", None),
+    ("YYYY-[Q]Q-MM-[W]WW", None),
+    ("YYYY", None),
+])
+def test_format_kind_names_exactly_one_of_three_kinds(fmt, expected):
+    assert period.format_kind(fmt) == expected
+
+
+def test_check_format_accepts_the_quarter_format_and_refuses_a_mismatch():
+    assert check_format("YYYY-[Q]Q", "quarter", today=TODAY) == []
+    assert [p.kind for p in check_format("YYYY-[Q]Q", "month", today=TODAY)] == ["kind-mismatch"]
+    assert [p.kind for p in check_format("YYYY-MM", "quarter", today=TODAY)] == ["kind-mismatch"]
+    assert [p.kind for p in check_format("[Q]Q", "quarter", today=TODAY)] == ["no-year-token"]
+
+
+def test_the_quarter_token_is_known_to_the_month_format_check():
+    # before the quarter, Q was an unknown token; it is now a quarter token, so a month
+    # format carrying it no longer names one kind
+    assert [p.kind for p in check_format("YYYY-MM-Q", "month", today=TODAY)] == ["no-period-token"]
+
+
+def test_quarter_word_is_the_last_finished_quarter():
+    request = _parse_q("quarter")
+    assert isinstance(request, Request)
+    assert request.kind == "quarter" and request.period == Period.quarter(2026, 3)
+    assert request.source == "default" and request.year_inferred is False
+    assert request.to_dict() == {"kind": "quarter", "period": "2026-Q3", "year_inferred": False,
+                                 "source": "default"}
+
+
+@pytest.mark.parametrize("raw", ["Quarter", "QUARTER", "  quarter  "])
+def test_the_quarter_word_is_case_insensitive(raw):
+    assert _parse_q(raw).period == Period.quarter(2026, 3)
+
+
+@pytest.mark.parametrize("raw", ["2026-Q1", "2026-q1", "quarter 2026-Q1", "Quarter 2026-Q1"])
+def test_a_full_quarter_name_is_that_quarter(raw):
+    request = _parse_q(raw)
+    assert isinstance(request, Request), raw
+    assert request.kind == "quarter" and request.period == Period.quarter(2026, 1)
+    assert request.year_inferred is False and request.source == "arg"
+
+
+def test_a_bare_quarter_is_the_most_recent_finished_one_with_the_year_named():
+    request = _parse_q("Q1")
+    assert request.period == Period.quarter(2026, 1) and request.year_inferred is True
+    assert request.to_dict()["period"] == "2026-Q1"
+    assert _parse_q("q3").period == Period.quarter(2026, 3)
+    later = _parse_q("Q4")
+    assert later.period == Period.quarter(2025, 4) and later.year_inferred is True
+    assert _parse_q("quarter Q4").period == Period.quarter(2025, 4)
+
+
+@pytest.mark.parametrize("raw", ["2026-Q5", "2026-Q0", "quarter 2026-Q5"])
+def test_a_quarter_outside_its_year_is_invalid_with_the_last_quarter_as_example(raw):
+    error = _parse_q(raw)
+    assert isinstance(error, RequestError), raw
+    assert error.kind == "invalid-period"
+    assert error.example == "2026-Q4"
+    assert error.expected == "a quarter of 2026 between 2026-Q1 and 2026-Q4"
+
+
+@pytest.mark.parametrize("raw", ["Q5", "Q0", "Q12"])
+def test_a_bare_quarter_number_outside_1_to_4_is_invalid(raw):
+    error = _parse_q(raw)
+    assert error.kind == "invalid-period"
+    assert error.expected == "a quarter number between 1 and 4"
+    assert error.example == "2026-Q3"
+
+
+def test_a_quarter_year_outside_the_range_is_invalid():
+    error = _parse_q("0000-Q1")
+    assert error.kind == "invalid-period" and error.expected == "a year between 0002 and 9998"
+    assert error.example == "2026-Q3"
+
+
+@pytest.mark.parametrize("raw", ["2026-Q4", "2027-Q1", "@2026-Q4"])
+def test_an_unfinished_quarter_names_the_last_finished_one(raw):
+    error = _parse_q(raw)
+    assert isinstance(error, RequestError), raw
+    assert error.kind == "unfinished-period"
+    assert error.expected == "a finished quarter"
+    assert error.example == "2026-Q3" and error.last_finished == "2026-Q3"
+
+
+def test_the_quarter_that_ends_today_is_not_finished():
+    assert _parse("2026-Q4", today=date(2026, 12, 31)).kind == "unfinished-period"
+    assert _parse("2026-Q4", today=date(2027, 1, 1)).period == Period.quarter(2026, 4)
+
+
+@pytest.mark.parametrize("raw, word, wanted", [
+    ("quarter 2026-03", "quarter", "a quarter like 2026-Q1 after the word quarter"),
+    ("quarter W13", "quarter", "a quarter like 2026-Q1 after the word quarter"),
+    ("month 2026-Q1", "month", "a month like 2026-03 after the word month"),
+    ("week Q1", "week", "a week like 2026-W13 after the word week"),
+])
+def test_a_kind_word_before_a_period_of_another_kind_is_invalid(raw, word, wanted):
+    error = _parse_q(raw)
+    assert error.kind == "invalid-period"
+    assert error.expected == wanted
+    assert error.example == period.last_finished(word, Q_TODAY).name
+
+
+@pytest.mark.parametrize("raw", [
+    "@Calendar/304 Quarterly/2026-Q1.md", "@2026-Q1", "@[[2026-Q1]]", "@Calendar/304 Quarterly/2026/2026-Q1",
+])
+def test_an_at_picked_quarterly_note_is_its_quarter(raw):
+    request = _parse_q(raw)
+    assert isinstance(request, Request), raw
+    assert request.kind == "quarter" and request.period == Period.quarter(2026, 1)
+    assert request.source == "at" and request.year_inferred is False
+
+
+def test_an_at_picked_quarterly_note_follows_the_configured_format():
+    formats = dict(FORMATS, quarter="[Q]Q YYYY")
+    assert _parse_q("@Q2 2026.md", formats=formats).period == Period.quarter(2026, 2)
+    assert _parse_q("@2026-Q2.md", formats=formats).kind == "not-periodic-note"
+
+
+def test_a_not_periodic_note_names_the_quarterly_format_too():
+    error = _parse_q("@Inbox/Some note.md")
+    assert error.kind == "not-periodic-note"
+    assert "a quarterly note named like YYYY-[Q]Q" in error.expected
+
+
+def test_the_grammar_names_the_quarter():
+    error = _parse_q("foo")
+    assert error.kind == "unknown-argument"
+    assert "quarter" in error.expected and "2026-Q1" in error.expected and "Q1" in error.expected

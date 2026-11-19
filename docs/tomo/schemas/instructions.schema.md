@@ -63,3 +63,31 @@ behaviour the description documents — heading-scoped anchor, body replaced
 with the heading line preserved, graceful no-op on a missing anchor or
 target. Rendering of the action for a user without Hashi lives in
 `lib/render_md.py` (spec 045 T1.5), not in this schema.
+
+## WHY `replace_between_markers` Moved the Wire to `schema_version` 4 (spec 046, ADR-5)
+
+`/review` fills sections of the user's own weekly, monthly and quarterly
+notes. A re-run must refresh only Tomo's block between two opaque marker
+lines inside a section the user also writes in; `replace_section` would
+discard the user's text. Hashi built `replace_between_markers` from the
+handoff of 2026-11-14 (Hashi #179, commit abd92d6), and the definition was
+copied here from the contract text for text, placed directly after
+`replace_section` in the `oneOf`.
+
+Unlike `replace_section` at version 3, this is a kind the consumer did not
+yet accept, so the version moves: the producer declares `const "4"` and
+every producer (`/inbox`, `/note`, `/review`) follows through
+`wire_schema_version`. The producer keeps a `const`, not Hashi's
+`{"enum": ["3", "4"]}`: the contract's enum states what the consumer
+accepts (a v3 set is a valid v4 set, so waiting v3 sets still apply and
+Tomo builds no converter); the producer states the one version Tomo
+writes, and `wire_schema_version` reads exactly that `const`.
+
+The vendored copy was taken from Hashi's branch commit abd92d6 before
+Hashi's release, by owner decision (2026-11-17): Hashi releases only after
+the joint test-vault run, and that run needs v4 sets from Tomo. Its
+byte-identity is re-checked against the released tag before the Tomo PR
+merges (`tests/test_046_t6_1_wire_v4.py` pins the sha256). The T5.3
+test-only candidate schema, which carried the action in tests until then,
+was removed in the same change, so every test validates against the
+committed schemas.

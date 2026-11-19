@@ -12,7 +12,7 @@
 The setup lives in four config sections (`concepts.calendar.granularities`,
 `naming.calendar_patterns`, `templates.mapping`, `review`) because three of
 them already exist for other features and the profile already names the
-weekly and monthly folders. A reader (`review-session.py start`) and a writer
+weekly, monthly and quarterly folders. A reader (`review-session.py start`) and a writer
 (`vault-config-writer.py review`) that each spelled those paths would drift —
 the same three-way drift spec 038 found between spec, schema and consumer. So
 `review_setup()` reads the keys and `writer_edits()` produces the edits for
@@ -21,20 +21,20 @@ what a review setup is.
 
 ## WHY Config Over Profile, and What "Missing" Means
 
-`concepts.calendar.granularities.<weekly|monthly>` falls back to the profile
+`concepts.calendar.granularities.<weekly|monthly|quarterly>` falls back to the profile
 (`tomo/profiles/miyo.yaml` carries both folders), so a vault on the MiYo
 profile needs no folder answer when the folders are where the profile says.
 Nothing else falls back: the name format and the review section are the
 user's confirmation and the profile has no opinion on them. A setup counts as
 *present* for a kind when the config holds `naming.calendar_patterns.<kind>`
-and `review.<weekly|monthly>` with a heading and a place; `review_setup()`
+and `review.<weekly|monthly|quarterly>` with a heading and a place; `review_setup()`
 returns None otherwise, so `start` can report `setup: missing` and the skill
 runs Feature 1 first (F2-AC8). A granularity with `enabled: false` is treated
 as no folder: the user switched those notes off.
 
 `folder_for(config, profile, granularity)` is public because the setup
 preview (`review-session.py match`) resolves the same folders before any
-setup exists: the weekly or monthly folder to list and the daily folder to
+setup exists: the weekly, monthly or quarterly folder to list and the daily folder to
 probe for the spelling fix. The script carried its own copy at first, and the
 two had already diverged on a blank path (`path: "   "`): the copy returned
 the blank string, this one returns None. One function, these semantics: a
@@ -145,3 +145,61 @@ F8 sums tracker fields by their configured type. The types already live in
 into `review:` would be a second place to keep in step. `tracker_types()`
 returns `{name: type}` over all three lists; a type change the setup proposes
 goes through the existing `trackers` writer subcommand (SDD Data Storage).
+
+## WHY `GRANULARITY` Names the Quarter in the Same Change as `KINDS`
+
+`GRANULARITY` maps a period kind to its config key (`weekly`, `monthly`,
+`quarterly`) and every reader iterates `period.KINDS` through it
+(`configured_formats`, `setup_present`, the `start` listing). The quarter
+joined `GRANULARITY` in T1.4, together with `KINDS`: `start` iterates every
+kind in `KINDS` and would fail with a `KeyError` without the mapping entry.
+The quarterly setup arrived in T1.3 and `review.quarterly` is stored and
+read. With the key named and nothing configured under it, the quarter reads
+as `missing`, which is exactly what it is.
+
+## WHY Only the Configured Template's Rows Are Read (spec 046, T1.3)
+
+`review.<g>.sections` and `review.<g>.off_limits` are mappings keyed by
+template name. `review_setup` reads the entry of the template
+`templates.mapping.<g>` names and nothing else: the rows of the work
+variant, or of a template the user switched away from, never apply to the
+configured one (PRD F2-AC8), and they stay stored so switching back finds
+them. Without a configured template the setup has no rows — spec 045
+behaviour. Rows of another template are not validated either: a broken
+row there cannot block a review that does not use it.
+
+## WHY Invalid Rows Are Pointers, Checked Against the Writer's Schema
+
+The rows are the user's confirmed text and are written only through the
+writer, but the file can be edited by hand. A present row the reader
+cannot use raises `SetupInvalid` with pointers into the config
+(`/review/weekly/sections/t_week_privat.md/0/cap`, the template name
+escaped per RFC 6901), like every other broken setup key. The reader does
+not keep its own copy of the row rules: it validates the rows by wrapping
+them in a synthetic writer input (`kind`, `template`, the rows) and keeping
+only the schema errors under the rows' key, so the writer and the reader
+cannot disagree on what a valid row is. The same duplicate check —
+heading key twice, an id twice — runs for the writer input
+(`input_problems`) and for the stored rows: a duplicate key would map one
+template heading twice, a duplicate id would make two sections share one
+pair of markers (ADR-10).
+
+## WHY Row Defaults Are Filled at Read Time
+
+The writer stores a row as the user confirmed it (F2-AC10): an omitted
+`cap`, `keywords` or `groups` stays omitted in the file. `ReviewSetup.
+sections` fills `cap` 8, `keywords` [] and `groups` [] on a copy, so every
+later reader (`review-read`, the proposal check) sees one shape and none of
+them spells the default again. Each row is returned as a deep copy:
+a shallow merge would hand every defaulted row the same module-level
+`keywords`/`groups` list and alias the loaded config's lists, so one
+caller's append would leak into every other row and later read.
+
+## WHY `writer_edits` Writes One Template's Entry
+
+`sections` and `off_limits` edit `review.<g>.sections.<template>` and
+`review.<g>.off_limits.<template>` — the one leaf under the named
+template — never the whole `sections` mapping. Saving the mapping of one
+template therefore cannot change another's (F2-AC10, "no other setup value
+changes"), and an empty list removes only that template's entry (T1.1:
+`[]` removes a key).

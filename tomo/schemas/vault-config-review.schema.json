@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://miyo.tomo/schemas/vault-config-review.schema.json",
   "title": "vault-config.yaml — /review setup for one period kind",
-  "description": "Canonical input contract for `scripts/vault-config-writer.py review` (spec 045, ADR-5). One confirmed setup for one period kind. The writer edits only the config keys the input names — concepts.calendar.granularities.<weekly|monthly>, naming.calendar_patterns.<weekly|monthly>, templates.mapping.<weekly|monthly> and the review: section — and leaves every other byte of vault-config.yaml unchanged. An optional key that is absent changes nothing; a null template or template_variant removes the config key. The week rule is required for kind week and not accepted for kind month. The daily folder path is corrected only when daily_path_fix is present.",
+  "description": "Canonical input contract for `scripts/vault-config-writer.py review` (spec 045 ADR-5, spec 046 ADR-3). One confirmed setup for one period kind. The writer edits only the config keys the input names — concepts.calendar.granularities.<weekly|monthly|quarterly>, naming.calendar_patterns.<g>, templates.mapping.<g> and the review: section — and leaves every other byte of vault-config.yaml unchanged. An optional key that is absent changes nothing; a null template or template_variant removes the config key; an empty sections or off_limits list removes that template's entry. The week rule is required for kind week and not accepted for kind month or quarter. The daily folder path is corrected only when daily_path_fix is present. sections and off_limits are stored per template (review.<g>.sections.<template>, review.<g>.off_limits.<template>) and need a named template.",
   "type": "object",
   "required": ["kind", "folder", "format", "heading", "place", "language"],
   "additionalProperties": false,
@@ -16,12 +16,101 @@
     "trimmedList": {
       "type": "array",
       "items": { "$ref": "#/$defs/trimmed" }
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 6,
+      "description": "Level of a template heading; the template analysis knows levels 2..6."
+    },
+    "parent": {
+      "oneOf": [{ "$ref": "#/$defs/trimmed" }, { "type": "null" }],
+      "description": "Text of the nearest higher heading; null for a heading with none above it."
+    },
+    "occurrence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-based position among identical (heading, level, parent) in the template."
+    },
+    "group": {
+      "enum": ["done", "open", "themes", "growth", "weekly_only", "not_in_weekly", "monthly_only", "not_in_monthly"],
+      "description": "A spec 045 group named as a section's starting point (PRD F2-AC7); never habits, which a script computes and which always stay in the Tomo Review section. Narrowed per kind by the allOf branches."
+    },
+    "weekGroup": { "enum": ["done", "open", "themes", "growth"] },
+    "monthGroup": { "enum": ["done", "open", "themes", "growth", "weekly_only", "not_in_weekly"] },
+    "quarterGroup": { "enum": ["done", "open", "themes", "growth", "monthly_only", "not_in_monthly"] },
+    "sectionRow": {
+      "type": "object",
+      "required": ["id", "heading", "level", "parent", "occurrence", "description", "placement"],
+      "additionalProperties": false,
+      "description": "One mapped template section (review.<kind>.sections.<template>[]).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^s[0-9]{1,3}$",
+          "description": "Opaque row id, unique per template, kept across corrections (ADR-10)."
+        },
+        "heading": {
+          "$ref": "#/$defs/trimmed",
+          "description": "Heading text verbatim from the template, %% fold %% kept."
+        },
+        "level": { "$ref": "#/$defs/level" },
+        "parent": { "$ref": "#/$defs/parent" },
+        "occurrence": { "$ref": "#/$defs/occurrence" },
+        "description": {
+          "$ref": "#/$defs/trimmed",
+          "description": "What the section asks for, as the user confirmed it."
+        },
+        "keywords": {
+          "$ref": "#/$defs/trimmedList",
+          "maxItems": 12,
+          "uniqueItems": true,
+          "description": "Optional words that point items to this section."
+        },
+        "groups": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/group" },
+          "description": "Optional spec 045 groups the section starts from (F2-AC7)."
+        },
+        "placement": {
+          "enum": ["before", "under", "end", "review"],
+          "description": "before | under | end of the mapped heading; review = an analysis row whose text lands in the Tomo Review section (F2-AC12)."
+        },
+        "cap": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Most items the section takes; the reader's default is 8."
+        }
+      }
+    },
+    "offLimitsRow": {
+      "type": "object",
+      "required": ["heading", "level", "parent", "occurrence", "with_subsections"],
+      "additionalProperties": false,
+      "description": "One template heading Tomo never writes into (review.<kind>.off_limits.<template>[]).",
+      "properties": {
+        "heading": { "$ref": "#/$defs/trimmed" },
+        "level": { "$ref": "#/$defs/level" },
+        "parent": { "$ref": "#/$defs/parent" },
+        "occurrence": { "$ref": "#/$defs/occurrence" },
+        "with_subsections": {
+          "type": "boolean",
+          "description": "true = the mark covers every heading below this one too."
+        }
+      }
+    },
+    "needsTemplate": {
+      "required": ["template"],
+      "properties": { "template": { "$ref": "#/$defs/trimmed" } },
+      "description": "Rows are stored under the template name, so a present sections or off_limits needs a non-null template."
     }
   },
   "properties": {
     "kind": {
-      "enum": ["week", "month"],
-      "description": "The period kind this setup is for; selects the weekly or monthly keys."
+      "enum": ["week", "month", "quarter"],
+      "description": "The period kind this setup is for; selects the weekly, monthly or quarterly keys."
     },
     "folder": {
       "$ref": "#/$defs/trimmed",
@@ -73,6 +162,16 @@
       "$ref": "#/$defs/trimmedList",
       "description": "Headings of the periodic note the user writes by hand (review.<kind>.own_sections)."
     },
+    "sections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sectionRow" },
+      "description": "Mapped sections of the named template (review.<kind>.sections.<template>); [] removes that template's entry."
+    },
+    "off_limits": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/offLimitsRow" },
+      "description": "Headings of the named template Tomo never writes into (review.<kind>.off_limits.<template>); [] removes that template's entry."
+    },
     "daily_sections": {
       "$ref": "#/$defs/trimmedList",
       "description": "Daily-note sections to read (review.daily.sections)."
@@ -100,14 +199,39 @@
       "description": "Corrected daily folder path (concepts.calendar.granularities.daily.path); present only when the user confirmed the correction."
     }
   },
+  "dependentSchemas": {
+    "sections": { "$ref": "#/$defs/needsTemplate" },
+    "off_limits": { "$ref": "#/$defs/needsTemplate" }
+  },
   "allOf": [
     {
       "if": { "properties": { "kind": { "const": "week" } }, "required": ["kind"] },
-      "then": { "required": ["first_day", "min_days"] }
+      "then": {
+        "required": ["first_day", "min_days"],
+        "properties": {
+          "sections": { "items": { "properties": { "groups": { "items": { "$ref": "#/$defs/weekGroup" } } } } }
+        }
+      }
     },
     {
       "if": { "properties": { "kind": { "const": "month" } }, "required": ["kind"] },
-      "then": { "properties": { "first_day": { "not": {} }, "min_days": { "not": {} } } }
+      "then": {
+        "properties": {
+          "first_day": { "not": {} },
+          "min_days": { "not": {} },
+          "sections": { "items": { "properties": { "groups": { "items": { "$ref": "#/$defs/monthGroup" } } } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "quarter" } }, "required": ["kind"] },
+      "then": {
+        "properties": {
+          "first_day": { "not": {} },
+          "min_days": { "not": {} },
+          "sections": { "items": { "properties": { "groups": { "items": { "$ref": "#/$defs/quarterGroup" } } } } }
+        }
+      }
     }
   ]
 }

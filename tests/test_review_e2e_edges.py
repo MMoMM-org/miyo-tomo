@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.6
+# version: 0.1.7
 """test_review_e2e_edges.py — the document edge cases, the setup rerun and a sparse period of /review end to end
 on the fake vault (spec 045 T6.1 fix round; PRD Edge Cases, Secondary User Journeys 2 and 6, F5-AC1, Rule 7).
 
@@ -221,7 +221,7 @@ def test_first_setup_without_a_template_mapping_asks_for_the_template_and_saves_
     assert after["templates"] == {"base_path": "Templates/", "mapping": {"daily": "t_day.md", "weekly": "t_week_privat.md"}}
     assert after["review"]["weekly"]["place"] == {"anchor": "In my own words", "placement": "before"}
     out = walk.start(WEEK_PERIOD)
-    assert out["setup"] == {"week": "present", "month": "missing"}, out
+    assert out["setup"] == {"week": "present", "month": "missing", "quarter": "missing"}, out
     read = walk.read(WEEK_PERIOD, WEEK)
     assert read["status"] == "ok" and read["nothing_to_review"] is False, read
     assert walk.vault.recorded == [], "the setup writes only the config file"

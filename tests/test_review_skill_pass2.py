@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.11
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -35,8 +35,8 @@ def test_every_parse_warning_has_a_plain_language_line():
     from lib import review_doc_parse as rdp  # the scripts put tomo/scripts on sys.path
 
     warnings = {rdp.APPROVED_MISSING, rdp.UNKNOWN_GROUP, rdp.ITEM_OUTSIDE_GROUP, rdp.DUPLICATE_GROUP,
-                rdp.FRONTMATTER_BROKEN}
-    assert len(warnings) == 5
+                rdp.FRONTMATTER_BROKEN, rdp.SECTION_CHECKBOX_MISSING}
+    assert len(warnings) == 6
     text = _section("6. Continue an open review")
     lines = {
         "approved-line-missing": "- `approved-line-missing` → the Approved line is missing; restore `- [ ] Approved` at column 0 and tick it.",
@@ -44,6 +44,10 @@ def test_every_parse_warning_has_a_plain_language_line():
         "duplicate-group": "- `duplicate-group` → the second heading of that name is ignored.",
         "frontmatter-broken": "- `frontmatter-broken` → the document's frontmatter could not be read; the period is taken from the stage.",
         "item-outside-group": "- `item-outside-group` → an item above the first heading; it is filed under an unknown group and does not land.",
+        "section-checkbox-missing": ("- `section-checkbox-missing` → per entry of `section_problems`: the checkbox line "
+                                     "of the section `<section heading>` (step 5) of its `key` is missing or broken; "
+                                     "restore the line `restore`, verbatim, under that heading and run `/review` "
+                                     "again. Stop after the warnings; nothing is delivered."),
     }
     assert set(lines) == warnings
     for name, line in lines.items():
@@ -72,6 +76,8 @@ PREVIEW_PROBLEMS = {
     "not-approved": "- `not-approved` → name the box `- [ ] Approved`; stop.",
     "approved-line-missing": ("- `approved-line-missing` → say the Approved line is missing; restore `- [ ] Approved` "
                               "at the line start and tick it; stop."),
+    "section-checkbox-missing": ("- `section-checkbox-missing` → run `python3 scripts/review-doc.py parse --stem <stem>` "
+                                 "and say its `section-checkbox-missing` line of step 6; stop."),
     "nothing-to-deliver": "- `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.",
     "replace-mode": ("- `place-missing`, `place-too-deep` or `user-heading-collision` with `mode` `replace` → say what "
                      "is wrong with the heading above the Tomo marker in the target note: there is none "
@@ -96,6 +102,25 @@ PREVIEW_PROBLEMS = {
                                "never lands inside one of the user's own sections; print `headings` as a numbered "
                                "list and ask: Which number, or 0 Abort? (as above)."),
     "set-exists": "- `set-exists` → say an instruction set for this review waits for Hashi and is not applied yet; nothing is delivered. Stop.",
+    # spec 046 T5.7: the "Tomo Review" place itself off limits (tests/test_046_t5_7_place_off_limits.py)
+    "place-landing-off-limits": ("- `landing-off-limits` with no entry of `sections` carrying a `stop` → say that the \"Tomo Review\" section, placed at `place.anchor`, would land in an off-limits section, that the place is changed with `/review setup`, and that nothing is delivered; stop."),
+    # spec 046 T5.5 lines, T5.6 dialogue (tests/test_046_t5_6_skill_choices.py pins the sub-bullets)
+    "section-stops": ("- `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, "
+                      "`block-in-review-section` or `landing-off-limits` with no other problem in `problems` → "
+                      "- Print the plan as `ok` with empty `problems` below does, without its question. "
+                      "- Then per entry of `sections` with a `stop` one line in `<language>` (`review.language` of "
+                      "`config/vault-config.yaml`, Read it), naming: "
+                      "- the section `<section heading>` (step 5) of its `key` "
+                      "- its `placement` "
+                      "- why it stops: its heading is not in the target note, is there more than once, Tomo's "
+                      "earlier block in it is broken, the block was moved under `block_at.heading`, the block sits "
+                      "inside the \"Tomo Review\" section, or it would land in an off-limits section "
+                      "- its `choices`: `skip` leaves the section out, `review` puts its items into the "
+                      "\"Tomo Review\" section, `confirm-moved` replaces the block where it sits now "
+                      "- Beside another problem only that problem's line applies."),
+    "choice-invalid": ("- `choice-invalid` → say the note changed since the preview: the choice for each key in "
+                       "`choices_invalid` answers no stop of that section now; rerun `preview` without the section "
+                       "choice flags and branch on the rerun by this list."),
 }
 PREVIEW_NOTICES = {
     "heading-renamed": "- `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.",
@@ -104,6 +129,16 @@ PREVIEW_NOTICES = {
                         "holds Templater code; the readable instructions say to run Templater after the move."),
     "template_unmergeable": "- `template_unmergeable` → a plain note is built instead.",
     "unlanded-items": "- `unlanded-items` → `unlanded` kept items are under a heading the parser does not know and do not land.",
+    # spec 046 T5.5: the section notices (T5.6 owns their dialogue wording)
+    "block-replaced": ("- `block-replaced` → per entry of `sections` with this notice: Tomo's earlier block in that "
+                       "section is replaced; edits inside the block are replaced, text outside it is kept."),
+    "block-moved-confirmed": "- `block-moved-confirmed` → that block is replaced where it sits now.",
+    "review-section-kept": ("- `review-section-kept` → the earlier \"Tomo Review\" section gets nothing new and stays "
+                            "as it is."),
+    "section-dropped": ("- `section-dropped` → per entry of `dropped`: the section `<section heading>` of its `key` is "
+                        "left out, and the user's own `added` items in it are dropped with it."),
+    "section-empty": ("- `section-empty` → per key in `empty`: the section `<section heading>` is empty and receives "
+                      "nothing."),
 }
 
 
@@ -208,7 +243,7 @@ def _delivery_vocabulary():
 
 # Tokens a Pass 2 bullet names that are statuses, keys or modes, never a problem of the plan or of drop.
 NOT_PROBLEM_TOKENS = {"ok", "problems", "stopped", "not-found", "refused", "status", "mode", "error", "headings",
-                      "insert", "replace", "new-note"}
+                      "insert", "replace", "new-note", "sections", "stop"}
 
 
 def _problem_bullets(*headings: str) -> set[str]:
@@ -246,7 +281,7 @@ def test_the_notice_set_is_derived():
 
 def test_every_problem_constant_of_review_actions_is_classified():
     refusing, notices, ra = _delivery_vocabulary()
-    not_problems = {ra.INSERT, ra.REPLACE, ra.NEW_NOTE, ra.NOTE_DOC_TYPE, ra.NOTE_STATE, ra.WIRE_TYPE}
+    not_problems = {ra.INSERT, ra.REPLACE, ra.NEW_NOTE, ra.WIRE_TYPE}
     tokens = {value for name, value in vars(ra).items()
               if name.isupper() and isinstance(value, str) and re.fullmatch(r"[a-z]+(?:-[a-z]+)+", value)}
     unclassified = sorted(tokens - not_problems - set(refusing) - set(notices))
@@ -255,7 +290,8 @@ def test_every_problem_constant_of_review_actions_is_classified():
 
 def test_place_anchor_goes_to_preview_and_deliver():
     assert "With a chosen heading add `--place-anchor \"<heading>\"`." in _section("7. Preview")
-    assert "Add `--place-anchor \"<heading>\"` when a heading was chosen in step 7." in _section("8. Deliver")
+    assert ("Add `--place-anchor \"<heading>\"` when a heading was chosen in step 7, and the section choice flags of "
+            "the last `preview` of step 7, unchanged.") in _section("8. Deliver")
 
 
 def test_deliver_branches_on_status_then_problems_or_failed_step():
@@ -265,16 +301,20 @@ def test_deliver_branches_on_status_then_problems_or_failed_step():
     assert ("- `delivered` or `resumed` → report `target`, `place`, `paths.set_json`, `paths.set_md` and "
             "`paths.note` when set, and \"Next: review and apply the instruction set in Hashi, or by hand with the "
             "readable instructions.\"") in text
-    assert ("- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; "
-            "stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs` or `anchor-needed` → the two lines "
-            "below. Any other → the step 7 lines; nothing was written.") in text
+    assert ("- `refused` → `name-taken` with `step` `note` → say a note at `exists_path` is not Tomo's and nothing "
+            "was overwritten; stop. `name-taken` with `step` `set_json` or `set_md` → say an earlier instruction set "
+            "of this review waits at `exists_path` and nothing was overwritten; for a fresh delivery the user applies "
+            "that set in Hashi, or deletes it in Obsidian (with `step` `set_json` also the readable instructions "
+            "beside it), then runs `/review` and chooses Resume; stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs`, `anchor-needed` or `choices-needed` "
+            "→ the lines below. Any other → the step 7 lines; nothing was written.") in text
     assert ("- `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with "
-            "unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then "
-            "run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` "
-            "`changed-since-read` or `unknown` → say the document was edited, or is open with unsaved edits, since the "
-            "preview: save it and run `/review` again; the payloads in `paths` already written count as done, and "
-            "the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at "
-            "`failed_step`; nothing more was written; the next `/review` offers Resume or Drop. Stop.") in text
+            "unsaved changes (a plugin that stamps the note on edit can cause that): the user saves it (Cmd+S) or "
+            "closes it first; the payloads in `paths` already written count as done. `reason` `changed-since-read` "
+            "or `unknown` → say the document was edited, or is open with unsaved edits, since the preview: the user "
+            "saves it first; the payloads in `paths` already written count as done. `kado-write-failed` → say Kado "
+            "refused or failed at `failed_step`; nothing more was written. Then ask `1 Retry · 2 Drop · 3 Abort`. "
+            "Retry → rerun `deliver --stem <stem>` and branch on it by this list. Drop → step 9 with `<stem>`. "
+            "Abort → stop; the next `/review` offers Resume or Drop.") in text
 
 
 def test_drop_reports_withdrawn_dropped_already_applied_and_set_changed():
@@ -318,7 +358,8 @@ def _drop_problems() -> set[str]:
     from lib import review_delivery as rdl
 
     source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
-    setup_body = source[source.index("def _setup("):source.index("def _target(")]
+    run_lib = (REPO / "tomo" / "scripts" / "lib" / "review_instructions_run.py").read_text(encoding="utf-8")
+    setup_body = run_lib[run_lib.index("def setup_of("):run_lib.index("def build_run(")]    # setup_of, set_paths_of
     drop_body = source[source.index("def drop("):source.index("def status(")]
     raised = set(re.findall(r'Refused\("([a-z-]+)"', setup_body + drop_body))
     assert raised == {"setup-missing", "setup-invalid", "inbox-not-configured"}, sorted(raised)
@@ -362,3 +403,12 @@ def test_drop_writes_the_set_before_the_readable_peer_so_a_late_failure_is_parti
 
 def test_status_is_never_called_by_the_skill():
     assert "review-instructions.py status" not in _text(SKILL)
+
+
+def test_the_preview_prints_each_sections_lines_and_deliver_routes_choices_needed():
+    """Spec 046 T5.5 (F4-AC6): the `ok` line prints `sections` with each placement; `choices-needed` reruns
+    the preview."""
+    assert ("then per entry of `sections` the section `<section heading>` (step 5) of its `key`, its `placement`, "
+            "its `mode` and its `lines` in a fenced block.") in _section("7. Preview")
+    assert ("- `choices-needed` → say the stopped delivery was begun with section choices that are asked again: "
+            "rerun `preview` of step 7 and branch by its list.") in _section("8. Deliver")

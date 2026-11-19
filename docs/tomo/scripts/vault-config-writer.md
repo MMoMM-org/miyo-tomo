@@ -256,6 +256,10 @@ in some other block is left alone for the reason given above.
 
 **Why the read-back checks every leaf.** After the edit the result is parsed
 and each written path must hold its value (a removed key must be absent).
+An empty list counts as held by an absent key: the editor removes a key set
+to `[]` (spec 046, ADR-3) and the readers treat absent and `[]` alike, so a
+setup with `own_sections: []` reads back instead of being refused, and a
+config without the key is `unchanged` for it.
 A flow mapping, an inline `{}` or a quoted key the matcher handled wrongly
 would otherwise save a file that reads back as something else. The check is
 the last guard before the atomic write, so it cannot be exercised through
@@ -269,3 +273,17 @@ and leave the file's bytes untouched.
 model's context and the transcript; folder names and section headings are
 the user's configuration. The written key paths (`review.weekly.heading`)
 say what was saved without repeating it.
+
+**Why section rows go through the same leaf edits (spec 046, ADR-3).**
+`review.<g>.sections.<template>` and `review.<g>.off_limits.<template>` are
+two more leaves: the value is a list of mappings, which `vault_config_edit`
+renders as block items, and the template name is a key that must be quoted
+(`"t_week_privat.md":`). Nothing in the writer is specific to rows — the
+leaf, the skip when the parsed value already equals the rows, the
+read-back of the whole list and the duplicate refusal apply unchanged. The
+duplicate refusal matters more here than for a scalar: a template key
+spelled in a way the key matcher does not recognise (`t_week_privat.md :`)
+would get a second, quoted copy, and YAML would silently keep only the
+later one. `tests/test_vault_config_writer_review.py` pins both the
+introduced and the pre-existing case for quoted template keys, and that a
+single-quoted spelling is recognised and replaced in place.

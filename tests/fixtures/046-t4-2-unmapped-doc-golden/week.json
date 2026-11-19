@@ -1,0 +1,65 @@
+{
+  "code": 0,
+  "meta_keys": [
+    "doc_path",
+    "failed_step",
+    "generated",
+    "kind",
+    "mode",
+    "pass1_counts",
+    "pass1_links",
+    "period",
+    "run_id",
+    "stem",
+    "steps_done",
+    "target",
+    "target_exists",
+    "withdrawn"
+  ],
+  "pass1_counts": {
+    "done": 2,
+    "growth": 0,
+    "habits": 1,
+    "open": 1,
+    "themes": 1
+  },
+  "pass1_links": {
+    "t1": [
+      "2026-03-24",
+      "2026-03-26"
+    ],
+    "t2": [
+      "2026-03-25"
+    ],
+    "t3": [
+      "2026-03-27"
+    ],
+    "t4": [
+      "2026-03-23",
+      "2026-03-25"
+    ],
+    "t5": []
+  },
+  "stdout": {
+    "calls": 3,
+    "counts": {
+      "done": 2,
+      "growth": 0,
+      "habits": 1,
+      "open": 1,
+      "themes": 1
+    },
+    "doc_path": "100 Inbox/2026-W13 Review.md",
+    "rejected": [
+      {
+        "group": "open",
+        "index": 1,
+        "reason": "no-source-in-period"
+      }
+    ],
+    "status": "written",
+    "stem": "2026-W13_review",
+    "target": "Calendar/302 Weekly/2026-W13.md",
+    "target_exists": true
+  }
+}

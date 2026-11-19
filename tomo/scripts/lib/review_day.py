@@ -1,5 +1,5 @@
 # review_day.py — one day of /review: the daily's kept sections, fields, tasks and same-day notes.
-# version: 0.3.1
+# version: 0.3.2
 """Reading one day for ``/review`` (spec 045, T3.2; PRD F3-AC1..4, F3-AC8).
 
 ``read_day(day, dailies, settings, read_note)`` turns the daily text(s) of
@@ -31,7 +31,8 @@ from datetime import date, timedelta
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from lib.review_config import DEFAULT_MAX_CHARS, ReviewSetup
-from lib.review_md import (DONE_MARK_RE, HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE, RULE_RE, YEAR_RE,
+from lib.review_md import (DONE_MARK_RE, EMBED_LINE_RE, FIELD_RE, HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE,
+                           RULE_RE, YEAR_RE,
                            block_text, body, cleaned, fence_state, has_token, headings, is_navigation,
                            metadata_mask, ranges, trailing_navigation)
 from lib.vault_config_edit import get_path
@@ -42,8 +43,6 @@ OPEN_TODAY = "open today"
 TEXT_SECTION = "text"
 KIND_MARKS = (("planner", ("planner", "dp-")), ("journal", ("journal", "5year", "5j-")))
 
-_EMBED_LINE_RE = re.compile(r"^\s*(?:>\s*)*!\[\[")
-_FIELD_RE = re.compile(r"^[\s>*+-]*(\*\*)?([A-Za-z][\w .&/-]*?)(?(1)\*\*)::(?!:)\s*(.*?)\s*$")
 _TRAILING_LINK_RE = re.compile(r"\s*(?:\[\[[^\]]*\]\]|\[[^\]]*\]\([^)]*\))\s*$")
 _TASK_RE = re.compile(r"^\s*(?:>\s*)*[-*+]\s+\[([ xX])\]\s+(.*?)\s*$")
 _TEMPLATER_RE = re.compile(r"<%.*?%>", re.DOTALL)
@@ -107,7 +106,7 @@ def _fields(lines: Iterable[str]) -> Dict[str, str]:
     """``Name:: value`` and ``**Name**:: value`` with a value; a trailing link is cut, a meta-bind input is no value."""
     out: Dict[str, str] = {}
     for line in lines:
-        match = _FIELD_RE.match(line)
+        match = FIELD_RE.match(line)
         if not match:
             continue
         name, value = match.group(2).strip(), match.group(3)
@@ -180,7 +179,7 @@ def _linked_text(text: str, day: date, token: str) -> str:
             dropped[i] = True
     metadata = metadata_mask(lines)
     kept = [line for i, line in enumerate(lines) if not dropped[i] and not metadata[i]
-            and not _EMBED_LINE_RE.match(line) and not is_navigation(line, day, token)]
+            and not EMBED_LINE_RE.match(line) and not is_navigation(line, day, token)]
     return block_text(cleaned(kept))
 
 

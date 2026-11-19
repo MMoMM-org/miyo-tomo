@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.7
+# version: 0.3.8
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -334,7 +334,7 @@ def check_schema_validity(actions):
     ir._strip_internal_link_fields(wire_actions)
 
     doc = {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "source_suggestions": "test.json",
         "generated": "2026-04-21T12:00:00Z",

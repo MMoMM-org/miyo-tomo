@@ -41,3 +41,22 @@ The mapping is `review_vault.kado_stops`, shared with the script's own
 reads, so the reader and the script cannot stop for different reasons on
 the same failure (docs/tomo/scripts/review-instructions.md, "WHY the Kado
 Stop Mapping Is One Helper").
+
+## WHY `pass1_counts` Is Summed Whole (spec 046 T4.2)
+
+With a mapping `pass1_counts` holds the section keys (`s1`, …) beside the
+group keys. The reader sums every integer value, so the total handed to the
+parser as `pass1_total` counts section items too; summing only known group
+names would undercount and report sections' items as never written. Group
+words and row ids cannot collide, so no key needs to be told apart here.
+
+## WHY `pass1_sections` Is Handed Over As It Stands (spec 046 T4.3)
+
+The parser reads the user's mapped sections only when `meta.json` lists the
+keys Pass 1 rendered (`pass1_sections`, written by `review-doc.py write`
+with a mapping only). The reader hands the value over unchecked: the parser
+decides what a usable list is (anything but a list means no mapping, spec
+045's grammar), so `parse`, `preview` and `deliver` can never disagree on
+whether a document has sections. Its reasons are in
+`docs/tomo/scripts/lib/review_doc_parse.md`, "WHY Sections Are Read Only
+When meta.json Expects Them".

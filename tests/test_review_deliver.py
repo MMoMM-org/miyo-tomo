@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.7
+# version: 0.2.12
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -96,9 +96,9 @@ def test_cli_parse_preview_and_deliver_parse_through_one_reader_with_pass1_links
     seen: list = []
     real = rdp.parse_document
 
-    def spy(text, pass1_links=None, pass1_total=None):
-        seen.append(pass1_links)
-        return real(text, pass1_links=pass1_links, pass1_total=pass1_total)
+    def spy(text, pass1_links=None, pass1_total=None, pass1_sections=None):
+        seen.append((pass1_links, pass1_sections))
+        return real(text, pass1_links=pass1_links, pass1_total=pass1_total, pass1_sections=pass1_sections)
 
     monkeypatch.setattr(rdp, "parse_document", spy)
     monkeypatch.setattr(doc_mod, "KadoClient", fake)
@@ -106,7 +106,8 @@ def test_cli_parse_preview_and_deliver_parse_through_one_reader_with_pass1_links
     capsys.readouterr()
     assert run(ins, monkeypatch, capsys, ["preview", "--stem", STEM], fake)[1]["status"] == "ok"
     assert run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)[1]["status"] == "delivered"
-    assert seen == [expected, expected, expected]
+    sections = meta_of(instance).get("pass1_sections")              # None: spec 045's grammar (046 T4.3)
+    assert seen == [(expected, sections)] * 3
     # the reader is the lib's, not a private copy in either script
     assert not hasattr(doc_mod, "_read_document")
     assert doc_mod.read_document is rdr.read_document and ins.read_document is rdr.read_document
@@ -127,11 +128,16 @@ def test_cli_reader_answers_not_found_and_stops_on_kado(doc_mod, ins, instance, 
 # ---------------------------------------------------------------- classification
 
 def test_cli_every_problem_name_is_pinned_to_refusing_or_notice():
-    assert set(rdl.REFUSING) == {"not-approved", "approved-line-missing", "nothing-to-deliver", "place-missing",
+    assert set(rdl.REFUSING) == {"not-approved", "approved-line-missing", "section-checkbox-missing",
+                                 "nothing-to-deliver", "place-missing",
                                  "place-too-deep", "user-heading-collision", "set-exists", "set-withdrawn",
-                                 "already-applied", "replan-differs", "anchor-needed"}
+                                 "already-applied", "replan-differs", "anchor-needed",
+                                 # spec 046 T5.5: the section stops and the choice refusals
+                                 "section-missing", "section-ambiguous", "section-broken", "section-moved",
+                                 "block-in-review-section", "landing-off-limits", "choice-invalid", "choices-needed"}
     assert set(rdl.NOTICES) == {"heading-renamed", "unlanded-items", "variant_missing", "templater_hint",
-                                "template_unmergeable"}
+                                "template_unmergeable", "block-replaced", "block-moved-confirmed",
+                                "review-section-kept", "section-dropped", "section-empty"}
     assert not set(rdl.REFUSING) & set(rdl.NOTICES)
     emitted = {ra.NOT_APPROVED, rdp.APPROVED_MISSING, ra.NOTHING_TO_DELIVER, ra.UNLANDED_ITEMS, ra.PLACE_MISSING,
                ra.PLACE_TOO_DEEP, ra.HEADING_RENAMED, ra.HEADING_COLLISION}
@@ -286,7 +292,7 @@ def test_deliver_writes_the_set_in_order_and_marks_the_document_last(schema, doc
     assert schema_errors(doc, schema) == [], schema.name
     front, body = split_frontmatter(fake.text(SET_MD))
     assert front["tomo"] == {"doc_type": "instructions", "state": "pending-apply", "run_id": "r-test",
-                             "updated_at": meta["generated"]}
+                             "updated_at": meta["generated"], "sources": [{"path": DOC}]}   # T6.3: never TARGET
     assert "### I01 — " in body and "- [ ] Applied" in body and f"`{OWN}`" in body
     assert "```" in body and REVIEW_MARKER in body
     front, body = split_frontmatter(fake.text(DOC))
@@ -725,7 +731,8 @@ def test_drop_refuses_a_set_hashi_already_applied_and_writes_nothing(doc_mod, in
     assert out == {"status": "refused", "stem": STEM, "problems": ["already-applied"]}
     untouched(instance, fake, meta_before, set_before)
     assert [e for e in fake.events if e[0].startswith("read")] == [("read_file", SET_JSON)]
-    assert cli("status", "--stem", STEM)[1]["state"] == ("applied" if marked == "the-one-action" else "delivered")
+    # one of two applied is a partly applied set: `open`, a new delivery writes over it (spec 046 ADR-12)
+    assert cli("status", "--stem", STEM)[1]["state"] == ("applied" if marked == "the-one-action" else "open")
 
 
 def test_drop_withdraws_a_set_no_action_of_which_is_applied_with_the_reads_guard(doc_mod, ins, instance, monkeypatch,

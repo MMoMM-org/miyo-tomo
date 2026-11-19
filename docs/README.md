@@ -15,6 +15,7 @@ The documentation is organised around the user journey:
 - **Running Tomo day-to-day** → see [Usage](usage.md) for sessions and the launcher reference, and the workflow pages for each job, starting with [Process inbox items](workflows/inbox.md).
 - **Quick question** → the [FAQ](faq.md) has short answers with links.
 - **Stuck or seeing errors** → [Troubleshooting](troubleshooting.md) covers common failure modes.
+- **A note moved early, has two frontmatter blocks, or a write is refused as "unsaved"** → [Vault Compatibility](vault-compatibility.md) covers templates and plugins that act on Tomo's files.
 
 ## Documentation map
 
@@ -31,6 +32,7 @@ The documentation is organised around the user journey:
   - [Author a Hashi hook](workflows/hashi-hooks.md) — `/hashi-hook`
 - [FAQ](faq.md) — short answers to common questions
 - [Troubleshooting](troubleshooting.md) — common errors and recovery
+- [Vault Compatibility](vault-compatibility.md) — templates and plugins (Templater, update-time-on-edit, Linter) that act on the files Tomo writes
 
 ## Quick links
 

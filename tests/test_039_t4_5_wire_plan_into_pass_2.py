@@ -324,6 +324,14 @@ def test_garden_audit_and_daily_only_runs_are_byte_identical_to_before(
         (FIXTURE_DIR / "expected.json").read_text(encoding="utf-8")
     )
     actual = json.loads(json.dumps(unaffected_runs(monkeypatch, tmp_path)))
+    # Spec 046 T6.1 moved the instruction wire "3" -> "4"; the baseline predates
+    # it and re-recording from its pre-039 tree cannot absorb it. Exactly that
+    # line differs; every other byte is compared as recorded.
+    v3, v4 = '\n  "schema_version": "3",\n', '\n  "schema_version": "4",\n'
+    for run in ("garden-audit", "daily-only"):
+        doc = actual[run]["instructions.json"]
+        assert doc.count(v4) == 1 and expected[run]["instructions.json"].count(v3) == 1, run
+        actual[run]["instructions.json"] = doc.replace(v4, v3)
     for run in ("garden-audit", "daily-only"):
         for key in ("rc", "instructions.json", "instructions.md",
                     "manifest.json", "kado_log"):

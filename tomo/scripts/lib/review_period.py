@@ -1,31 +1,34 @@
-# review_period.py — reads a period for /review: dailies, the day after, a month's weekly notes, link differences, growth.
-# version: 0.4.0
+# review_period.py — reads a period for /review: dailies, the day after, child-review notes, link differences, growth.
+# version: 0.5.1
 """Reading a period for ``/review`` (spec 045, T3.3; PRD F3-AC5..7, F3-AC9).
 
 Owns what lies between one day and the report: finding the dailies of every
 day (flat and ``<folder>/<YYYY>/``, duplicates named), reading the daily of
 the day after the period for its yesterday fields only, resolving the link
 stems ``read_day`` asks for to vault paths (one ``byName`` per stem), reading
-each living task note once for the period, resolving the weekly notes a
-month overlaps and splitting them (``lib/review_weekly.py``), the two link
-differences (``only_in_weekly_links``, ``dailies_not_in_weekly``), vault
-growth from the created-notes query and the MOC listings, and the per-source
-report. ``kado_empty`` and the ``check-key-access`` advice come from the
-daily and weekly folder listings only; a growth query Kado answered with
-nothing is named in ``report.growth.kado_none``. A month always carries a
-``weekly_status`` (``not-configured`` without a weekly folder and format).
+each living task note once for the period, the child-review notes by the
+``CHILD`` table (spec 046 ADR-6: a month marks against its weekly notes; a
+quarter reads its weekly notes as sources and marks against its monthly
+notes; finding and reading them is ``lib/review_children.py``'s), the two
+link differences per marked level (``only_in_<label>_links``,
+``dailies_not_in_<label>``), vault growth from the created-notes query and
+the MOC listings, and the per-source report. ``kado_empty`` and the
+``check-key-access`` advice come from the daily and child folder listings
+only; a growth query Kado answered with nothing is named in
+``report.growth.kado_none``. Every level read carries a ``<label>_status``
+(``not-configured`` without its folder and format).
 Day reading is ``lib/review_day.py``'s: its functions arrive as a
 ``DayReaders`` value (default: imported lazily). Every Kado call goes through
 ``lib/review_reader.PacedReader`` on ``ReviewPacer.read``; ``read_period``
 calls ``finish()`` itself, re-runs the days whose reads the end pass
-recovered and, when the end pass recovered a daily or weekly folder listing,
+recovered and, when the end pass recovered a daily or child folder listing,
 resolves and reads that listing's notes then (the only reads after the end
 pass); ``result["not_read"]`` and ``report["not_read"]`` are one list, set
 after the last read, so the caller only prints ``pacer.summary(result["not_read"])``. A
 folder listing still in ``not_read`` leaves its days or weeks empty with no
 ``kado_empty`` and no advice: a daily folder there is a period that could
-not be read (``review-read.py`` stops with ``raise-kado-limit``), a weekly
-folder there is ``weekly_status: not-read``. Connection and auth errors
+not be read (``review-read.py`` stops with ``raise-kado-limit``), a child
+folder there is ``<label>_status: not-read``. Connection and auth errors
 propagate.
 
 Design notes: docs/tomo/scripts/lib/review_period.md
@@ -36,8 +39,11 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
+from lib import review_children as children
+from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.moc_folders import moc_folder_prefixes
-from lib.period import ISO, MONTH, WEEK, Period, WeekRule, parse_name
+from lib.period import ISO, MONTH, QUARTER, WEEK, Period, WeekRule, parse_name
+from lib.review_children import ChildNotes, Found
 from lib.review_config import GRANULARITY, configured_formats, folder_for
 from lib.review_reader import PacedReader
 from lib.review_weekly import (
@@ -47,14 +53,12 @@ from lib.review_weekly import (
     daily_name,
     link_key,
     unique_targets,
-    weekly_content,
 )
 from lib.vault_config_edit import get_path
 from lib.vault_paths import path_key
 
 ADVICE_CHECK_ACCESS = "check-key-access"
-WEEKLY_FOUND, WEEKLY_NONE, WEEKLY_KADO_EMPTY, WEEKLY_NOT_READ = "found", "none-found", "kado-empty", "not-read"
-WEEKLY_NOT_CONFIGURED = "not-configured"
+CHILD = {MONTH: WEEK, QUARTER: MONTH}    # the child-review level a period marks against
 GROWTH_CREATED, GROWTH_MOCS = "created", "mocs"
 PROBLEM_LINKED_MISSING = "linked-missing"
 ROOT = "/"
@@ -72,6 +76,15 @@ class PeriodSources:
     own_sections: Sequence[str] = ()
     weekly_skip_sections: Sequence[str] = DEFAULT_WEEKLY_SKIP
     moc_folders: Sequence[str] = ()
+    monthly_folder: Optional[str] = None
+    monthly_format: Optional[str] = None
+    quarterly_format: Optional[str] = None
+    monthly_own_sections: Sequence[str] = ()
+
+    def child(self, kind: str) -> ChildNotes:
+        if kind == WEEK:
+            return ChildNotes(WEEK, self.weekly_folder, self.weekly_format, self.own_sections)
+        return ChildNotes(MONTH, self.monthly_folder, self.monthly_format, self.monthly_own_sections)
 
 
 @dataclass(frozen=True)
@@ -100,18 +113,27 @@ def sources_from_config(config: dict, profile: dict) -> PeriodSources:
         rule = WeekRule.from_config(week.get("first_day", "monday"), week.get("min_days_in_first_week", 4))
     except (ValueError, TypeError):
         rule = ISO
-    own = get_path(config, ("review", GRANULARITY[WEEK], "own_sections"))[1]
     daily_format = get_path(config, ("naming", "calendar_patterns", "daily"))[1]
+    formats = configured_formats(config)
     return PeriodSources(
         daily_folder=folder_for(config, profile, "daily") or "",
         daily_format=daily_format.strip() if isinstance(daily_format, str) and daily_format.strip()
         else DEFAULT_DAILY_FORMAT,
         weekly_folder=folder_for(config, profile, GRANULARITY[WEEK]),
-        weekly_format=configured_formats(config).get(WEEK),
+        weekly_format=formats.get(WEEK),
         rule=rule,
-        own_sections=tuple(s for s in own if isinstance(s, str)) if isinstance(own, list) else (),
+        own_sections=_own_sections(config, WEEK),
         moc_folders=moc_folder_prefixes(config),
+        monthly_folder=folder_for(config, profile, GRANULARITY[MONTH]),
+        monthly_format=formats.get(MONTH),
+        quarterly_format=formats.get(QUARTER),
+        monthly_own_sections=_own_sections(config, MONTH),
     )
+
+
+def _own_sections(config: dict, kind: str) -> Tuple[str, ...]:
+    own = get_path(config, ("review", GRANULARITY[kind], "own_sections"))[1]
+    return tuple(s for s in own if isinstance(s, str)) if isinstance(own, list) else ()
 
 
 def period_bounds_ms(period: Period) -> Tuple[int, int]:
@@ -210,44 +232,26 @@ class _PeriodRead:
             open_tasks.extend(t for t in tasks if not t.get("done"))
         return open_tasks, report
 
-    # weekly notes of a month
-    def _find_weeklies(self) -> Tuple[Optional[List[str]], List[Tuple[Period, List[str]]]]:
-        """The weekly folder listing and the note paths per overlapping week; no weeks without a listing."""
-        listing = self.reader.folder(self.sources.weekly_folder)
-        if listing is None:
-            self._empty(self.reader.dir_key(self.sources.weekly_folder), "weekly")
-            return None, []
-        keys = {path_key(p): p for p in listing}
-        weeks = []
-        for week in self.period.weeks_overlapping(self.sources.rule):
-            candidates = week.note_paths(self.sources.weekly_folder, self.sources.weekly_format)
-            weeks.append((week, [keys[path_key(c)] for c in candidates if path_key(c) in keys]))
-        return listing, weeks
+    # child-review notes
+    def _levels(self) -> List[ChildNotes]:
+        """The child levels read, weekly first; the marked one is ``CHILD[kind]``, the weekly notes always read."""
+        marked = CHILD.get(self.period.kind)
+        if marked is None:
+            return []
+        return [self.sources.child(k) for k in ([WEEK] if marked == WEEK else [WEEK, marked])]
 
-    def _weekly_entries(self, weeks: List[Tuple[Period, List[str]]]) -> Tuple[List[dict], List[dict]]:
-        entries, report = [], []
-        for week, paths in weeks:
-            overlap = sum(1 for d in week.days() if self.period.start <= d <= self.period.end)
-            if not paths:
-                report.append({"week": week.name, "path": None, "state": "absent"})
-            for path in paths:
-                text = self.reader.note(path)
-                report.append({"week": week.name, "path": path, "state": "read" if text is not None else "failed"})
-                if text is None:
-                    continue
-                content = weekly_content(text, self.period, daily_format=self.sources.daily_format,
-                                         own_sections=self.sources.own_sections,
-                                         skip_sections=self.sources.weekly_skip_sections)
-                entries.append({"path": path, "week": week.name, "overlap_days": overlap,
-                                "duplicate": len(paths) > 1, **content})
-        return entries, report
+    def _find_children(self, child: ChildNotes) -> Found:
+        found = children.find(self.reader, self.period, child, self.sources.rule)
+        if found[0] is None:
+            self._empty(self.reader.dir_key(child.folder), child.label)
+        return found
 
     def _is_periodic(self, target: str) -> bool:
         stem = target.strip().rsplit("/", 1)[-1]
         if daily_date(stem, self.sources.daily_format) is not None:
             return True
-        return bool(self.sources.weekly_format) and parse_name(stem, self.sources.weekly_format,
-                                                               self.sources.rule) is not None
+        formats = (self.sources.weekly_format, self.sources.monthly_format, self.sources.quarterly_format)
+        return any(fmt and parse_name(stem, fmt, self.sources.rule) is not None for fmt in formats)
 
     @staticmethod
     def _content_links(entry: dict) -> List[str]:
@@ -256,21 +260,42 @@ class _PeriodRead:
                       if item.get("path")}
         return [t for t in entry.get("links", []) if link_key(t) not in structural]
 
-    def _link_differences(self, days: List[dict], weekly: List[dict]) -> Tuple[List[str], List[str]]:
+    @staticmethod
+    def _is_attachment(target: str) -> bool:
+        """An embed or link to a file such as ``snow.png``: not a note a review could miss."""
+        stem, dot, ext = target.rpartition(".")
+        return bool(dot and stem) and ext.lower() != "md" and ext.lower() in KNOWN_FILE_EXTENSIONS
+
+    def _compared(self, target: str) -> bool:
+        return not self._is_periodic(target) and not self._is_attachment(target)
+
+    def _link_differences(self, days: List[dict], notes: List[dict], kind: str) -> Tuple[List[str], List[str]]:
         daily_keys = {link_key(t) for e in days for t in e.get("links", [])}
-        weekly_keys: Dict[str, Set[str]] = {}
-        for w in weekly:
-            weekly_keys.setdefault(w["week"], set()).update(link_key(t) for t in w["links"])
-        only_in_weekly = unique_targets([t for w in weekly for t in w["links"]
-                                         if link_key(t) not in daily_keys and not self._is_periodic(t)])
-        not_in_weekly: List[str] = []
+        child_keys: Dict[str, Set[str]] = {}
+        for note in notes:
+            child_keys.setdefault(note[kind], set()).update(link_key(t) for t in note["links"])
+        only_in_child = unique_targets([t for n in notes for t in n["links"]
+                                        if link_key(t) not in daily_keys and self._compared(t)])
+        not_in_child: List[str] = []
         for e in days:
-            week = Period.containing(WEEK, date.fromisoformat(e["date"]), self.sources.rule).name
-            if week not in weekly_keys:
+            name = Period.containing(kind, date.fromisoformat(e["date"]), self.sources.rule).name
+            if name not in child_keys:
                 continue
-            not_in_weekly.extend(t for t in self._content_links(e)
-                                 if link_key(t) not in weekly_keys[week] and not self._is_periodic(t))
-        return only_in_weekly, unique_targets(not_in_weekly)
+            not_in_child.extend(t for t in self._content_links(e)
+                                if link_key(t) not in child_keys[name] and self._compared(t))
+        return only_in_child, unique_targets(not_in_child)
+
+    def _child_result(self, child: ChildNotes, found: Optional[Found], days: List[dict],
+                      result: Dict[str, Any], report: Dict[str, Any]) -> None:
+        entries, rows = children.read(self.reader, self.period, child, found, daily_format=self.sources.daily_format,
+                                      skip_sections=self.sources.weekly_skip_sections) if found else ([], [])
+        label = child.label
+        result[label] = entries
+        if entries and child.kind == CHILD[self.period.kind]:
+            result[f"only_in_{label}_links"], result[f"dailies_not_in_{label}"] = (
+                self._link_differences(days, entries, child.kind))
+        report[f"{label}_status"] = children.status(child, entries, found[0] if found else None, self.kado_empty)
+        report[f"{label}_notes"] = rows
 
     # growth
     @staticmethod
@@ -330,7 +355,7 @@ class _PeriodRead:
 
     def _after_end_pass(self, entries: Dict[date, dict], incomplete: Set[date], after_incomplete: bool,
                         after_fields: Optional[dict], daily_listing: Optional[List[str]],
-                        weekly: Optional[Tuple[Optional[List[str]], List[Tuple[Period, List[str]]]]]):
+                        found: Dict[str, Found]) -> Optional[dict]:
         """After ``finish()``: re-run from the cache, then read what a recovered listing exposed."""
         self._run_days(sorted(incomplete), entries, set())
         if after_incomplete:
@@ -339,9 +364,10 @@ class _PeriodRead:
             # the end pass recovered the daily listing: nothing of the period was read yet
             self._run_days(self.period.days(), entries, set())
             after_fields = self._after_fields()
-        if weekly is not None and weekly[0] is None:
-            weekly = self._find_weeklies()
-        return after_fields, weekly
+        for child in self._levels():
+            if child.kind in found and found[child.kind][0] is None:
+                found[child.kind] = self._find_children(child)
+        return after_fields
 
     def run(self) -> dict:
         period, sources = self.period, self.sources
@@ -354,28 +380,22 @@ class _PeriodRead:
         after_incomplete = self.reader.hit_pending
         for path in self.task_notes:
             self.reader.note(path)
-        is_month = period.kind == MONTH
-        weekly_configured = bool(sources.weekly_folder and sources.weekly_format)
-        weekly = None    # (listing, weeks) of a month with weekly notes configured
-        if is_month and weekly_configured:
-            weekly = self._find_weeklies()
-            for _, paths in weekly[1]:
-                for path in paths:
-                    self.reader.note(path)
+        found: Dict[str, Found] = {}    # (listing, children) per configured child level
+        for child in self._levels():
+            if child.configured:
+                found[child.kind] = self._find_children(child)
+                children.prefetch(self.reader, found[child.kind])
         start_ms, end_ms = period_bounds_ms(period)
         self._growth_fetch(start_ms, end_ms)
 
         self.reader.finish()
-        after_fields, weekly = self._after_end_pass(entries, incomplete, after_incomplete, after_fields,
-                                                    daily_listing, weekly)
-        weekly_listing, weeks = weekly or (None, [])
+        after_fields = self._after_end_pass(entries, incomplete, after_incomplete, after_fields, daily_listing, found)
         days = self.readers.attribute_yesterday([entries[d] for d in sorted(entries)], after_fields)
         for entry in days:
             for item in entry.get("linked", []):
                 item["vault_path"] = self.reader.path_of(item["path"])
         open_tasks, task_report = self._tasks(days)
         growth = self._growth(start_ms, end_ms)
-        weekly_entries, weekly_report = self._weekly_entries(weeks) if weekly is not None else ([], [])
 
         result: Dict[str, Any] = {
             "period": {"kind": period.kind, "name": period.name,
@@ -389,16 +409,8 @@ class _PeriodRead:
                                       for p in self.found.get(self.after, [])]},
             "task_notes": task_report,
         }
-        if is_month:
-            result["weekly"] = weekly_entries
-            if weekly_entries:
-                result["only_in_weekly_links"], result["dailies_not_in_weekly"] = (
-                    self._link_differences(days, weekly_entries))
-            report["weekly_status"] = (WEEKLY_NOT_CONFIGURED if not weekly_configured
-                                       else WEEKLY_FOUND if weekly_entries
-                                       else WEEKLY_NONE if weekly_listing is not None
-                                       else WEEKLY_KADO_EMPTY if "weekly" in self.kado_empty else WEEKLY_NOT_READ)
-            report["weekly_notes"] = weekly_report
+        for child in self._levels():
+            self._child_result(child, found.get(child.kind), days, result, report)
         report["growth"] = {"created": len(growth["created"]), "mocs_changed": len(growth["mocs_changed"]),
                             "mocs_linked_by_new": len(growth["mocs_linked_by_new"]),
                             "moc_folders": len(sources.moc_folders), "kado_none": list(self.growth_kado_none)}

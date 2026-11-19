@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_027_t4_2_3_renderer_diff_rename.py — TDD for T4.2 (renderer) + T4.3 (diff).
 
 T4.2: instruction-render.py emits source_inbox_item (not origin_inbox_item) in
@@ -127,7 +127,7 @@ class TestRendererMoveNoteKeyRename:
 
 
 class TestRendererSchemaVersionBump:
-    """The instructions doc header must emit schema_version:'3' (not '2').
+    """The instructions doc header must emit schema_version:'4' (not '2').
 
     Spec 035 T3.1 / ADR-5: instruction-render.py no longer declares
     schema_version as a free string literal — it reads
@@ -143,17 +143,17 @@ class TestRendererSchemaVersionBump:
     (reusing the harness from tests/test_035_wire_version.py, not
     duplicating it) and reads the value off the emitted document, exactly as
     it would if a live run produced it. Spec 036 T4.1 bumped the instruction
-    wire to "3"; the assertion tracks that bump, not whatever the schema
+    wire to "3" and spec 046 T6.1 to "4"; the assertion tracks that bump, not whatever the schema
     happens to say — comparing the renderer's output to the same schema it
     read from would hold even if both drifted together.
     """
 
-    def test_schema_version_const_is_3_in_source(self, monkeypatch, tmp_path):
-        """instructions.json, rendered end to end, carries schema_version:'3'."""
+    def test_schema_version_const_is_4_in_source(self, monkeypatch, tmp_path):
+        """instructions.json, rendered end to end, carries schema_version:'4'."""
         out_dir = wire_version_tests._drive_instruction_render(monkeypatch, tmp_path)
         doc = json.loads((out_dir / "instructions.json").read_text(encoding="utf-8"))
-        assert doc["schema_version"] == "3", (
-            "instructions_doc must emit schema_version:'3' (T4.1 bump)"
+        assert doc["schema_version"] == "4", (
+            "instructions_doc must emit schema_version:'4' (spec 046 T6.1 bump)"
         )
 
 
@@ -294,9 +294,9 @@ class TestDiffMatchesSourceInboxItem:
         }
 
     def _instrs(self, move_note: dict) -> dict:
-        """Minimal instructions doc wrapping the given move_note (schema_version 3)."""
+        """Minimal instructions doc wrapping the given move_note (schema_version 4)."""
         return {
-            "schema_version": "3",
+            "schema_version": "4",
             "type": "tomo-instructions",
             "generated": "2026-06-30T12:00:00Z",
             "profile": "miyo",

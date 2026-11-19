@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_tag_handler_e2e.py — T6.1 (spec 024 Phase 6): Tomo-side E2E seam tests.
 
 Proves the full Tomo-side path for the tag-handler framework with NO cross-repo
@@ -248,7 +248,7 @@ def _group(
 def _wrap_instructions(actions: list[dict]) -> dict:
     """Wrap actions in a minimal valid tomo-instructions doc for schema validation."""
     return {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "generated": "2026-06-23T12:00:00Z",
         "profile": "miyo",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_039_t6_2_vendored_v4.py — the vendored consumer copies carry spec 039's
 contract: suggestions wire at v4, and the delete_source `depends_on`
 description reading "applied or already in place".
@@ -14,14 +14,15 @@ Mechanisms falsified:
   states the plan's wording ("the parity delta is empty") as its own assertion.
 - test_depends_on_description_says_applied_or_already_in_place: either
   instructions schema still carrying the old "is applied (AND semantics)".
-- test_vendored_instructions_copy_is_the_consumer_file_plus_the_one_string_patch:
+- test_vendored_instructions_copy_is_the_consumer_file:
   a vendored copy taken from OUR live schema (which drifts from the consumer's
-  file in 29 unrelated pointers) or any extra edit changes the hash.
+  file in unrelated pointers) or any edit changes the hash.
 
 Pinned hash derivation (independent of our files), recompute with:
-  git -C ../Hashi show c217f66:src/schema/instructions.schema.json
-then replace the single occurrence of `is applied (AND semantics)` with
-`is applied or already in place (AND semantics)` and take the sha256.
+  git -C ../Hashi show abd92d6:src/schema/instructions.schema.json | shasum -a 256
+Spec 046 T6.1 re-vendored the copy from Hashi abd92d6 (pre-release, wire v4),
+which carries the "applied or already in place" wording itself, so the
+one-string patch of c217f66 is no longer needed.
 
 Spec: docs/XDD/specs/039-attachment-conflict-hardening/plan/phase-6.md (T6.2)
 Ref: PRD/F6-AC6
@@ -48,9 +49,9 @@ INSTRUCTION_SCHEMAS = [
     SCHEMAS_DIR / "hashi-instructions.schema.json",
 ]
 
-# Hashi c217f66 src/schema/instructions.schema.json with the one-string patch.
+# Hashi abd92d6 src/schema/instructions.schema.json, byte for byte (spec 046 T6.1).
 VENDORED_INSTRUCTIONS_SHA256 = (
-    "9c9565d08caaa8db4a490cda9278dcafaeaf41c10ebf374fd33f4265b705826f"
+    "51b80e494493c08ac2f03c90b4002e5ad1dd44d4dac1348b5bd22983bec23c91"
 )
 
 
@@ -72,7 +73,7 @@ def test_depends_on_description_says_applied_or_already_in_place(path):
     assert "move_asset" in text
 
 
-def test_vendored_instructions_copy_is_the_consumer_file_plus_the_one_string_patch():
+def test_vendored_instructions_copy_is_the_consumer_file():
     digest = hashlib.sha256(
         (SCHEMAS_DIR / "hashi-instructions.schema.json").read_bytes()
     ).hexdigest()

@@ -28,26 +28,58 @@ step is undone; a delivery begun with a picked heading is resumed without
 Refuses a Re-Plan That Differs From the Record" and "WHY a Picked Anchor Is
 Recorded as a Flag") — never handed to `classify`, listed in `REFUSING` so the
 one pin test and the skill's coverage test name them with the others.
+`SECTION_CHECKBOX_MISSING` (`section-checkbox-missing`, spec 046 T4.4) is the
+parser's warning for a section checkbox it cannot read (deleted, broken,
+moved out of its part, doubled; docs/tomo/scripts/lib/review_doc_parse.md).
+`lib/review_actions._gate` refuses it right after `approved-line-missing`
+and before `not-approved`: both are documents whose state the parser cannot
+read without guessing, and a guessed section state could land a section the
+user dropped (F3-AC6). It sits in `REFUSING` so `preview` and `deliver`
+stop on it and the skill's coverage test demands its stop line. Only the
+gate stops a heading that carries another expected key first
+(`## <heading> %%s3%% %%s1%%`): the parser files the items under `s3`,
+which may be ticked, and only the warning keeps them from landing.
+
+Spec 046 T5.5 widens the table, not the rule. `REFUSING` gains the six
+section stops (`review_section_plan.STOPS`: `section-missing`,
+`section-ambiguous`, `section-broken`, `section-moved`,
+`block-in-review-section`, `landing-off-limits` — the last also the plan
+problem of a "Tomo Review" place that would land off limits), `choice-invalid`
+and `choices-needed`; `NOTICES` gains `block-replaced`,
+`block-moved-confirmed`, `review-section-kept`, `section-dropped` and
+`section-empty`. `classify(plan, extra, counts, choices)` reads them where
+they arise: the stop of every section of `ReviewPlan.sections` whose block
+holds lines, the sections' notices and `ReviewPlan.notices`, the parsed
+document's `section_counts` (`counts`) for dropped and empty sections, and
+`choices` against what the plan took (`review_section_report.untaken`); a plan
+with no refusing problem and no action is `nothing-to-deliver`. Each name is
+listed once, in the order found. The rationale for each rule is in
+docs/tomo/scripts/review-instructions.md, "WHY Every Section Stop Refuses
+Until a Choice Answers It". `section_report` gives the output fields that
+go with the names (`sections`, `dropped`, `empty`, `choices_invalid`), so
+the names and their detail come from one reading of the plan.
 
 ## WHY `second_set` Takes Whether the Set at the Path Is Applied (T6.1 fix round)
 
 Owner decision 2026-11-12 (spec 045 T6.1 finding: the PRD said F6-AC3 "a
 rerun replaces the section" while the SDD said every set at the path is
 `set-exists`, and the e2e walk had to delete the applied set by hand to get
-the rerun through). `second_set(set_exists, set_applied)` now reads: a
+the rerun through). `second_set(set_exists, any_applied)` (first named `set_applied`, when it was fed
+`all_applied`) now reads: a
 complete delivery (`doc_mark` recorded) or a withdrawn one is always a second
 set; a set this delivery did not write (`wrote_set()` false) is a second set
 *unless every action in it is applied* — then it is the finished set of an
 earlier run of the same period, the vault already holds its effect, and the
 rerun's `deliver` writes the new set over it
 (docs/tomo/scripts/review-instructions.md, "WHY a Fully Applied Set Is
-Written Over"). A set with no action applied, or with some applied, stays
-`set-exists`: Hashi may still be working on it, and a partial apply is the
-user's problem to look at before anything new lands. The predicate for
-"every action applied" is `review_state.all_applied` — the same reading the
-state function uses for `applied` (ADR-6), an empty `actions` list never
-counting (that is `drop`'s signature, see `SET_WITHDRAWN`) — so the two
-cannot drift. The flag is an argument, not a read inside `ReviewMeta`,
+Written Over"). A set with no action applied stays `set-exists`: Hashi may
+still be working on it. Since spec 046 T5.5 (ADR-12) the caller passes
+`review_state.any_applied` as the flag, so a partly applied set — one
+section failed at Hashi — is written over as well instead of leaving the
+review stuck (docs/tomo/scripts/review-instructions.md, "WHY a Partly
+Applied Set Is Written Over"). The predicate is `review_state`'s — an
+empty `actions` list never counting (that is `drop`'s signature, see
+`SET_WITHDRAWN`) — so the state function and the delivery cannot drift. The flag is an argument, not a read inside `ReviewMeta`,
 because the adapter holds no set and no Kado.
 
 ## WHY `ReviewMeta` Wraps the Dict
@@ -85,6 +117,51 @@ copy-ready fenced block, or the move with its destination and the Templater
 line when the note keeps Templater code. The tomo block is merged afterwards
 through `stable_block` so a rebuild is byte-identical.
 
+## WHY the MD Peer Carries `tomo.sources` — and Never the Review Target (spec 046 T6.3)
+
+WHY: owner decision 2026-11-17, from the Hashi joint run round 1. Hashi's
+cleanup after a full apply (Hashi ADR-018 §4, #146, `cleanupAfterFullApply`)
+takes `tomo.sources[]` from the peer's frontmatter as its only source of truth:
+it merges `tomo.state: applied` into the peer, **trashes every
+`sources[].path`**, then the peer, then the set JSON. A peer without the array
+makes Hashi write and trash nothing ("no cleanup: no tomo.sources"), so review
+sets stayed in the inbox after every apply while `/inbox` sets left.
+
+What `set_md` lists, in this order (`peer_sources`):
+
+1. the review document (`<inbox>/<period> Review.md`) — `meta.json`'s
+   `doc_path`, the same path `review-instructions.py` read the plan from, so
+   the list needs no extra argument and no Kado call;
+2. for a new-note delivery, the new note's inbox copy (`plan.note_path`) —
+   after the move it is already gone, which Hashi only warns about. It is
+   Tomo's own file: the `note` step is delivered before `set_md`, so the
+   peer is never written unless the copy at that path is Tomo's.
+
+**Never the review target** (the week, month or quarter note). Hashi trashes
+every listed path, and the target is the user's own note. Neither listed path
+is the target by construction (both sit in the inbox, the target in the
+calendar folders), and `peer_sources` still drops any path equal to
+`plan.target`: one comparison is cheap beside a trashed note. Entry shape is the `/inbox`
+peer's (`render_md._build_tomo_block_for_instructions`): `{path}` objects,
+`sources` after `updated_at`, validated by `build_tomo_block` against
+`doc-frontmatter.schema.json`. The optional `checksum` is left out: the
+`/inbox` checksum feeds triage's coverage record, and nothing reads a review
+peer's sources but Hashi's cleanup. A meta without `doc_path` gives
+`sources: []` — still valid for Hashi, which then trashes only the pair.
+
+The withdrawn peer (`withdrawn_md`) lists nothing: `sources: []`. A drop
+consumes no input. The document stays for the user (a drop is not a finished
+review), and the new note's inbox copy is not listed because a drop may follow
+a `note` step that failed in flight, where Tomo cannot prove the file at that
+path is its own; the withdrawn MD already names it under "delete these
+files", so the user decides. With `[]` a cleanup removes only the set pair,
+the files the MD asks the user to delete anyway.
+
+Resume note: the peer changes bytes. A `set_md` landed before this change
+(no `sources`) and resumed after it is reported `name-taken` at `set_md`, the
+ordinary "an earlier set waits" path; it only concerns sets delivered by a
+pre-release build.
+
 ## WHY the Withdrawn Set Is Built From `meta.json`
 
 `drop` may run on a document that is no longer readable or approved; the
@@ -108,5 +185,58 @@ Differs From the Record"); `DELIVERED_PLAN` and `ANCHOR_PICKED`, the key and
 the flag of that record, moved with them. Passing `configured_anchor` and
 `anchor_picked` instead of the `Run` is what keeps the lib free of an import
 cycle. `delivery_paths` and `public_paths` sit with the other path functions.
-At about 320 lines the module stays one responsibility (what a delivery needs
-around the plan); a split such as a resume lib is the move if it passes 350.
+At 348 lines (cap 350) the module stays one responsibility (what a delivery needs
+around the plan); a split such as a resume lib is the move before anything is added.
+Spec 046 T6.2 made that split along the cleaner seam: the guard reading
+(`tool_error_payload`, `tool_error_code`, `is_conflict`, `conflict_reason`
+and their constants) depends on nothing else here and has one caller, so it
+moved unchanged to `lib/review_kado_conflict.py`; the resume record stays,
+since it shares the step names and `ReviewMeta` with the rest of the module.
+Spec 046 T5.5 adds `sections` and `choices_given` to the record
+(`plan_record(..., choices_given)`), the section comparison to
+`replan_differs` and `choices-needed` to `resume_refusal`; the per-section
+helpers they call (`record`, `report`, `untaken`) live in
+`review_section_report` (in `review_section_set` until T6.2), so this
+module stays under that line.
+
+
+## WHY the Stored Payloads Live Here (spec 046 T6.3)
+
+`save_payloads`, `read_payloads`, `remove_payloads` and `delivery_open`
+serve the resume that uploads the first attempt's payloads instead of a
+re-plan (docs/tomo/scripts/review-instructions.md, "WHY a Resume Uploads
+the Stored Payloads"). They sit beside `save_meta` because they are the
+same kind of thing: a stage file of the delivery, written atomically,
+with no Kado call. `read_payloads` checks the file's shape and returns
+None for any other shape. A stage written before the store, or one whose
+file is damaged, then falls back to the #258 path instead of uploading
+half a set. `delivery_open` is the "still open" condition of
+`resume_refusal` with `set-exists` added. A set of another delivery at
+the path is refused as before and is never written over from a stored
+payload. `remove_payloads` ignores an `OSError`, and `clear_closed_payloads`
+reads the raw `meta.json` dict, so a finished or withdrawn record loses a
+leftover file on the next `deliver` or `status` without `ReviewMeta`
+filling in defaults on a dict `status` passes on.
+
+
+## WHY `peer_sources` Checks the Inbox (spec 046 T6.4)
+
+Hashi's cleanup trashes every path in `tomo.sources` after a full apply, so
+a path that does not belong there costs the user a file. The review
+document's path comes from `meta.json` (or `--doc-path`), not from the
+inbox folder, so `peer_sources(plan, meta, inbox)` admits a path only when
+`in_inbox` says it lies strictly inside the configured inbox: a canonical
+path (no `..`, `.`, empty segment or backslash), not absolute, not the
+folder itself, and under `<inbox>/` with the slash — `100 Inbox Archive/x`
+shares only a prefix with `100 Inbox` and is out. An empty inbox or one
+that leaves the vault admits nothing.
+
+A path outside the inbox is dropped, not refused. Refusing would stop the
+whole delivery over one wrong path, while a dropped path costs only the
+cleanup of that file; the set and the review stay correct either way. This
+differs from `inbox_path`, which raises `UnsafePath` for a name the caller
+builds itself: there a bad name is a bug, here a stored path is data.
+
+`inbox` is a required argument, so the guard fails closed. A caller cannot
+forget it and silently get an unguarded list. The one live caller is
+`lib/review_instructions_deliver.py`, which passes `run.setup.inbox`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.8
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -33,6 +33,11 @@ which marker kinds it may carry and why. The walk then asserts:
   carried its marker (no stale entry): the allowlist and the walk's stdout are compared both ways, so the
   table needs no test of its own;
 - no marker in any file under tomo-tmp/review/ that a step leaves behind;
+- (spec 046 T6.3, owner decision 2026-11-18) `payloads.json`, the paths and texts the first delivery
+  attempt stores for its resume, carries the set and note text by design and is exempt like read.json
+  and proposals.json; it exists while a delivery is open and is gone once every delivery of the walk
+  finished or was withdrawn. The week's stop at the set MD removes it before the resume, so the walk
+  keeps covering the legacy `anchor-needed` refusal with its `headings`;
 - the readable tracker value reaches read.json and the document's habits
   line, and nothing else of Tomo's: not stderr, not stdout outside the named
   fields, no working file but read.json;
@@ -41,6 +46,16 @@ which marker kinds it may carry and why. The walk then asserts:
   it, the tracker marker's days are named unreadable in the habits line;
 - read.json and proposals.json are gone after `write`, `replace --confirm`
   and `replace --abort`, and kept after a refused or failed write.
+- (spec 046 T4.2, amended CON-3) a mapped write's meta.json is a closed key set: spec 045's keys
+  plus `pass1_sections` with entries exactly {key, count, empty}; section headings, parents,
+  descriptions and keywords carrying a marker never reach it.
+- (spec 046 T5.7) the mapped walk (`_mapped`, its own instance): a mapped heading, the note's text,
+  the section's items and a user-added item carry markers through `review-doc.py write` and `parse`,
+  a clean `preview`, a renamed heading (`preview`, refused `deliver`), a moved block (`preview`,
+  refused `deliver`, `deliver --confirm-moved`) and `parse` after it. The same stdout, stderr,
+  named-field and working-file checks run over its calls; its markers may surface only in
+  `sections[].lines` and `sections[].block_at.heading` (plus spec 045's `section_md`). The
+  instruction set and the document carry user content by design, as in spec 045's walk.
 
 Runs in tmp_path; the scripts are loaded in-process with KadoClient replaced
 by tests/review_fake_vault.ReviewFakeVault. All data is synthetic. Never a
@@ -94,6 +109,15 @@ USER_TEXT_FIELDS = {
         ({"weekly"}, "a resume of a delivery begun with --place-anchor and run without it (anchor-needed) names the "
                      "target note's headings again, so the user can choose one; the pick itself never enters "
                      "meta.json (fix #258)"),
+    # spec 046 T5.7: reached by the mapped walk (_mapped)
+    ("review-instructions", "preview", "sections[].lines"):
+        ({"proposal"}, "the preview prints each mapped section's block as it lands, the user's own items included, "
+                       "so the user reads it before Deliver (F4-AC6)"),
+    ("review-instructions", "preview", "sections[].block_at.heading"):
+        ({"weekly"}, "a moved block names the target note's heading it now sits under, so the user can confirm "
+                     "the move (section-moved)"),
+    ("review-instructions", "deliver", "sections[].block_at.heading"):
+        ({"weekly"}, "a deliver refused by section-moved names that heading as the preview does"),
 }
 
 TODAY = "2026-11-11"
@@ -185,7 +209,7 @@ class Walk:
         reads and writes by design."""
         leaks = []
         for path in sorted((self.root / "tomo-tmp").rglob("*")):
-            if path.is_file() and path.name not in ("read.json", "proposals.json"):
+            if path.is_file() and path.name not in ("read.json", "proposals.json", "payloads.json"):
                 kinds = _kinds_and_readable(path.read_text(encoding="utf-8", errors="replace"))
                 if kinds:
                     leaks.append((str(path.relative_to(self.root)), sorted(kinds)))
@@ -262,7 +286,13 @@ def walk(tmp_path, monkeypatch, capsys):
     _month(w)
     _forced_exceptions(w)
     _bad_invocations(w)
+    w.mapped = _mapped(tmp_path / "mapped", monkeypatch, capsys, mods)
     return w
+
+
+def _calls(w: Walk) -> list:
+    """The walk's calls and the mapped walk's (spec 046 T5.7)."""
+    return w.calls + w.mapped.calls
 
 
 def _approve(w: Walk, doc_path: str, user_line: str | None = None) -> None:
@@ -307,6 +337,8 @@ def _session(w: Walk) -> None:
                      "--anchor", picked, "--today", TODAY])
     assert rc == 0 and "template_candidates" not in out and "needs_anchor" not in out, out
     assert out["proposal"]["template"] is None and out["proposal"]["place"]["anchor"] == picked, out
+    # spec 046 T2.1: match keeps the rows it showed; the tmp-leak check of every call covers this file
+    assert (w.root / "tomo-tmp" / "review" / "rows-week.json").is_file()
 
 
 def _week(w: Walk) -> None:
@@ -337,6 +369,9 @@ def _week(w: Walk) -> None:
     rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
     assert rc == 0 and out["status"] == "stopped" and out["failed_step"] == "set_md", out
     w.vault.fail.clear()
+    payloads = w.stage(WEEK_STEM) / "payloads.json"
+    assert payloads.is_file(), "an open delivery stores its payloads"
+    payloads.unlink()                                   # a stage begun before spec 046 T6.3: the re-plan path
     rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM])
     assert rc == 0 and out["status"] == "refused" and out["problems"] == ["anchor-needed"], out
     assert ANCHOR in out["headings"], out
@@ -450,6 +485,65 @@ def _bad_invocations(w: Walk) -> None:
         assert w.run_bad(script, sub, argv) == 2, (script, sub, argv)
 
 
+# ── spec 046 T5.7: the mapped path ───────────────────────────────────────
+
+MAPPED_HEADING, MOVED_HEADING = f"Notes {WKL}", f"Elsewhere {WKL}"
+MAPPED_NOTE = (f"# 2026-W13\n## {MAPPED_HEADING}\nnote text {WKL}\n\n## In my own words\nmeine Worte {WKL}\n")
+MOVED_BLOCK = f"## {MOVED_HEADING}\n%% tomo:s4 2026-W13 %%\n- alt {WKL}\n%% /tomo:s4 2026-W13 %%\n\n"
+
+
+def _mapped(root: Path, monkeypatch, capsys, mods) -> Walk:
+    """A mapped week (spec 046): the mapped heading, the note's text, the section's items and the user's own item
+    carry markers. Pass 1 write and parse, a clean preview, a renamed heading (preview, refused deliver), a moved
+    block (preview, refused deliver, deliver --confirm-moved), parse after it."""
+    import test_046_t4_2_doc_sections as tds
+    from review_deliver_helpers import GuardedVault
+
+    for folder in ("config", "profiles"):
+        (root / folder).mkdir(parents=True)
+    (root / "profiles" / "miyo.yaml").write_text(yaml.safe_dump({"concept_defaults": {}}), encoding="utf-8")
+    rows = [tds.row("s4", MAPPED_HEADING, "under", level=2)]
+    tds.map_config(root, rows)
+    monkeypatch.chdir(root)
+    target = f"{tds.WEEKLY}2026-W13.md"
+    vault = GuardedVault({target: MAPPED_NOTE})
+    for mod in mods.values():
+        monkeypatch.setattr(mod, "KadoClient", vault)
+    w = Walk(capsys, mods, root, vault)
+    props = {"language": "de", "sections": [tds.section("s4", tds.item(f"Notiz {PRP}", "2026-03-24"))],
+             "groups": {"done": [tds.item(f"erledigt {PRP}", "2026-03-28")]}}
+    stem, path = tds.stage(root, tds.mapped_week(rows), props)
+    rc, out = w.run("review-doc", "write", ["write", "--stem", stem, "--proposals", str(path), "--run-id", "r-map",
+                                            "--today", TODAY])
+    assert rc == 0 and out["status"] == "written", out
+    doc = out["doc_path"]
+    lines = vault.files[doc].replace("- [ ] Approved", "- [x] Approved", 1).split("\n")
+    at = next(i for i, line in enumerate(lines) if f"Notiz {PRP}" in line)
+    vault.files[doc] = "\n".join([*lines[:at + 1], f"- [x] mein {PRP}", *lines[at + 1:]])
+    vault.modified[doc] = vault.modified.get(doc, 0) + 1
+    rc, out = w.run("review-doc", "parse", ["parse", "--stem", stem])
+    assert rc == 0 and out["approved"] is True, out
+    rc, out = w.run("review-instructions", "preview", ["preview", "--stem", stem])
+    assert rc == 0 and out["problems"] == [] and len(out["sections"][0]["lines"]) == 2, out
+    vault.files[target] = MAPPED_NOTE.replace(f"## {MAPPED_HEADING}", f"## Renamed {WKL}")
+    rc, out = w.run("review-instructions", "preview", ["preview", "--stem", stem])
+    assert rc == 0 and out["problems"] == ["section-missing"], out
+    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", stem])
+    assert rc == 0 and out["status"] == "refused" and out["problems"] == ["section-missing"], out
+    vault.files[target] = MAPPED_NOTE.replace("## In my own words", f"{MOVED_BLOCK}## In my own words")
+    rc, out = w.run("review-instructions", "preview", ["preview", "--stem", stem])
+    assert rc == 0 and out["problems"] == ["section-moved"], out
+    assert out["sections"][0]["block_at"]["heading"] == MOVED_HEADING, out
+    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", stem])
+    assert rc == 0 and out["status"] == "refused" and out["sections"][0]["block_at"]["heading"] == MOVED_HEADING
+    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", stem, "--confirm-moved", "s4"])
+    assert rc == 0 and out["status"] == "delivered", out
+    rc, out = w.run("review-doc", "parse", ["parse", "--stem", stem])
+    assert rc == 0 and out["status"] == "ok", out
+    w.stem, w.target = stem, target
+    return w
+
+
 # ── assertions ───────────────────────────────────────────────────────────
 
 
@@ -466,7 +560,7 @@ def test_every_script_and_every_subcommand_ran_in_the_walk(walk):
 
 
 def test_no_marker_on_stderr_of_any_script(walk):
-    calls = walk.calls + walk.bad_calls + walk.forced_calls
+    calls = _calls(walk) + walk.bad_calls + walk.forced_calls
     leaks = [(_label(c), sorted(_kinds(c["stderr"]))) for c in calls if _kinds(c["stderr"])]
     assert leaks == []
 
@@ -491,7 +585,7 @@ def test_bad_invocations_echo_no_marker(walk):
 
 def test_no_marker_in_stdout_outside_the_named_fields(walk):
     leaks = []
-    for call in walk.calls:
+    for call in _calls(walk):
         _, leftover = _audit(call)
         if _kinds(leftover):
             leaks.append((_label(call), sorted(_kinds(leftover)), leftover))
@@ -500,7 +594,7 @@ def test_no_marker_in_stdout_outside_the_named_fields(walk):
 
 def test_named_fields_carry_only_their_own_kinds(walk):
     wrong = []
-    for call in walk.calls:
+    for call in _calls(walk):
         allowed = _named(call)
         for field, seen in _audit(call)[0].items():
             if seen - allowed[field]:
@@ -511,7 +605,7 @@ def test_named_fields_carry_only_their_own_kinds(walk):
 def test_every_named_field_carried_its_marker_once(walk):
     """A named field the walk never fills is either stale or untested: both fail."""
     used = set()
-    for call in walk.calls:
+    for call in _calls(walk):
         for field, seen in _audit(call)[0].items():
             if seen:
                 used.add((call["script"], call["sub"], field))
@@ -522,9 +616,14 @@ def test_every_named_field_carried_its_marker_once(walk):
 
 def test_no_marker_in_tomos_working_files_after_any_step(walk):
     """meta.json, the setup inputs and whatever else a step leaves under tomo-tmp/review/ are content-free."""
-    calls = walk.calls + walk.bad_calls + walk.forced_calls
+    calls = _calls(walk) + walk.bad_calls + walk.forced_calls
     leaks = [(_label(c), c["tmp_leaks"]) for c in calls if c["tmp_leaks"]]
     assert leaks == []
+
+
+def test_no_stored_payload_outlives_its_delivery(walk):
+    """Every delivery of the walk finished or was withdrawn, so no `payloads.json` is left under tomo-tmp/."""
+    assert sorted(str(p) for p in (walk.root / "tomo-tmp").rglob("payloads.json")) == []
 
 
 def test_a_readable_tracker_value_stays_in_read_json_and_the_document(walk):
@@ -566,3 +665,65 @@ def test_every_marker_reached_the_scripts(walk):
     doc = walk.vault.text(WEEK_DOC)
     assert "Sleep:" in doc and "unreadable: 2026-03-24" in doc, "Sleep:: TRK on 2026-03-24"
     assert "Sport:" in doc and "unreadable: 2026-03-25" in doc, "Sport:: TRK on 2026-03-25"
+
+
+# ── spec 046 T4.2: meta.json of a mapped write (amended CON-3) ──────────────────
+
+META_KEYS = {"stem", "period", "kind", "doc_path", "target", "target_exists", "mode", "run_id", "generated",
+             "pass1_counts", "pass1_links", "steps_done", "failed_step", "withdrawn", "pass1_sections"}
+
+
+def test_a_mapped_meta_json_is_a_closed_set_of_keys_ids_and_counts(tmp_path, monkeypatch, capsys):
+    """Amended CON-3: section headings, parents and descriptions are setup text the vault config and
+    read.json may hold; meta.json holds the closed spec 045 keys plus pass1_sections, whose entries are
+    exactly {key, count, empty}, and section keys in pass1_counts are row ids — no heading, no text."""
+    import test_046_t4_2_doc_sections as tds
+    from review_fake_vault import ReviewFakeVault
+
+    marker = "MARKER-46c9"
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "profiles").mkdir()
+    (tmp_path / "profiles" / "miyo.yaml").write_text(yaml.safe_dump({"concept_defaults": {}}), encoding="utf-8")
+    rows = [tds.row("s1", f"{marker} heading", "end", parent=f"{marker} parent", description=f"{marker} desc",
+                    keywords=[f"{marker} kw"]),
+            tds.row("s2", f"{marker} analysis", "review")]
+    tds.map_config(tmp_path, rows)
+    read = tds.mapped_week(rows)
+    props = {"language": "de", "groups": {"done": [tds.item(f"{marker} done", "2026-03-25")]},
+             "sections": [tds.section("s1", tds.item(f"{marker} item", "2026-03-24"))]}
+    stem, path = tds.stage(tmp_path, read, props)
+    spec = importlib.util.spec_from_file_location("review_doc_privacy_046", SCRIPTS_DIR / "review-doc.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    fake = ReviewFakeVault({})
+    monkeypatch.setattr(module, "KadoClient", fake)
+    assert module.main(["--profiles-dir", "profiles", "write", "--stem", stem, "--proposals", str(path)]) == 0
+    out, err = capsys.readouterr()
+    assert json.loads(out)["status"] == "written" and marker not in out + err
+    raw = (tmp_path / "tomo-tmp" / "review" / stem / "meta.json").read_text(encoding="utf-8")
+    meta = json.loads(raw)
+    assert set(meta) == META_KEYS and marker not in raw
+    assert [set(entry) for entry in meta["pass1_sections"]] == [{"key", "count", "empty"}] * 2
+    assert {k for k in meta["pass1_counts"] if k not in rd.GROUPS} == {"s1", "s2"}
+
+
+# ── spec 046 T5.7: the mapped walk reached its markers ──────────────────────
+
+
+def test_the_mapped_walk_is_live_and_its_records_hold_no_marker(walk):
+    """The mapped markers reached the document and the instruction set (user content by design, like spec 045's
+    set); meta.json — delivered_plan and pass1_sections included — holds none (the tmp-leak check of every call
+    covers it; this pins that the file was there to check)."""
+    m = walk.mapped
+    doc = next(p for p in m.vault.writes if p.endswith(" Review.md"))
+    assert MAPPED_HEADING in m.vault.text(doc) and f"mein {PRP}" in m.vault.text(doc)
+    set_json = f"{INBOX}{m.stem}_instructions.json"
+    assert f"mein {PRP}" in m.vault.text(set_json), "the user's own item reached the set"
+    assert f"{INBOX}{m.stem}_instructions.md" in m.vault.files, "the readable instructions were written"
+    meta = json.loads((m.stage(m.stem) / "meta.json").read_text(encoding="utf-8"))
+    assert {"delivered_plan", "pass1_sections"} <= set(meta) and meta["steps_done"]
+    assert [s["mode"] for s in meta["delivered_plan"]["sections"]] == ["replace"]
+    assert {(c["script"], c["sub"]) for c in m.calls} == {
+        ("review-doc", "write"), ("review-doc", "parse"), ("review-instructions", "preview"),
+        ("review-instructions", "deliver")}

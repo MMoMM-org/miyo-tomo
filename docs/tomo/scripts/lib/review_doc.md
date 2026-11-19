@@ -97,7 +97,12 @@ look the same in the document, so the schema sets `additionalProperties:
 false` on `groups` and the whole file is refused (`proposals-invalid`) when
 the key is present. The same closed key set is what enforces F4-AC7: there
 is no way to write text for one of the user's own sections because there is
-no group a model could put it in. The habits items arrive already rendered
+no group a model could put it in. Spec 046 (ADR-1) opens exactly one door:
+`sections: [{key, items}]`, where `key` is a row id (`^s[0-9]{1,3}$`) and
+never heading text, so the model can fill a section the user mapped but
+cannot name a new one; `review_sections` refuses a key without a definition
+in `read.json`. The optional `mark` is defined on section items only, so the
+group items' schema is spec 045's unchanged. The habits items arrive already rendered
 (`text`) from the habits module; this module only gives them an id and a
 line, so the number and its wording keep one owner. An item whose `value`
 is `None` ("no clear average") renders like any other, from its `text`.
@@ -146,6 +151,73 @@ with `month-only-group` (a week) or `no-weekly-notes` (a month without
 weekly notes) rather than rendered under a heading that claims a weekly
 review was read.
 
+## WHY the Groups Come From a Table Per Kind (spec 046 T4.1, F6-AC4)
+
+The quarter has its own pair of marks: `monthly_only` (only the monthly
+reviews hold it, no daily of the quarter does) and `not_in_monthly` (the
+dailies held it, no monthly review mentions it). A flat group list with a
+"month groups" flag cannot say which pair belongs to which kind, so the
+groups come from `KIND_GROUPS`: the week's five, the month's five plus
+`weekly_only` / `not_in_weekly`, the quarter's five plus `monthly_only` /
+`not_in_monthly`. The week and month order is unchanged, so their documents
+stay byte-identical. One rule decides a child group's fate everywhere
+(`group_reason`): a group of another kind is rejected with
+`month-only-group` / `quarter-only-group`, a group of the right kind whose
+child notes were not read with `no-weekly-notes` / `no-monthly-notes` — a
+heading that claims a monthly review was read must not appear when none was.
+`has_child_notes` names those notes per kind (`weekly` for a month,
+`monthly` for a quarter); the quarter's weekly notes are sources, not the
+reviews it marks against. `Sources` therefore also resolves the `monthly`
+entries, and a `monthly_only` item needs one of them, as a `weekly_only`
+item needs a weekly. `check_item` and `group_reason` are public because
+`review_sections` applies the same rule to section items with their mark as
+the group: one rule, not two copies.
+
+## WHY the Unmapped Document Keeps Its Own Code Path (spec 046 T4.2, F1-AC10, CON-2)
+
+Without a mapping (`DocInput.sections` is None) `render_document` runs the
+group loop it ran in spec 045: every group of the kind, the nothing-found
+bullet for an empty one, the same ids. The section side is a second branch,
+not a generalisation of the first, so a user who never maps a section gets
+the document spec 045 shipped, byte for byte. `tests/test_046_t4_2_unmapped_doc_golden.py`
+pins that against a recording of the pre-T4.2 head (week and month); a
+change there is a regression, not a stale golden.
+
+## WHY the Mapped Document Is Assembled From Parts (spec 046 T4.2, ADR-11, F1-AC7, F3-AC1)
+
+With a mapping the document mirrors the user's note: the section parts in
+template order, then the "Tomo Review" part — a divider heading
+`## <review heading> %%review%%` with its landing line, the analysis parts
+(rows with placement `review`, F2-AC12), then the groups. The parts are
+rendered in `review_sections` (one owner for a section's heading, checkbox,
+landing line and mark, and for `group_parts` / `part_items`, which both
+documents use, so a group renders the same way in each); this module keeps
+the frame (title, callout, Approved line, frontmatter), the item line
+(`item_lines`, which takes the mark as a suffix) and the label table. The
+move also keeps this file under the L2 size guide (≤ 450 lines). Empty groups are left out with a mapping: the user's own
+sections already answer "what happened", and a column of "nothing found"
+groups under "Tomo Review" would be noise (F1-AC7). When no group and no
+analysis part is left, the divider goes too: an empty "Tomo Review" part
+would promise a section the delivery never writes. The habits stay a group,
+so they stay in the "Tomo Review" part. Every part stays at `##`, so the
+parser's column-0 grammar does not change. The ids stay global over the
+whole document (`%%t1%%` … across sections and groups): the parser and
+`pass1_links` key on them, and two parts may not share one.
+
+`counts` gains one entry per section key beside the group counts. Group keys
+are words and section keys are row ids (`s<n>`), so the two never collide,
+and the sum of `counts` stays the number of Tomo items in the document —
+what `review_doc_read` hands the parser as `pass1_total`.
+
+## WHY the Child Groups Render By What Was Accepted (spec 046 T4.2)
+
+`month_groups` used to be set from `weekly_only in accepted`, which is true
+only for a month with weekly notes. A quarter's `monthly_only` /
+`not_in_monthly` would never render, although `check_items` accepted them.
+The flag is now "a child group of this kind was accepted" (the group table of
+the kind decides which), so a quarter that read monthly notes shows its pair
+and a week or month is unchanged.
+
 ## WHY the Review Keys Are Top-Level Frontmatter (ADR-2 Amendment)
 
 `doc-frontmatter.schema.json` closes the `tomo:` block to `doc_type`,
@@ -192,3 +264,11 @@ read them (repo rule: JSON schemas have no version header).
 - An inline `[[...]]` or `![[...]]` in the model's item text stays verbatim:
   only the links the script renders from resolved sources are checked. The
   user reviews the text before approval.
+
+## WHY the `end` Landing Line Says "the Text Under" the Heading (spec 046 T6.4, 0.5.2)
+
+Since spec 046 T6.3 (`end_own_text`), `end` at a heading that has sub-headings lands at the end of the heading's own
+text, before its first sub-heading, not at the end of its whole subtree. "At the end of "H"" read as the subtree end
+and so promised the wrong place. The `end_h` label now says `at the end of the own text of "H"` /
+`am Ende des eigenen Texts von „H“`. Tests: `test_046_t4_2_doc_sections.py`, `test_046_t5_2_new_note_sections.py`.
+The owner chose the wording (2026-11-19): "the text under H" still read as covering the sub-headings.

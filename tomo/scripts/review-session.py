@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.5
+# version: 0.8.1
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -17,26 +17,26 @@ one, or lists the candidates of the templates folder when neither names one —
 and proposes heading, place, daily sections and language, marking a place
 whose anchor it cannot propose unless ``--anchor`` names it; ``setup-input``
 turns the confirmed proposal into the input of ``vault-config-writer.py
-review``. Nothing is saved by any of them.
+review``, refusing rows that may not be saved. Nothing is saved by any of them.
 
 Usage (cwd = instance root):
     python3 scripts/review-session.py start --args='<raw $ARGUMENTS>'
         [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
-    python3 scripts/review-session.py match --kind week|month
+    python3 scripts/review-session.py match --kind week|month|quarter
         [--folder P] [--format F] [--first-day D --min-days N] [--template T|none] [--anchor H]
-        [--template-frontmatter-ok T] [--today YYYY-MM-DD]
-    python3 scripts/review-session.py setup-input --kind week|month --confirmed <json>
-        [--output tomo-tmp/review/setup-<kind>.json] [--today YYYY-MM-DD]
+        [--template-frontmatter-ok T] [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
+    python3 scripts/review-session.py setup-input --kind week|month|quarter --confirmed <json>
+        [--output tomo-tmp/review/setup-<kind>.json] [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
 
 Output: one JSON object on stdout, ASCII-escaped.
     start: status ok|stopped,
-           request {kind week|month, period, year_inferred, source arg|at|default, start, end}
-             | request {kind setup} + current {week, month: values | null | {invalid [pointers]}}
+           request {kind week|month|quarter, period, year_inferred, source arg|at|default, start, end}
+             | request {kind setup} + current {week, month, quarter: values | null | {invalid [pointers]}}
              | request null + request_withheld open-reviews (a blank argument while open_reviews
                is non-empty: no new period starts until the user names one)
              | error {kind invalid-period|unfinished-period|not-periodic-note|unknown-argument,
                       expected, example, last_finished?},
-           setup {week present|missing, month present|missing},
+           setup {week present|missing, month present|missing, quarter present|missing},
            open_reviews [{period, kind, doc_path, stem, state}] ordered by period,
            skipped_review_docs [{doc_path, reason}], problems [inbox-not-configured]?,
            notices [applied-not-recorded]? (the applied flag could not be written),
@@ -48,6 +48,13 @@ Output: one JSON object on stdout, ASCII-escaped.
            evidence {matched, unmatched, week_rule given|inferred|ambiguous|default,
                      notes_checked, folder_listing found|kado-none, format_problems,
                      template_headings},
+           sections {template, mappable, candidates [{heading_key {heading, level, parent, occurrence},
+                     state offered|left-out, reason templater|link|per-period-parent|off-limits|automatic|null,
+                     flags [mixed|container|under-own], defaults {placement, cap} | null, saved <row> | null}],
+                     off_limits [<saved rows>], dropped [{heading, level, parent}]}
+             (always; candidates [] and mappable false when no heading takes a row),
+           template_not_found {name, source typed|configured} (only when Kado does not find the template;
+             proposal.template is then null and template_candidates is listed),
            daily_path_fix {configured, found} (only when the other spelling exists),
            template_candidates [names below templates.base_path, without .md, only those holding the kind
              word (week/woche, month/monat, case-insensitive; lib/review_templates.py)] (only when neither
@@ -61,7 +68,11 @@ Output: one JSON object on stdout, ASCII-escaped.
            hints [plain sentences for the skill],
            error {kind kado-unreachable|kado-auth|unsafe-format, detail?}
     setup-input: status ok, input_path, kind
-               | status invalid, errors [json pointers], problems [{pointer, kind, example?}]
+               | status invalid, errors [json pointers], problems [{pointer, kind, example?, reason?}]
+                 kind: schema | a name-format problem | duplicate-section | duplicate-off-limits
+                 | duplicate-section-id | template-not-found | section-not-in-template | section-off-limits
+                 | section-left-out (reason templater|link|per-period-parent|automatic)
+                 | analysis-not-automatic | landing-off-limits
 
 Rules:
     ``start`` parses the argument before any Kado call; an argument error
@@ -115,6 +126,21 @@ Rules:
     it was given for, so a corrected template without a block is asked about
     again. The field stays false under the flag; only the question key goes.
     The skill repeats every answer on every rerun of ``match``.
+    ``match`` writes the rows it shows to ``<tmp>/rows-<kind>.json`` (setup text
+    only) and returns as ``dropped`` the earlier file's rows the template lacks
+    when the file was for another template; a template not found or unreadable
+    leaves the file alone. ``start`` removes every ``rows-<kind>.json`` first.
+    The configured anchor counts only while the resolved template is the
+    configured one. Nothing else is written by ``match``.
+    ``setup-input`` carries ``sections`` and ``off_limits`` into the writer input,
+    gives every section row without an id the saved row's id of its heading key
+    or the next free ``s<n>`` (``--config``), then refuses (lib/review_setup_rows)
+    against ``<tmp>/rows-<kind>.json`` — never against eligibility fields of the
+    confirmed file: a template that file does not hold as resolved and found,
+    rows without an outline of the confirmed template, and per row and for the
+    "Tomo Review" place what F2-AC4, F2-AC11 and F2-AC12 forbid. Without a rows
+    file a setup without rows is accepted as before. On ``status ok`` it removes
+    the rows file; an invalid input keeps it.
 
 Exit codes:
     0 — output usable (every status, every error object)
@@ -139,10 +165,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
+from lib import review_setup_rows as rsr  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
-from lib.period import DAY_NAMES, ISO, KINDS, MONTH, SETUP, RequestError, parse_args  # noqa: E402
-from lib.review_match import configured_rule, propose  # noqa: E402
+from lib.period import DAY_NAMES, ISO, KINDS, SETUP, WEEK, RequestError, parse_args  # noqa: E402
+from lib.review_match import configured_rule, propose, rows_path  # noqa: E402
 from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
 from lib.review_templates import anchor_text, template_choice  # noqa: E402
 from lib.review_vault import Stopped, Vault  # noqa: E402
@@ -164,7 +191,21 @@ def load_config(path: str) -> dict:
 
 # ---------------------------------------------------------------- start
 
+def _remove_rows_file(tmp: str, kind: str) -> None:
+    """A rows file belongs to one setup dialogue: a new session and a save end it."""
+    try:
+        rows_path(tmp, kind).unlink(missing_ok=True)
+    except OSError:
+        pass            # a leftover only costs a spurious `dropped` line; the exit-0 contract holds
+
+
+def _remove_rows_files(tmp: str) -> None:
+    for kind in KINDS:
+        _remove_rows_file(tmp, kind)
+
+
 def start(args: argparse.Namespace) -> dict:
+    _remove_rows_files(args.tmp)
     config = load_config(args.config)
     profile = rc.load_profile(Path(args.profiles_dir), config)
     rule = configured_rule(config) or ISO
@@ -239,7 +280,7 @@ def match(args: argparse.Namespace) -> dict:
 
 _INPUT_KEYS = ("folder", "format", "first_day", "min_days", "template", "template_variant", "heading",
                "place", "own_sections", "daily_sections", "skip_sections", "task_notes",
-               "max_chars_per_day", "language")
+               "max_chars_per_day", "language", "sections", "off_limits")
 
 
 def writer_input(confirmed: dict, kind: str) -> dict:
@@ -248,7 +289,7 @@ def writer_input(confirmed: dict, kind: str) -> dict:
     for key in _INPUT_KEYS:
         if key in confirmed:
             data[key] = confirmed[key]
-    if kind == MONTH:
+    if kind != WEEK:
         for key in ("first_day", "min_days"):
             if data.get(key) is None:
                 data.pop(key, None)
@@ -273,13 +314,19 @@ def setup_input(args: argparse.Namespace) -> dict:
     if data["kind"] != kind:
         return {"status": "invalid", "kind": kind, "errors": ["/kind"],
                 "problems": [{"pointer": "/kind", "kind": "kind-mismatch"}]}
+    config = load_config(args.config)
+    data = rsr.with_ids(data, rsr.previous_rows(config, kind, data.get("template")))
     problems = rc.input_problems(data, today=args.today)
+    if not problems:
+        evidence = rsr.read_evidence(rows_path(args.tmp, kind))
+        problems = rsr.problems(data, evidence, rsr.saved_off_limits(config, kind, data.get("template")))
     if problems:
         return {"status": "invalid", "kind": kind, "errors": [p.pointer for p in problems],
                 "problems": [p.to_dict() for p in problems]}
-    output = Path(args.output or f"tomo-tmp/review/setup-{kind}.json")
+    output = Path(args.output or f"{args.tmp}/setup-{kind}.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(output, json.dumps(data, ensure_ascii=True, indent=2) + "\n")
+    _remove_rows_file(args.tmp, kind)
     return {"status": "ok", "kind": kind, "input_path": str(output)}
 
 
@@ -340,12 +387,14 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--template-frontmatter-ok", type=_typed(template_choice),
                    help="The template the user agreed to use without a frontmatter block (the --template syntax); "
                         "needs_template_ok is then not set for it")
+    m.add_argument("--tmp", default=DEFAULT_TMP, help=argparse.SUPPRESS)   # where rows-<kind>.json lives
     m.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
 
     s = sub.add_parser("setup-input", help="Build the vault-config-writer review input from a confirmed proposal")
     s.add_argument("--kind", required=True, choices=KINDS)
     s.add_argument("--confirmed", required=True, help="JSON file with the confirmed proposal")
     s.add_argument("--output", help="Where to write the writer input (default: tomo-tmp/review/setup-<kind>.json)")
+    s.add_argument("--tmp", default=DEFAULT_TMP, help=argparse.SUPPRESS)   # where rows-<kind>.json lives
     s.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
     return p
 

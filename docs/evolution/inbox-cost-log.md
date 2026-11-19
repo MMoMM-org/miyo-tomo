@@ -751,3 +751,25 @@ Run ids, evidence lines and the KPI verdicts: `docs/XDD/specs/045-weekly-monthly
 
 Total $7.51 over 19 runs. Weekly Pass 1 and monthly Pass 1 are inside their KPIs; Pass 2 ($0.322, $0.663) is not
 inside the original KPI of $0.20; KPI raised to $0.75 by the owner on 2026-11-13 (README Decisions Log): $0.322 and $0.663 PASS; FAIL under the original $0.20. Items kept / unticked / deleted: W13 33 / 0 / 0 (habits 12), month 46 / 1 / 0.
+
+## Spec 046 — T6.3 joint walk (`/review` sections, week / month / quarter)
+
+**Date**: 2026-11-17 and 2026-11-18 · **Branch**: `docs/263-review-template-sections` · **Model**: Sonnet 5.5 (`claude-sonnet-5-5`); subagents only in `ac4c1d09` (4 × `general-purpose`, started by the model for the quarter read) · Sessions `19dd9084`, `42c0baa6`, `e0aa1fc5`, `97854f11`, `efc53872`, `88e4b1d2`, `ac4c1d09`, `07ac4fe2`
+
+Cost is counted once per API message id at $3 / $15 / $3.75 / $0.30 per M tokens, as `tomo-session-stats.py` 0.1.1 does (#262).
+A pass is the span from one typed `/review` to the next; active time is the model's and the scripts' time without the owner's answers.
+Per-pass table, method and KPI verdicts: `docs/XDD/specs/046-review-template-sections/close-out.md` §5.
+
+| pass | what | cost | active | peak context |
+|---|---|---|---|---|
+| setup | week + month + quarter, mapping, off-limits, analysis row (21 prompts) | $1.718 | 180 s | 108,969 |
+| Pass 1 week W13 | cold / warm / cold re-run | $0.749 / $0.236 / $0.686 | 77 / 22 / 73 s | 141,035 / 144,331 / 122,764 |
+| Pass 1 month 2026-03 | cold / warm re-run | $1.035 / $1.392 | 149 / 209 s | 154,901 / 243,332 |
+| Pass 1 quarter 2026-Q1 | resumed / cold + 4 subagents / cold / compacted re-run | $1.412 / $4.256 / $1.463 / $1.305 | 246 / 372 / 269 / 124 s | 159,555 / 192,262 / 182,498 / 119,588 |
+| Pass 2 week W13 | first / re-run | $0.814 / $0.463 | 57 / 29 s | 127,617 / 146,239 |
+| Pass 2 month | first (+ a W13 preview) / re-run | $0.464 / $0.799 | 36 / 41 s | 77,949 / 272,144 |
+| Pass 2 quarter | stopped at `doc_mark`, hand-written mark / first / re-run | $3.328 / $0.654 / $0.478 | 154 / 39 / 33 s | 285,810 / 211,405 / 146,229 |
+
+Total $22.75 (main $19.92, subagents $2.83) over 21 `/review` spans. The quarter read files exceed the Read limit (#270): the round-3
+Pass 1 runs (11:16, 14:52) fell back to partial `grep` reads, and the 08:30 run handed the read to 4 subagents it started itself.
+So the quarter costs are not the cost of a full read.

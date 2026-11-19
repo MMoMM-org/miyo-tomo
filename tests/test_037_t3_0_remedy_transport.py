@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """test_037_t3_0_remedy_transport.py — spec 037 T3.0.
 
 Before this file, `parse_attachment_conflict_remedies` (T2.4) had ZERO
@@ -297,8 +297,9 @@ _IR_CFG = {
 # Captured against the UNMODIFIED (pre-T3.0) instruction-render.py, same
 # fixture, real (unmocked) build_actions — `generated` and `md_peer` are
 # stamped from the live clock/date and are stripped before comparison.
+# `schema_version` tracks the instruction wire (spec 046 T6.1: "3" -> "4").
 _PRE_T3_0_INSTRUCTIONS = {
-    "schema_version": "3",
+    "schema_version": "4",
     "type": "tomo-instructions",
     "source_suggestions": "suggestions.json",
     "profile": "miyo",

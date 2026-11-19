@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.3.1
-"""test_review_sdd_map.py — spec 045 Phase 5: the SDD's Directory Map lists every /review file that exists.
+# version: 0.4.0
+"""test_review_sdd_map.py — spec 045 Phase 5: the SDDs' Directory Maps list every /review file that exists.
 
 The Directory Map of docs/XDD/specs/045-weekly-monthly-review/solution.md is
 the as-built inventory of the spec. This test is glob-driven: it lists the
@@ -9,6 +9,9 @@ libs, the command, the skill and their WHY documents) and asserts each one is
 named in the map block of its component — so a file added by a later phase or
 by a test split fails the test until the map names it, and a file the map
 names but the tree lacks is not reported (Phase 6 files are listed ahead).
+Spec 046 (T1.2) adds files to the same components, so a file passes when the
+map block of its component in spec 045's OR spec 046's Directory Map names it
+(spec 046 lists only its new and changed files, per component block).
 
 Also pinned, as drift found at the Phase 5 checkpoint (round D):
 - the map lines of the three runtime documents of Phase 5 carry an implemented marker (D3);
@@ -33,6 +36,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SDD = ROOT / "docs" / "XDD" / "specs" / "045-weekly-monthly-review" / "solution.md"
+SDD_046 = ROOT / "docs" / "XDD" / "specs" / "046-review-template-sections" / "solution.md"
 
 GLOBS: dict[str, list[str]] = {
     # component block (first line of the fenced tree) -> globs relative to ROOT
@@ -67,9 +71,9 @@ def _section(text: str, heading_pattern: str) -> str:
     return rest[: nxt.start()] if nxt else rest
 
 
-def _map_blocks() -> dict[str, str]:
+def _map_blocks(sdd: Path = SDD) -> dict[str, str]:
     """The fenced tree blocks of the Directory Map, keyed by their first line (the component root)."""
-    blocks = re.findall(r"^```\n(.*?)\n```", _section(_sdd(), "Directory Map"), re.M | re.S)
+    blocks = re.findall(r"^```\n(.*?)\n```", _section(sdd.read_text(encoding="utf-8"), "Directory Map"), re.M | re.S)
     keyed = {b.split("\n", 1)[0].strip(): b for b in blocks}
     assert set(GLOBS) <= set(keyed), f"Directory Map blocks found: {sorted(keyed)}"
     return keyed
@@ -103,8 +107,9 @@ def test_the_glob_lists_the_review_files_that_exist() -> None:
 
 @pytest.mark.parametrize("block,path", _EXISTING, ids=[str(p) for _, p in _EXISTING])
 def test_directory_map_names_every_existing_review_file(block: str, path: Path) -> None:
-    assert _named_in(_map_blocks()[block], *_names(path)), (
-        f"{path} is not in the Directory Map of {SDD.relative_to(ROOT)}: add a line naming "
+    maps = (_map_blocks(SDD), _map_blocks(SDD_046))
+    assert any(_named_in(m[block], *_names(path)) for m in maps), (
+        f"{path} is not in the Directory Map of {SDD.relative_to(ROOT)} or {SDD_046.relative_to(ROOT)}: add a line naming "
         f"{' and '.join(f'`{n}`' for n in _names(path))} (with a one-line role and `# NEW (implemented, spec 045 ...)`) "
         f"to the fenced tree block that starts with `{block}`, under the folder it lives in"
     )

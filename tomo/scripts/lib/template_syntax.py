@@ -1,4 +1,4 @@
-# version: 0.1.4
+# version: 0.2.0
 """template_syntax.py — the one reading of a note template and a filled note.
 
 /note lists a template's points and later checks the filled note before it is
@@ -11,6 +11,8 @@ no IO. See docs/tomo/scripts/lib/template_syntax.md for the WHY.
 Lines are 1-based. A token is ``{{name}}`` matching TOKEN_RE outside fenced code,
 outside a Templater span and without a leading backslash. A Templater span is
 ``<% ... %>`` in any variant (``<%*``, ``<%-``) and is listed, never a point.
+templater_inner_line_indexes() is the block mask headings() and
+lib/review_mapping.py share.
 
 resolve_tokens() replaces the named tokens tokens() reports, in place;
 resolve_prefilled() uses it for every prefilled token except DEFERRED_TOKENS.
@@ -262,7 +264,7 @@ def templater_spans(text: str) -> list[dict]:
     ]
 
 
-def _templater_inner_line_indexes(text: str) -> set[int]:
+def templater_inner_line_indexes(text: str) -> set[int]:
     """0-based indexes of lines that begin inside a multi-line Templater span."""
     inner: set[int] = set()
     for span in templater_spans(text):
@@ -279,7 +281,7 @@ def _templater_inner_line_indexes(text: str) -> set[int]:
 def headings(text: str) -> list[dict]:
     """List ATX headings as {level, text, line, has_body} outside frontmatter and code."""
     lines = _split(text)
-    skipped = _fence_line_indexes(lines) | _templater_inner_line_indexes(text)
+    skipped = _fence_line_indexes(lines) | templater_inner_line_indexes(text)
     block = leading_block(text)
     if block.status == "ok":
         skipped.update(range(block.end_line))

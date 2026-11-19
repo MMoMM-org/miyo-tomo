@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_e2e_failures.py — the month and the failure paths of /review end to end on the fake vault
 (spec 045 T6.1; PRD Secondary User Journeys 3, 4, 5, 7; PRD Edge Cases; F5-AC10; KPI Quality; SDD Runtime View,
 Error Handling; SDD 1.11 step 3b).
@@ -52,7 +52,7 @@ def ready(tmp_path, monkeypatch, capsys, request):
 
 def _approved_month(walk: Walk) -> None:
     """Journey 4 up to the Deliver question: the month read with its weekly notes, written, approved."""
-    assert walk.start("month")["setup"] == {"week": "present", "month": "present"}
+    assert walk.start("month")["setup"] == {"week": "present", "month": "present", "quarter": "missing"}
     read = walk.read(MONTH_PERIOD, MONTH)
     assert read["status"] == "ok" and read["report"]["weekly_status"] == "found", read
     assert [w["week"] for w in read["report"]["weekly_notes"]] == ["2026-W09", "2026-W10", "2026-W11", "2026-W12",

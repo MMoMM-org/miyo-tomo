@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.6.2
+# version: 0.7.0
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -19,7 +19,8 @@ rewrites the set — and returns the parsed object with the file's
 ``modified`` (``SetRead``); ``any_applied`` says whether Hashi marked any of
 its actions ``applied``, ``all_applied`` whether it marked every one (at
 least one action; the predicate ``review_delivery.ReviewMeta.second_set``
-takes, so a rerun may write over the finished set of an earlier run);
+takes, so a rerun may write over the finished set of an earlier run),
+``partly_applied`` whether it marked some but not all (spec 046 ADR-12);
 ``without_applied`` is the set with the ``applied`` flags stripped, for
 comparing a landed set with a rebuilt one; ``is_emptied_set`` whether it is
 the set ``drop`` writes (an empty ``actions`` list), the one predicate
@@ -36,8 +37,10 @@ approved document without a set whose record carries ``doc_mark`` → not listed
 whose set the user deleted after applying); 3 a begun delivery (``review_delivery.ReviewMeta.started()``)
 without ``doc_mark``, or an approved document without a set → ``failed-delivery``; 4 no set →
 ``open``; 5 a set that is not a readable instruction set → ``delivered``; 6 every action ``applied``
-→ ``applied``; 7 an unapplied ``move_note`` whose source and destination both exist →
-``move-refused``; 8 an unapplied insert or replace whose target is gone → ``target-missing``; 9
+→ ``applied``; 6a some actions applied, not all (a partly applied set: one section failed at Hashi) →
+``open``, so a new delivery can write over it; 7 an unapplied ``move_note`` whose source and destination
+both exist → ``move-refused``; 8 an unapplied section action (``SECTION_ACTIONS``) whose target is gone →
+``target-missing``; 9
 otherwise ``delivered`` (an unreadable set among them). ``open_reviews``
 drops an ``applied`` review whose meta carries ``applied_reported`` (the
 caller that reported it writes the flag), lists a document whose stem fails
@@ -64,7 +67,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from lib import review_delivery as rdl
 from lib.kado_client import KadoNotFoundError
 from lib.note_meta import META_FILE
-from lib.period import DEFAULT_FORMATS, ISO, KINDS, MONTH, WEEK, WeekRule, parse_name
+from lib.period import DEFAULT_FORMATS, ISO, KINDS, MONTH, QUARTER, WEEK, WeekRule, parse_name
 from lib.review_vault import Vault, kado_stops
 
 OPEN = "open"
@@ -80,7 +83,7 @@ STEM_SUFFIX = "_review"
 APPLIED_REPORTED = "applied_reported"
 STEM_UNSAFE = "stem-unsafe"
 MOVE_NOTE = "move_note"
-SECTION_ACTIONS = ("insert_under_marker", "replace_section")
+SECTION_ACTIONS = ("insert_under_marker", "replace_section", "replace_between_markers")
 _UNSAFE_MARKS = ("/", "\\", "..")
 _NOT_A_FOLDER = ("", ".")
 
@@ -129,6 +132,11 @@ def all_applied(set_json: Optional[dict]) -> bool:
     """Whether a readable set holds at least one action and every one carries ``applied: true``."""
     actions = _actions(set_json)
     return bool(actions) and all(_applied(a) for a in actions)
+
+
+def partly_applied(set_json: Optional[dict]) -> bool:
+    """Whether a readable set carries ``applied: true`` on some actions but not on all."""
+    return any_applied(set_json) and not all_applied(set_json)
 
 
 def without_applied(set_json: Optional[dict]) -> Optional[dict]:
@@ -197,6 +205,9 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
     # step 6
     if all(_applied(a) for a in actions):
         return APPLIED
+    # step 6a: a partly applied set (spec 046 ADR-12) — a new delivery writes over it, so it is never stuck
+    if partly_applied(set_json):
+        return OPEN
     waiting = [a for a in actions if not _applied(a)]
     # step 7: what a refused move leaves behind — the copy still in the inbox beside the target
     if any(a.get("action") == MOVE_NOTE for a in waiting) and target_exists is True and inbox_copy_exists is True:
@@ -320,12 +331,13 @@ def _period_start(period: str, kind: str, rule: WeekRule, formats: Dict[str, str
 
 
 def _infer_kind(period: str, rule: WeekRule, formats: Dict[str, str]) -> str:
-    """The first kind (week before month) whose format parses the name; a name no
-    format parses keeps the letter guess so the listing still shows a kind."""
+    """The first kind (week, month, quarter) whose format parses the name; a name no
+    format parses keeps the letter guess (W week, Q quarter, else month) so the listing still shows a kind."""
     for kind in KINDS:
         if _period_start(period, kind, rule, formats) != date.max:
             return kind
-    return WEEK if "W" in period.upper() else MONTH
+    upper = period.upper()
+    return WEEK if "W" in upper else QUARTER if "Q" in upper else MONTH
 
 
 def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, vault: Vault, inbox: str, *,

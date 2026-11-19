@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.3.0
 """review_deliver_helpers.py — the shared fixtures, constants and helpers of the review-instructions delivery tests.
 
 Moved out of test_review_deliver.py (#260) so test_review_deliver.py, test_review_deliver_report.py,
@@ -7,6 +7,9 @@ test_review_deliver_resume.py, test_review_deliver_rerun.py and review_e2e_walk.
 instead of from a test module. Holds the guarded fake vault (Kado's write guard as production refuses it), the
 ``ins``/``doc_mod``/``instance`` fixtures, the synthetic week and the helpers that run Pass 1 and the CLI against
 the fake. Importing it puts tomo/scripts and tests/ on ``sys.path``. All data is synthetic.
+
+``schema_errors`` validates a set against one committed schema: since spec 046 T6.1 (wire v4) both of Tomo's
+instruction schemas define ``replace_between_markers``, so no test-only schema exists any more.
 """
 from __future__ import annotations
 
@@ -177,7 +180,9 @@ def meta_of(instance) -> dict:
 
 
 def schema_errors(doc: dict, path: Path) -> list[str]:
-    validator = jsonschema.Draft202012Validator(json.loads(path.read_text(encoding="utf-8")))
+    """Errors of ``doc`` against the committed schema at ``path``."""
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
     return [e.message for e in validator.iter_errors(doc)]
 
 

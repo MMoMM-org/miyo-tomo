@@ -32,7 +32,7 @@
       ],
       "values": {
         "schema_version": [
-          "3"
+          "4"
         ],
         "type": [
           "tomo-instructions"
@@ -364,6 +364,44 @@
         ]
       }
     },
+    "/$defs/replace_between_markers": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "content": "string",
+        "end_marker": "string",
+        "id": "string",
+        "scope": "object",
+        "start_marker": "string",
+        "target_path": "string"
+      },
+      "required": [
+        "action",
+        "content",
+        "end_marker",
+        "id",
+        "start_marker",
+        "target_path"
+      ],
+      "values": {
+        "action": [
+          "replace_between_markers"
+        ]
+      }
+    },
+    "/$defs/replace_between_markers/properties/scope": {
+      "closed": true,
+      "properties": {
+        "heading": "string",
+        "level": "integer"
+      },
+      "required": [
+        "heading",
+        "level"
+      ],
+      "values": {}
+    },
     "/$defs/replace_section": {
       "closed": true,
       "properties": {
@@ -612,6 +650,6 @@
       "values": {}
     }
   },
-  "schema_version": "3",
+  "schema_version": "4",
   "source": "tomo/schemas/instructions.schema.json"
 }

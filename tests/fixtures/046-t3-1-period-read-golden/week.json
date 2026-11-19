@@ -1,0 +1,310 @@
+{
+  "days": [
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-23.md"
+      ],
+      "date": "2026-03-23",
+      "fields": {
+        "Mood": "4",
+        "Sleep": "6"
+      },
+      "has_content": true,
+      "linked": [],
+      "links": [
+        "Alpha"
+      ],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "Monday log [[Alpha]]"
+      },
+      "tasks": []
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026/2026-03-24.md"
+      ],
+      "date": "2026-03-24",
+      "fields": {},
+      "has_content": true,
+      "linked": [],
+      "links": [
+        "Beta"
+      ],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "Tuesday log [[Beta]]"
+      },
+      "tasks": [
+        {
+          "done": true,
+          "done_date": "2026-03-24",
+          "source": "Efforts/500 OnGoing/Next Todos.md",
+          "text": "done in week"
+        }
+      ]
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-25.md"
+      ],
+      "date": "2026-03-25",
+      "fields": {
+        "linked": "DP-2026-03-25"
+      },
+      "has_content": true,
+      "linked": [
+        {
+          "kind": "other",
+          "path": "DP-2026-03-25",
+          "text": "# Plan\n- planned\n",
+          "vault_path": "Efforts/300 Planner/DP-2026-03-25.md"
+        }
+      ],
+      "links": [
+        "DP-2026-03-25"
+      ],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "Wednesday log"
+      },
+      "tasks": []
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-26.md"
+      ],
+      "date": "2026-03-26",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": ""
+      },
+      "tasks": []
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-27.md"
+      ],
+      "date": "2026-03-27",
+      "fields": {
+        "linked": "DP-2026-03-25"
+      },
+      "has_content": true,
+      "linked": [
+        {
+          "kind": "other",
+          "path": "DP-2026-03-25",
+          "text": "# Plan\n- planned\n",
+          "vault_path": "Efforts/300 Planner/DP-2026-03-25.md"
+        }
+      ],
+      "links": [
+        "Gamma",
+        "DP-2026-03-25"
+      ],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "Friday log [[Gamma]]"
+      },
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-28",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-29.md"
+      ],
+      "date": "2026-03-29",
+      "fields": {
+        "Mood": "5",
+        "Sleep": "8"
+      },
+      "has_content": true,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "Sunday log"
+      },
+      "tasks": []
+    }
+  ],
+  "growth": {
+    "created": [
+      {
+        "links": [],
+        "path": "Notes/Edge.md"
+      },
+      {
+        "links": [
+          "Topic MOC",
+          "Alpha"
+        ],
+        "path": "Notes/New One.md"
+      },
+      {
+        "links": [
+          "Other MOC"
+        ],
+        "path": "Notes/New Two.md"
+      }
+    ],
+    "mocs_changed": [
+      "100 MOCs/Other MOC.md",
+      "100 MOCs/Quiet MOC.md"
+    ],
+    "mocs_linked_by_new": [
+      "100 MOCs/Other MOC.md",
+      "100 MOCs/Topic MOC.md"
+    ]
+  },
+  "not_read": [],
+  "open_tasks": [
+    {
+      "done": false,
+      "done_date": null,
+      "label": "open today",
+      "source": "Efforts/500 OnGoing/Next Todos.md",
+      "text": "still open"
+    }
+  ],
+  "period": {
+    "end": "2026-03-29",
+    "kind": "week",
+    "name": "2026-W13",
+    "start": "2026-03-23"
+  },
+  "report": {
+    "advice": [],
+    "day_after": {
+      "dailies": [
+        {
+          "path": "Calendar/301 Daily/2026-03-30.md",
+          "state": "read"
+        }
+      ],
+      "date": "2026-03-30"
+    },
+    "days": [
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-23.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-23",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026/2026-03-24.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-24",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-25.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-25",
+        "duplicate": false,
+        "linked": [
+          {
+            "name": "DP-2026-03-25",
+            "path": "Efforts/300 Planner/DP-2026-03-25.md",
+            "state": "read"
+          }
+        ]
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-26.md",
+            "state": "empty"
+          }
+        ],
+        "date": "2026-03-26",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-27.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-27",
+        "duplicate": false,
+        "linked": [
+          {
+            "name": "DP-2026-03-25",
+            "path": "Efforts/300 Planner/DP-2026-03-25.md",
+            "state": "read"
+          }
+        ]
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-28",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-29.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-29",
+        "duplicate": false,
+        "linked": []
+      }
+    ],
+    "growth": {
+      "created": 3,
+      "kado_none": [],
+      "moc_folders": 1,
+      "mocs_changed": 2,
+      "mocs_linked_by_new": 2
+    },
+    "kado_empty": [],
+    "not_read": [],
+    "task_notes": [
+      {
+        "path": "Efforts/500 OnGoing/Next Todos.md",
+        "state": "read"
+      }
+    ]
+  }
+}

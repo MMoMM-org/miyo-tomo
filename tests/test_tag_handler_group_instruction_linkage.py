@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_tag_handler_group_instruction_linkage.py — T4.1 (spec 024 Phase 4).
 
 Covers the approval→render linkage that turns an APPROVED tag-handler group
@@ -115,7 +115,7 @@ def _group(
 def _wrap_instructions(actions: list[dict]) -> dict:
     """Wrap actions in a minimal valid tomo-instructions doc for schema validation."""
     return {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "generated": "2026-06-23T12:00:00Z",
         "profile": "miyo",

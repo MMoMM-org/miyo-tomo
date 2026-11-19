@@ -39,7 +39,9 @@ shown, delivery proceeds. The plan's boolean flags join the notices as names
 so the skill reads one list. A name the classification does not know is
 treated as refusing: a new problem added to the builder stops a delivery
 until someone decides it may proceed, never the other way round. A test
-pins every name to its side.
+pins every name to its side. Spec 046 T5.5 adds the section stops, the
+choice refusals and the section notices to both tuples; see "WHY Every
+Section Stop Refuses Until a Choice Answers It" below.
 
 ## WHY the Second Set Is Refused Before Anything Is Built
 
@@ -86,9 +88,11 @@ set JSON step compares the set at the path, its `applied` flags stripped,
 with the rebuilt payload: Tomo's own landed set is recorded done, never
 rewritten (a rewrite would clear a flag Hashi may have set meanwhile).
 
-A set with no action applied, or with some, stays `set-exists`: the
-listing shows the stem as `delivered`, the skill says the set waits for
-Hashi. A withdrawn set (`meta.withdrawn`) stays `set-exists` as before; it
+A set with no action applied stays `set-exists`: the listing shows the
+stem as `delivered`, the skill says the set waits for Hashi. A set with
+*some* actions applied — a multi-action set of spec 046 where Hashi failed
+one section — is written over too since spec 046 T5.5; see "WHY a Partly
+Applied Set Is Written Over (spec 046 ADR-12)" below. A withdrawn set (`meta.withdrawn`) stays `set-exists` as before; it
 is never fully applied (its `actions` list is empty, and `all_applied`
 needs at least one action). After the rerun's delivery the new set waits
 unapplied, so the stem reads `delivered`, then `applied` once Hashi applied
@@ -261,6 +265,69 @@ in `set-exists` anyway. The order inside `deliver` is therefore: closed
 delivery → its own problems; open delivery → `anchor-needed`, then
 `replan-differs`, then the re-plan's own problems.
 
+## WHY a Resume Uploads the Stored Payloads (spec 046 T6.3)
+
+Live walk 2026-11-18, owner decision. A quarter review in new-note mode
+stopped at `doc_mark` (`doc-changed`, `open-unsaved`: a plugin had stamped
+the open document). Two minutes later something in Obsidian moved a file
+onto the target path. The Resume rebuilt the plan against that vault and
+refused `place-missing` + `section-missing`, the rebuilt plan's own
+problems, although the only undone step was the mark, which needs no plan.
+With no way to retry, the model hand-wrote the mark through Kado and edited
+`meta.json`. The re-plan was the wrong input: what a resume must write is
+what the first attempt began, not what the vault would plan now.
+
+So the first attempt stores its payloads. When `deliver` persists
+`delivered_plan` it also writes `<stage>/payloads.json`, before the first
+step's in-flight mark: the vault path and the text of every uploaded step
+(`note` for new-note, `set_json`, `set_md`). A kill during the first upload
+still leaves them. A resume of an open delivery (begun, `doc_mark` undone,
+not withdrawn, no `set-withdrawn` and no `set-exists`) whose stage holds
+them reads the document fresh and builds the plan only for the output's
+shape. It does not refuse on the rebuilt plan's problems or on
+`resume_refusal`: `replan-differs`, `anchor-needed` and `choices-needed`
+are moot because nothing of the re-plan is written. It uploads each undone
+step's stored text through the same `StagedDelivery` rules: done steps
+skipped, a step in flight compared or uploaded, the `set_replaced`
+overwrite path kept and compared against the stored set. Then
+`_mark_document` runs as before, on the fresh read and guarded by its
+`modified`. The output is `resumed` with the recorded `delivered_plan` and
+no `problems`.
+
+The file is removed once the mark is recorded, once `drop` withdraws the
+delivery, and after a `name-taken` refusal on a delivery that never began.
+It holds the note's and the set's text, the same content the inbox
+receives. It is the one content-bearing file under `tomo-tmp/review/`
+besides `read.json` and `proposals.json`, so the privacy walk names it
+beside them. Keeping it only while a delivery is open keeps that exception
+as short as the need.
+
+A stage without the file (a delivery begun before this change), or with a
+file of another shape, keeps the #258 path above unchanged. That includes a
+new-note record whose stored paths lack the note.
+
+Review round (2026-11-18):
+
+- **Approval still counts.** The stored payloads are what the user
+  approved, so a stored-payload resume still refuses `not-approved`
+  (or `approved-line-missing`) when the Approved box was unticked since
+  the first attempt. An edit to the document's content alone is ignored:
+  it changes nothing the stored payloads say.
+- **No notices.** The rebuilt plan's notices are dropped from the output
+  as well, because they describe a plan this run never writes.
+- **Cleanup on the next run.** A kill between the mark's record (or
+  `drop`'s withdrawn record) and the cleanup would leave the file next to
+  a closed delivery that nothing resumes. So `deliver` and `status` both
+  remove it first whenever the record is finished or withdrawn.
+- **Cleanup never fails the run.** Removing the file ignores an
+  `OSError`. Housekeeping never turns a finished delivery into exit 1 or
+  costs it its `delivered` output; the next run tries again.
+
+The skill's step 8 now asks `1 Retry · 2 Drop · 3 Abort` on any `stopped`.
+Retry reruns `deliver` in place, which this change makes safe whatever the
+vault did meanwhile. One STRICT line forbids writing the document, the set,
+the note or the stage by hand, the deviation the live walk observed.
+
 ## WHY a Picked Anchor Is Recorded as a Flag and Asked Again (fix #258)
 
 The second half of #258. The listing's Resume (SKILL step 1,
@@ -302,6 +369,150 @@ One new step 8 line routes the pick back through step 7's rerun of
 dialogue exists. The `headings` field on a `deliver` output is user text,
 named in the privacy allowlist (tests/test_review_privacy.py
 `USER_TEXT_FIELDS`) with this reason.
+
+## WHY Every Section Stop Refuses Until a Choice Answers It (spec 046 T5.5, ADR-12)
+
+ADR-12: "every stop asks before writing". `lib/review_section_set.compose`
+(T5.4) composes only the sections that plan an `insert` or `replace`; a
+stopped section (`section-missing`, `section-ambiguous`, `section-broken`,
+`section-moved`, `block-in-review-section`, `landing-off-limits`) stays in
+`ReviewPlan.sections` with its mode and gets no action. Delivered as it is,
+the set would quietly leave that section out — the user ticked it and would
+find nothing in the note. So `lib/review_delivery.classify` adds the stop
+of every section whose block holds lines to the refusing problems: `preview`
+shows it, `deliver` writes nothing, and the whole delivery waits for the
+user's answer, not only the stopped section — a half-delivered review the
+user then has to complete by hand is the outcome the stop exists to avoid.
+A stop of a section that holds no lines (an unticked one, or one whose
+items were all unticked) refuses nothing: nothing of it would land, so
+there is nothing to ask about; its mode is still recorded (below).
+
+The answer comes back as flags on `preview` and `deliver` (ADR-12):
+`--section-choice <key>=skip|review` and `--confirm-moved <key>`, both
+collected into one `{key: choice}` by the flag parser. The planner
+(`review_section_plan.plan_section`) applies a choice only at the stop that
+offers it; at the CLI level a choice the plan did not take — a key no
+placed section has, a choice where the section has no stop, `review` on a
+stop that offers only `skip`, `--confirm-moved` for a section that is not
+moved — refuses `choice-invalid` and names the keys in `choices_invalid`.
+Ignoring it, as the planner does, would deliver something the user did not
+see: the skill passes a choice only for a stop the preview showed, so a
+choice without its stop means the note changed between preview and Deliver
+(the user fixed the heading meanwhile) or the skill misread the keys, and
+both deserve a fresh preview rather than a guess. A malformed value
+(`s4=maybe`, no `=`, an empty key), a key that is no section key and a key
+given twice (also across the two flags) are a bad invocation, exit 2: they
+are the skill's mistakes, not the vault's state.
+
+The key check is `lib/review_doc_parse.SECTION_KEY` (`^s[0-9]{1,3}$`), the
+one definition the document parser reads `pass1_sections` with, never a
+copy of the script's own (spec 046 T6.2). The flags once checked a looser
+`[A-Za-z0-9_-]+`: `x`, `S1` or `s1000` passed the parser and came back as
+`choice-invalid`, which tells the skill the note changed and to preview
+again — the wrong remedy for a key no configuration can hold. ASCII digits
+only: `\d` would also take the digits of other scripts, which `assign_ids`
+never writes.
+
+Each stop's output carries `sections` — per section with lines, mapping
+order: `key`, `mode`, `placement` (the row's configured `before`, `under`
+or `end`, whatever the mode), `notices`, `scope_level` for a scoped replace, and for
+a stop `stop` and the `choices` it offers (`block_at` for a moved block:
+the heading it sits under, note text like `headings`) — and `preview` adds
+each section's `lines`, the block as it lands (F4-AC6; item text, printed on
+purpose like `section_md`). Keys, never headings: the skill names a section
+by its key from the config rows (step 5), as it does for
+`section-checkbox-missing`, so no config or note heading text is in stdout
+except where a refusal needs the note's own (`block_at`, `headings`).
+
+The notices: `block-replaced` (a re-run replaces the section's earlier
+block; the skill's sentence that edits inside Tomo's block are replaced and
+text outside is kept, F5-AC4), `block-moved-confirmed`, `review-section-kept`
+(an earlier "Tomo Review" section a re-run leaves nothing for), and two from
+the parsed document's `section_counts`: `section-dropped` with `dropped:
+[{key, added}]` for every unticked section that held anything — Tomo's items
+or the user's (F3-AC4: the user's own items go with it, and the count says
+how many) — and `section-empty` with `empty: [key]` for a ticked section
+that receives nothing (F3-AC5). A section that started unticked because
+Pass 1 found nothing for it (F1-AC8) and holds nothing is neither: naming
+it "dropped" would report a loss that did not happen.
+
+`nothing-to-deliver` keeps its spec 045 name. The gate in `review_actions`
+already counts the kept sections and the "Tomo Review" part; what it cannot
+see is a plan that composes no action after the choices (every section with
+lines skipped, nothing for "Tomo Review", or a re-run that keeps an earlier
+"Tomo Review" and lands no section). `classify` refuses `nothing-to-deliver`
+for a plan with no refusing problem and no action, so an empty set is never
+written and never marks the document delivered.
+
+Kept section items never count as `unlanded-items`: `review_actions` hands
+`landed_groups` only the groups that are not configured section keys, so an
+item of a mapped section lands in its block, in "Tomo Review" (routed or
+`review`), or is left out by a choice the user made — never "under a heading
+the parser does not know". A key the parser files that the config no longer
+has is still unlanded, as before.
+
+### WHY the Record Holds Section Modes and Whether Choices Were Given
+
+`delivered_plan.sections` is `[{key, mode, placement, scope_level}]` per
+section whose block holds lines (`review_section_report.record`; Hashi's
+placement of an insert, None otherwise — a section without lines gets no
+action and no id, whatever its mode) and `choices_given` is a bool — keys and enums only, never
+a heading or an item (SDD Data Storage; the privacy test reads the record).
+`replan_differs` compares the list as a whole when the record holds one:
+with dense ids `I01…In` (ADR-12) a section that turned from `insert` to
+`skip` shifts every later id, so the set a resume writes would not be the
+set the first attempt began, and a byte-identical resume needs the same
+modes. A resume of a delivery begun with choices and run without any refuses
+`choices-needed` (like `anchor-needed`, and in the same place: the delivery
+still open, before `replan-differs`, also when only `doc_mark` is undone —
+the re-plan without the choices would refuse on its stops anyway, and one
+rule says why). The choices themselves are not recorded: the skill asks
+again from a fresh `preview`, and the section comparison catches a
+different answer as `replan-differs`.
+
+### WHY a Partly Applied Set Is Written Over (spec 046 ADR-12)
+
+A spec 046 set carries one action per section plus "Tomo Review". When
+Hashi fails one (a heading renamed meanwhile, an end marker deleted) the
+set holds some actions `applied: true` and some not, and
+`review_state` reads the stem `open` (step 6a). Under the spec 045 rule
+that set would be `set-exists` for every later delivery and `drop` would
+refuse it `already-applied` — the review stuck. So the set at the path is
+written over once *any* action in it is applied (`review_state.any_applied`
+instead of `all_applied` in `load_run`), through the same `_overwrite_step`
+and the same `modified` guard as a fully applied set: the vault holds the
+applied sections' effect, and a re-run plans from the note as it is now
+(their blocks become `replace`). A set with no action applied still waits
+for Hashi (`set-exists`). `drop` keeps refusing a set with any applied
+action (`already-applied`): withdrawing it would leave the applied sections
+in the note while the set claims nothing was done, and a partly applied set
+is not stuck without `drop` — a new delivery replaces it. Preview's
+`set_applied` keeps meaning "every action applied".
+
+### WHY a Resume Over an Earlier Set at the Path Is `name-taken`
+
+A delivery stopped with `set_json` in flight resumes by comparing the set
+at the path with the rebuilt payload (`staged_delivery`). When the set
+there is another one — an earlier `schema_version` "3" set uploaded before
+the release that bumps the wire to "4" (ADR-5), or any other content — the
+comparison differs and the loop stops `exists`, which `deliver` reports as
+`name-taken` with `exists_path`: nothing is overwritten, and the skill
+offers a fresh delivery (T5.6). No converter: the SDD leaves a waiting v3
+set to Hashi.
+
+### WHY the Set Is Read Before the Target Note (spec 046 T6.2)
+
+`load_run` reads the set JSON at the stem's path before the target note
+(and its template). Hashi may apply that set at any moment. Read the other
+way round, the note could be read just before Hashi lands the section and
+the set just after: the set then says "applied" (`any_applied`, so the run
+writes over it) while the plan was built against a note without the block,
+and plans a second `insert` — two blocks for one section. Set first, the
+window closes in both orders: a set read before the apply is not applied
+(`set-exists` refuses, or the resume runs as recorded), and a note read
+after a set read as applied already holds what that set landed, so the
+re-plan replaces the block. The document is read before both: Hashi never
+changes it. A test reads the order off the fake's call log.
 
 ## WHY `generated` and `run_id` Come From `meta.json`
 
@@ -360,7 +571,7 @@ edits" — could not tell the user the one thing that helped: save (Cmd+S) or
 close the note, then Resume. Kado offers no structured sub-code (its hint
 says "the file changed" for both), so the only source is the message text.
 
-`conflict_reason` (lib/review_delivery.py) reads it and answers a name: `open-unsaved` when the
+`conflict_reason` (lib/review_kado_conflict.py) reads it and answers a name: `open-unsaved` when the
 message carries Kado's editor phrase ("open in the editor with unsaved
 changes"), `changed-since-read` for the write guard's phrase ("updated in
 the background") and for the client's `KadoConcurrencyError` (the client
@@ -537,9 +748,9 @@ to the user on purpose (F5-AC2).
 
 ## Kado Calls
 
-`preview`: the document (1), the target candidates (1–2), a by-name search
-when neither exists (1), the template and its variant for a new note (0–2),
-the set read (1; its `actions` decide `set-withdrawn`). `deliver`: the same, then per uploaded step one probe and
+`preview`: the document (1), the set read (1; its `actions` decide
+`set-withdrawn`), the target candidates (1–2), a by-name search when
+neither exists (1), the template and its variant for a new note (0–2). `deliver`: the same, then per uploaded step one probe and
 one write, and the document mark (1). `drop` on a begun delivery: the set
 JSON (1), then the two writes. `status`: the frontmatter (1), the set
 JSON for an approved document (1), then for a waiting set one probe (insert
@@ -562,3 +773,77 @@ argparse wiring. The reason of a `doc-changed` stop is read from
 `DeliveryStop.reason` (declared in `lib/staged_delivery.py`, `None` unless the
 mark set it), so the stop's output no longer tests the status as well.
 Nothing the script prints changed; the delivery tests run unchanged.
+
+## WHY the Target Reads, the Flags and the Guard Reading Live in Libs (spec 046 T6.2)
+
+The script stood at 536 lines (cap 540), `lib/review_delivery.py` at 348
+(cap 350) and `lib/review_section_set.py` at 199 (cap 200), with Phase 6
+still to add code. Three seams of the script and its libs needed no `Run`
+and moved unchanged, each into a lib of its own: the Kado reads around the
+target note (`lib/review_target_read.py`: `note_text`, `locate`,
+`template`), the argparse pieces (`lib/review_instructions_args.py`: the
+`--stem` type and the `preview` / `deliver` flags with `ChoiceFlag`), and
+Kado's refused guard read off a `KadoError`
+(`lib/review_kado_conflict.py`, out of `review_delivery`). The section
+report and record moved from `review_section_set` to
+`lib/review_section_report.py`. `build_parser`, `load_run` and the
+subcommands stay here: the parser names the script's defaults, and the
+order of reads is the script's. One adaptation: `locate` answers None for
+a period the setup's naming does not parse, and the script raises
+`setup-invalid` with the same pointer, so no lib imports the script's
+`Refused`. Nothing the script prints changed; the delivery tests run
+unchanged, two source-reading pins follow the code to its new place.
+
+## WHY the Run, the Delivery Writes and a Trimmed Header Live Elsewhere (spec 046 T6.4)
+
+The script stood at 510 lines against the constitution's L2 guide (300 to
+500 lines of dense logic). Two seams carry no CLI knowledge and moved
+unchanged: the context of one call (`Run`, `Refused`, `NotFound`,
+`build_run`, the setup lookups) into `lib/review_instructions_run.py`, and
+the write side of `deliver` (the staged steps, the resume with stored
+payloads, the overwrite of an applied set, the guarded document mark) into
+`lib/review_instructions_deliver.py`. The script keeps `load_run`,
+`preview`, `deliver`, `drop`, `status`, the parser and `main` — 242 lines.
+
+Why `load_run` stays in the script: the document read and the Kado client
+are made here (`Vault(KadoClient)`, `read_document`), because the tests
+replace those two names on the script module. The lib's `build_run` takes
+the vault and the document read as arguments, so no lib constructs a client
+or imports the script. `drop` stays for the same reason and because the
+skill tests read its source order (set JSON write before the MD write before
+the `withdrawn` mark).
+
+Why the set is read before the target note, in `build_run`: Hashi applies a
+set at any time. A note read first and a set read after could pair a stale
+note with an applied set and plan a second insert; reading the set first
+makes the worst case a set that is newer than the note, which `deliver`
+treats as written-over (`set_replaced`) rather than as a second insert. The
+order was already fixed at T6.2 (`test_the_set_is_read_before_the_target_note`);
+T6.4 kept it through the split.
+
+Why the header docstring is shorter: it is the LLM-facing contract of the
+CLI, so it keeps every subcommand, argument, output key, rule and exit code,
+and only the narrative paragraph that described how `deliver` works inside
+moved here. What it said, in short: `preview` reads the approved document
+fresh through Kado and builds the plan against the target note as it is now;
+`deliver` writes the new note (new-note mode), the set JSON and the set MD
+through `lib/staged_delivery`, then marks the document with one write guarded
+by the `modified` the reader saw; `meta.json` records each step and the plan
+written (`delivered_plan`: mode, target, place, `anchor_picked` — never the
+heading), and the payloads are stored in `<stage>/payloads.json` before the
+first in-flight mark so a resume uploads exactly what the first attempt built
+(see "WHY a Resume Uploads the Stored Payloads"); a stage without it writes
+the rebuilt payloads and refuses `replan-differs` or `anchor-needed` where the
+record and the rebuilt plan differ; a set at the stem's path that this
+delivery did not write is `set-exists` while no action in it is applied, and
+is written over once any is (`set_replaced`); `drop` withdraws a begun
+delivery with an empty-`actions` set and an MD naming the files the delivery
+left, refuses when Hashi marked any action applied, and marks `meta.json`
+withdrawn last; `status` goes through `lib/review_state.stem_state`. The
+target reads are `lib/review_target_read`'s, the flags
+`lib/review_instructions_args`'s, Kado's refused guard is read by
+`lib/review_kado_conflict`.
+
+One test follows the code to its new place: `test_review_skill_pass2`
+collects the `Refused` tokens of the setup lookups from
+`lib/review_instructions_run.py`. Nothing the script prints changed.

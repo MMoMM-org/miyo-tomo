@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_vault_config_edit.py — Behavioural tests for lib.vault_config_edit (spec 045 T2.1).
 
 Covers the text-preserving nested-key editor behind `vault-config-writer.py review`:
@@ -14,6 +14,11 @@ Covers the text-preserving nested-key editor behind `vault-config-writer.py revi
 - a same-named key under another parent never touched; quoted keys found
 - a scalar where a mapping is expected refused; CRLF endings kept
 - every byte outside the edited lines identical (diff = insertions only)
+- spec 046 T1.1 (ADR-3): a list of mappings rendered as block items and read back
+  equal; a key with spaces, a colon, non-ASCII or a YAML-typed spelling quoted,
+  read back and found again; `[]` or null removes the key; a second template's
+  rows under the same parent byte-identical; a copy of the instance config shape
+  keeps every other line
 """
 from __future__ import annotations
 
@@ -279,3 +284,111 @@ def test_get_path():
     assert get_path(data, ("concepts", "calendar", "granularities", "daily", "path")) == (True, "Calendar/301 Daily/ ")
     assert get_path(data, ("concepts", "calendar", "granularities", "weekly", "path")) == (False, None)
     assert get_path(data, ("concepts", "inbox", "deeper")) == (False, None)
+
+
+# --- spec 046 T1.1: lists of mappings, quoted keys, removal on empty (ADR-3) ---------
+
+INSTANCE_SHAPE = Path(__file__).parent / "fixtures" / "vault-config-instance-shape.yaml"
+
+ROWS = [
+    {"id": "s1", "heading": "What Went Well This Week? %% fold %%", "level": 4,
+     "parent": "In my own words", "occurrence": 1,
+     "description": "What went well: finished tasks, \"good\" days", "keywords": ["erledigt", "geschafft"],
+     "groups": ["done", "themes"], "placement": "end", "cap": 8},
+    {"id": "s2", "heading": "Übersicht", "level": 2, "parent": None, "occurrence": 1,
+     "description": "", "keywords": [], "groups": [], "placement": "review", "cap": 3},
+]
+OFF_LIMITS = [{"heading": "Reflections", "level": 3, "parent": "Review of the Week", "occurrence": 1,
+               "with_subsections": True}]
+WEEK_KEY = "t_week_privat.md"
+ODD_KEY = "t_week privat: v2.md"
+
+
+def _sections(text: str) -> dict:
+    return yaml.safe_load(text)["review"]["weekly"]["sections"]
+
+
+def test_list_of_mappings_renders_block_style_and_reads_back_equal():
+    after = set_path(CONFIG, ("review", "weekly", "sections", WEEK_KEY), ROWS)
+    assert _sections(after) == {WEEK_KEY: ROWS}
+    assert (
+        'review:\n  weekly:\n    sections:\n      "t_week_privat.md":\n'
+        '        - id: "s1"\n          heading: "What Went Well This Week? %% fold %%"\n'
+        '          level: 4\n'
+    ) in after
+    assert '          keywords: ["erledigt", "geschafft"]\n' in after
+    assert '          parent: null\n' in after and '          keywords: []\n' in after
+    assert _ops(CONFIG, after) == {"equal", "insert"}
+
+
+def test_list_of_mappings_with_a_nested_mapping_member_reads_back():
+    rows = [{"id": "s1", "place": {"anchor": "A", "placement": "end"}}, {}]
+    after = set_path(CONFIG, ("review", "weekly", "rows"), rows)
+    assert yaml.safe_load(after)["review"]["weekly"]["rows"] == rows
+
+
+def test_list_of_scalars_stays_a_flow_list():
+    after = set_path(CONFIG, ("review", "weekly", "own_sections"), ["A", "B"])
+    assert '    own_sections: ["A", "B"]\n' in after
+
+
+@pytest.mark.parametrize("key", [ODD_KEY, "Übersicht", "on", "null", "1", 'say "hi"\\', "a#b"])
+def test_key_needing_quotes_is_quoted_and_reads_back(key):
+    after = set_path(CONFIG, ("review", "weekly", "sections", key), OFF_LIMITS)
+    assert _sections(after) == {key: OFF_LIMITS}
+    assert after.count("\n    sections:\n") == 1
+    again = set_path(after, ("review", "weekly", "sections", key), ROWS)
+    assert _sections(again) == {key: ROWS}, "the quoted key is found again, not inserted twice"
+    tail = again[again.index("\n    sections:\n"):].splitlines()
+    key_lines = [ln for ln in tail if ln.startswith("      ") and ln[6] != " "]
+    assert len(key_lines) == 1, key_lines
+
+
+def test_plain_identifier_keys_stay_unquoted():
+    after = set_path(CONFIG, ("review", "week", "min_days_in_first_week"), 4)
+    assert after.endswith("\nreview:\n  week:\n    min_days_in_first_week: 4\n")
+    assert '\nreview:\n  "t_week_privat.md": 1\n' in set_path(CONFIG, ("review", WEEK_KEY), 1)
+
+
+@pytest.mark.parametrize("empty", [None, []])
+def test_empty_list_or_null_removes_the_key(empty):
+    written = set_path(CONFIG, ("review", "weekly", "sections", WEEK_KEY), ROWS)
+    written = set_path(written, ("review", "weekly", "sections", "Übersicht"), OFF_LIMITS)
+    after = set_path(written, ("review", "weekly", "sections", WEEK_KEY), empty)
+    assert _sections(after) == {"Übersicht": OFF_LIMITS}
+    assert "s1" not in after
+    assert set_path(CONFIG, ("review", "weekly", "own_sections"), empty) == CONFIG
+    flat = set_path(CONFIG, ("templates", "note_include"), empty)
+    assert "note_include" not in flat and "t_*" not in flat
+
+
+def test_second_templates_rows_under_the_same_parent_stay_byte_identical():
+    written = set_path(CONFIG, ("review", "weekly", "sections", WEEK_KEY), ROWS)
+    written = set_path(written, ("review", "weekly", "sections", ODD_KEY), OFF_LIMITS)
+    other_block = written[written.index('      "t_week privat: v2.md":'):]
+    after = set_path(written, ("review", "weekly", "sections", WEEK_KEY), ROWS[:1])
+    assert after.endswith(other_block)
+    assert _sections(after) == {WEEK_KEY: ROWS[:1], ODD_KEY: OFF_LIMITS}
+    assert _ops(written, after) == {"equal", "delete"}
+
+
+def test_instance_config_copy_keeps_every_other_line():
+    original = INSTANCE_SHAPE.read_text(encoding="utf-8")
+    after = set_path(original, ("review", "weekly", "sections", WEEK_KEY), ROWS)
+    after = set_path(after, ("review", "weekly", "off_limits", WEEK_KEY), OFF_LIMITS)
+    after = set_path(after, ("review", "quarterly", "folder"), "Calendar/304 Quarterly")
+    assert _ops(original, after) == {"equal", "insert"}
+    assert after.startswith(original)
+    parsed = yaml.safe_load(after)
+    assert parsed["review"]["weekly"] == {"sections": {WEEK_KEY: ROWS}, "off_limits": {WEEK_KEY: OFF_LIMITS}}
+    assert {k: v for k, v in parsed.items() if k != "review"} == yaml.safe_load(original)
+    changed = set_path(after, ("review", "weekly", "sections", WEEK_KEY), ROWS[1:])
+    assert _ops(after, changed) <= {"equal", "delete", "replace"}
+    assert changed.startswith(original) and changed.endswith('    folder: "Calendar/304 Quarterly"\n')
+
+
+def test_crlf_list_of_mappings_keeps_crlf():
+    config = CONFIG.replace("\n", "\r\n")
+    after = set_path(config, ("review", "weekly", "sections", WEEK_KEY), ROWS)
+    assert "\n" not in after.replace("\r\n", "")
+    assert _sections(after) == {WEEK_KEY: ROWS}

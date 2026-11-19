@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.2.0
+# version: 0.6.4
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -13,49 +13,61 @@ finish), ``REPLAN_DIFFERS`` ``deliver``'s refusal of a resume whose re-plan
 contradicts the recorded ``delivered_plan`` while a set step is undone, and
 ``ANCHOR_NEEDED`` its refusal of a resume without ``--place-anchor`` of a
 delivery begun with one — all listed among ``REFUSING`` so one pin covers
-every name.
+every name. Spec 046 T5.5: the section stops, ``choice-invalid`` and
+``choices-needed`` refuse, the section notices are notices
+(``review_section_report.names``); a plan with no refusing problem and no action
+is ``nothing-to-deliver``; ``section_report`` gives the fields of those names.
 ``STEPS`` is the delivery
 order ``note → set_json → set_md → doc_mark``. ``ReviewMeta`` lends the
 ``meta.json`` dict the attributes ``staged_delivery`` records into
 (``steps_done`` shared, ``failed_step``, ``run_id``, ``generated``);
-``second_set(set_exists, set_applied)`` says whether a delivery now would
+``second_set(set_exists, any_applied)`` says whether a delivery now would
 be a second set — a complete or withdrawn delivery always, a set this
-delivery did not write unless every action in it is applied (a rerun
-writes over the finished set of an earlier run); ``save_meta`` persists
+delivery did not write unless any action in it is applied (a rerun
+writes over the finished or partly applied set of an earlier run); ``save_meta`` persists
 the dict atomically. ``set_json_path`` names the set
 JSON from the inbox folder and the stem alone (what ``review_state`` has
 without a setup); ``set_paths`` gives both set paths through
 ``ReviewSetup.inbox_path``; ``delivery_paths`` adds the new note's path when the plan
 creates it and ``public_paths`` keeps the three a delivery output reports; ``template_paths`` the template's and the
 variant's vault paths. ``set_md`` renders the readable
-peer through ``render_md`` with the stable tomo block; ``withdrawn_set`` and
-``withdrawn_md`` are what ``drop`` writes over a set Tomo already delivered:
-the envelope with an empty ``actions`` list and an MD that names the files
-to delete.
+peer through ``render_md`` with the stable tomo block, whose ``sources``
+(``peer_sources``) are the review document and, for a new note, its inbox
+copy — never ``plan.target``: Hashi's cleanup trashes every listed path;
+``withdrawn_set`` and ``withdrawn_md`` are what ``drop`` writes over a set Tomo
+already delivered: the envelope with an empty ``actions`` list and an MD that
+names the files to delete, with ``sources: []``.
 
-``tool_error_payload``, ``tool_error_code``, ``is_conflict`` and
-``conflict_reason`` read a ``KadoError`` the delivery caught (Kado's refused
-guard, by code and by message); ``plan_record``, ``replan_differs``,
+``plan_record``, ``replan_differs``,
 ``resume_refusal`` and ``report_delivered_plan`` are the ``delivered_plan``
 record of ``meta.json`` and what a resumed run does with it (#258). They take
 the plan, the meta and the problems they need, never the script's ``Run``.
+Reading a ``KadoError`` the delivery caught is ``review_kado_conflict``'s (T6.2).
+
+``delivery_open`` says whether a resume continues the delivery (begun, the mark undone, not withdrawn, no
+``set-withdrawn`` or ``set-exists``). ``save_payloads`` keeps the paths and texts of the uploaded steps the first
+attempt builds in ``<stage>/payloads.json``; ``read_payloads`` returns them, or None for a stage without them or
+with a file of another shape (a new-note record needs the note); ``remove_payloads`` deletes the file once nothing
+resumes, ignoring an ``OSError``; ``clear_closed_payloads`` removes it for a finished or withdrawn record (spec 046 T6.3).
 
 No Kado call, no clock. Design notes: docs/tomo/scripts/lib/review_delivery.md
 """
 from __future__ import annotations
 
 import json
+import posixpath
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from lib import review_actions as ra
 from lib import review_config as rc
+from lib import review_section_plan as rsp
+from lib import review_section_report as rsr
 from lib.doc_frontmatter import merge_tomo_block_into_markdown
-from lib.kado_client import KadoConcurrencyError, KadoError, KadoToolError
 from lib.note_io import atomic_write_text
 from lib.note_meta import META_FILE
 from lib.render_md import render_instructions_md
-from lib.review_doc_parse import APPROVED_MISSING
+from lib.review_doc_parse import APPROVED_MISSING, SECTION_CHECKBOX_MISSING
 from lib.staged_delivery import stable_block
 from lib.wire_version import wire_schema_version
 
@@ -66,33 +78,47 @@ SET_WITHDRAWN = "set-withdrawn"
 ALREADY_APPLIED = "already-applied"
 REPLAN_DIFFERS = "replan-differs"
 ANCHOR_NEEDED = "anchor-needed"
+CHOICES_NEEDED, CHOICE_INVALID = "choices-needed", rsr.CHOICE_INVALID
+SECTION_DROPPED, SECTION_EMPTY = rsr.SECTION_DROPPED, rsr.SECTION_EMPTY
 TEMPLATER_HINT, VARIANT_MISSING, TEMPLATE_UNMERGEABLE = "templater_hint", "variant_missing", "template_unmergeable"
-REFUSING = (ra.NOT_APPROVED, APPROVED_MISSING, ra.NOTHING_TO_DELIVER, ra.PLACE_MISSING, ra.PLACE_TOO_DEEP,
-            ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED, REPLAN_DIFFERS, ANCHOR_NEEDED)
-NOTICES = (ra.HEADING_RENAMED, ra.UNLANDED_ITEMS, VARIANT_MISSING, TEMPLATER_HINT, TEMPLATE_UNMERGEABLE)
+REFUSING = (ra.NOT_APPROVED, APPROVED_MISSING, SECTION_CHECKBOX_MISSING, ra.NOTHING_TO_DELIVER, ra.PLACE_MISSING,
+            ra.PLACE_TOO_DEEP, ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED, REPLAN_DIFFERS,
+            ANCHOR_NEEDED, *rsp.STOPS.values(), CHOICE_INVALID, CHOICES_NEEDED)
+NOTICES = (ra.HEADING_RENAMED, ra.UNLANDED_ITEMS, VARIANT_MISSING, TEMPLATER_HINT, TEMPLATE_UNMERGEABLE,
+           rsp.BLOCK_REPLACED, rsp.BLOCK_MOVED_CONFIRMED, rsp.REVIEW_SECTION_KEPT, SECTION_DROPPED, SECTION_EMPTY)
 INSTRUCTIONS_SUFFIX = "_instructions"
 DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes
 ANCHOR_PICKED = "anchor_picked"                         # delivered_plan: --place-anchor was given (never the heading)
-CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
-TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
-OPEN_UNSAVED, CHANGED_SINCE_READ, UNKNOWN_CONFLICT = "open-unsaved", "changed-since-read", "unknown"
-EDITOR_PHRASE = "open in the editor with unsaved changes"   # Kado's dirty-editor refusal (note-adapter conflictEditorError)
-GUARD_PHRASE = "updated in the background"                  # Kado's write guard (concurrency-guard)
+SECTIONS, CHOICES_GIVEN = "sections", "choices_given"   # delivered_plan: section keys + modes; choices were given
+PAYLOADS_FILE = "payloads.json"                         # stage: the first attempt's paths and payloads, while open
+UPLOADED = (NOTE, SET_JSON, SET_MD)                     # the steps that upload a payload
 
 
 # --- the classification --------------------------------------------------------------
 
-def classify(plan: ra.ReviewPlan, extra: Sequence[str] = ()) -> Tuple[List[str], List[str]]:
-    """``(refusing problems, notices)`` of ``plan`` plus ``extra`` names, in order; an unknown name refuses."""
+def classify(plan: ra.ReviewPlan, extra: Sequence[str] = (), counts: Optional[Dict[str, dict]] = None,
+             choices: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[str]]:
+    """``(refusing problems, notices)`` of ``plan`` plus ``extra`` names, in order, each once; an unknown name
+    refuses; the parsed document's section ``counts`` and the user's ``choices`` add theirs."""
     problems: List[str] = []
     notices: List[str] = []
-    for name in [*plan.problems, *extra]:
-        (notices if name in NOTICES else problems).append(name)
+    section_names = rsr.names(plan.sections, counts or {}, choices or {})
+    for name in [*plan.problems, *extra, *section_names, *plan.notices]:
+        listed = notices if name in NOTICES else problems
+        if name not in listed:
+            listed.append(name)
+    if not problems and not plan.actions:
+        problems.append(ra.NOTHING_TO_DELIVER)              # every section left out, nothing for "Tomo Review"
     for name, flag in ((TEMPLATER_HINT, plan.templater_hint), (VARIANT_MISSING, plan.variant_missing),
                        (TEMPLATE_UNMERGEABLE, plan.template_unmergeable)):
         if flag and name not in notices:
             notices.append(name)
     return problems, notices
+
+
+def section_report(plan: ra.ReviewPlan, counts: Dict[str, dict], choices: Dict[str, str], *, lines: bool) -> dict:
+    """The output fields of a mapped plan (``review_section_report.fields``)."""
+    return rsr.fields(plan.sections, counts, choices, lines=lines)
 
 
 # --- meta.json ------------------------------------------------------------------------
@@ -127,6 +153,11 @@ class ReviewMeta:
     def generated(self) -> str:
         return str(self.data.get("generated") or "")
 
+    @property
+    def doc_path(self) -> Optional[str]:
+        path = self.data.get("doc_path")
+        return path if isinstance(path, str) and path else None
+
     def started(self) -> bool:
         """Whether a delivery began: a step done or one in flight."""
         return bool(self.steps_done) or bool(self.failed_step)
@@ -138,13 +169,13 @@ class ReviewMeta:
     def withdrawn(self) -> bool:
         return self.data.get("withdrawn") is True
 
-    def second_set(self, set_exists: bool, set_applied: bool = False) -> bool:
+    def second_set(self, set_exists: bool, any_applied: bool = False) -> bool:
         """Whether a delivery now would be a second set: this one is complete or withdrawn, or a set
-        this delivery did not write sits at the path — unless every action in it is applied
-        (``set_applied``: the finished set of an earlier run, written over)."""
+        this delivery did not write sits at the path — unless any action in it is applied
+        (``any_applied``: the finished or partly applied set of an earlier run, written over)."""
         if DOC_MARK in self.steps_done or self.withdrawn():
             return True
-        return set_exists and not set_applied and not self.wrote_set()
+        return set_exists and not any_applied and not self.wrote_set()
 
 
 def save_meta(stage: Path, meta: ReviewMeta) -> None:
@@ -188,11 +219,30 @@ def template_paths(setup: rc.ReviewSetup) -> Tuple[Optional[str], Optional[str]]
 
 # --- the peers ------------------------------------------------------------------------
 
-def set_md(plan: ra.ReviewPlan, meta: ReviewMeta, profile: Optional[str]) -> str:
-    """The readable instructions of ``plan`` with the stable tomo block."""
+def in_inbox(path: str, inbox: str) -> bool:
+    """Whether ``path`` is a canonical vault path strictly inside the ``inbox`` folder: no backslash, parent hop,
+    ``.`` or empty segment, not absolute, not the folder itself, not a sibling that shares the folder's name as
+    a prefix. An inbox that is empty or leaves the vault admits nothing."""
+    base = posixpath.normpath(inbox.strip().strip("/") or ".")
+    if base in (".", "..") or base.startswith("../") or "\\" in base:
+        return False
+    return (path == posixpath.normpath(path) and "\\" not in path and not path.startswith("/")
+            and path.startswith(base + "/") and path != base + "/")
+
+
+def peer_sources(plan: ra.ReviewPlan, meta: ReviewMeta, inbox: str) -> List[Dict[str, str]]:
+    """What Hashi's cleanup may trash after a full apply: the review document, then the new note's inbox
+    copy; never the review target. A path outside ``inbox`` is dropped (never listed, never refused)."""
+    paths = [meta.doc_path, plan.note_path if plan.mode == ra.NEW_NOTE else None]
+    return [{"path": path} for path in paths if path and path != plan.target and in_inbox(path, inbox)]
+
+
+def set_md(plan: ra.ReviewPlan, meta: ReviewMeta, profile: Optional[str], inbox: str) -> str:
+    """The readable instructions of ``plan`` with the stable tomo block and its ``sources``."""
     md = render_instructions_md(plan.actions, {"generated": meta.generated, "profile": profile},
                                 {"templater_hint": plan.templater_hint})
-    return merge_tomo_block_into_markdown(md, stable_block("instructions", "pending-apply", meta))
+    block = stable_block("instructions", "pending-apply", meta, sources=peer_sources(plan, meta, inbox))
+    return merge_tomo_block_into_markdown(md, block)
 
 
 def withdrawn_set(stem: str, meta: ReviewMeta, profile: Optional[str]) -> dict:
@@ -210,81 +260,44 @@ def withdrawn_md(stem: str, meta: ReviewMeta, profile: Optional[str], files: Seq
              "Hashi applies nothing from it. Delete these files:", ""]
     lines += [f"- `{path}`" for path in files]
     text = md.rstrip("\n") + "\n\n" + "\n".join(lines) + "\n"
-    return merge_tomo_block_into_markdown(text, stable_block("instructions", "pending-apply", meta))
-
-
-# --- Kado's refused guard -------------------------------------------------------------
-
-def tool_error_payload(exc: KadoToolError) -> Optional[dict]:
-    """The MCP error payload after the client's prefix as a dict; None when it is not a JSON object."""
-    text = str(exc)
-    payload = text.split(TOOL_ERROR_PREFIX, 1)[1] if TOOL_ERROR_PREFIX in text else text
-    try:
-        data = json.loads(payload)
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def tool_error_code(exc: KadoToolError) -> Optional[str]:
-    """The ``code`` of the MCP error payload after the client's prefix; the exact ``"code":"CONFLICT"``
-    token when the payload is not JSON; None when neither names a code."""
-    data = tool_error_payload(exc)
-    if data is None:
-        return CONFLICT if f'"code":"{CONFLICT}"' in str(exc) else None
-    code = data.get("code")
-    return code if isinstance(code, str) else None
-
-
-def is_conflict(exc: KadoError) -> bool:
-    """Kado refused the guard: the client's concurrency error, or a tool error whose code is CONFLICT."""
-    return isinstance(exc, KadoConcurrencyError) or (
-        isinstance(exc, KadoToolError) and tool_error_code(exc) == CONFLICT)
-
-
-def conflict_reason(exc: KadoError) -> str:
-    """Why Kado refused the guard, as a name only: ``open-unsaved`` for the dirty-editor message,
-    ``changed-since-read`` for the write guard's message and for ``KadoConcurrencyError``, else ``unknown``."""
-    if isinstance(exc, KadoConcurrencyError):
-        return CHANGED_SINCE_READ
-    data = tool_error_payload(exc) if isinstance(exc, KadoToolError) else None
-    message = data.get("message") if data is not None else None
-    message = message if isinstance(message, str) else ""
-    if EDITOR_PHRASE in message:
-        return OPEN_UNSAVED
-    if GUARD_PHRASE in message:
-        return CHANGED_SINCE_READ
-    return UNKNOWN_CONFLICT
+    return merge_tomo_block_into_markdown(text, stable_block("instructions", "pending-apply", meta, sources=[]))
 
 
 # --- the delivered plan and the resume (#258) -----------------------------------------
 
-def plan_record(plan: ra.ReviewPlan, configured_anchor: Optional[str], anchor_picked: bool) -> dict:
+def plan_record(plan: ra.ReviewPlan, configured_anchor: Optional[str], anchor_picked: bool,
+                choices_given: bool = False) -> dict:
     """``mode``, ``target`` and ``place`` of the plan about to be written, for ``meta.json``: the anchor only
-    when it is the configured one (config text) — a heading of the note's own stays out of ``tomo-tmp``."""
+    when it is the configured one (config text) — a heading of the note's own stays out of ``tomo-tmp``; with
+    mapped sections also ``sections`` (keys and enums) and ``choices_given``."""
     place = dict(plan.place)
     if place.get("anchor") != configured_anchor:
         place["anchor"] = None
     record = {"mode": plan.mode, "target": plan.target, "place": place}
     if anchor_picked:
         record[ANCHOR_PICKED] = True
+    if plan.sections:
+        record[SECTIONS], record[CHOICES_GIVEN] = rsr.record(plan.sections), choices_given
     return record
 
 
 def replan_differs(plan: ra.ReviewPlan, record: dict) -> bool:
     """Whether ``plan`` built now would write something else than ``record`` says the delivery wrote: ``mode``,
-    ``target``, ``place.placement`` and ``place.level``, plus ``place.anchor`` when the record holds one."""
+    ``target``, ``place.placement`` and ``place.level``, plus ``place.anchor`` when the record holds one, and the
+    sections' keys and modes when it holds them."""
     place, recorded = plan.place, record.get("place")
     recorded = recorded if isinstance(recorded, dict) else {}
     keys = ["placement", "level"] + (["anchor"] if recorded.get("anchor") is not None else [])
     return (record.get("mode") != plan.mode or record.get("target") != plan.target
-            or any(recorded.get(key) != place.get(key) for key in keys))
+            or any(recorded.get(key) != place.get(key) for key in keys)
+            or (SECTIONS in record and record[SECTIONS] != rsr.record(plan.sections)))
 
 
-def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str], anchor_picked: bool) -> Optional[str]:
+def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str], anchor_picked: bool,
+                   choices_given: bool = False) -> Optional[str]:
     """Why a resumed run must not write: ``anchor-needed`` when the record says a heading was picked and none was
-    given now; ``replan-differs`` when a step of the recorded plan is undone and the plan built now differs from
-    the record. None without a record, with only ``doc_mark`` undone, or when the plans agree — and None for a
+    given now; ``choices-needed`` when it says choices were given and none are now; ``replan-differs`` when a
+    step of the recorded plan is undone and the plan built now differs from the record. None without a record, with only ``doc_mark`` undone, or when the plans agree — and None for a
     delivery nothing resumes (the mark done, withdrawn, or a drop that did not finish): it keeps its own refusal."""
     record = meta.data.get(DELIVERED_PLAN)
     closed = DOC_MARK in meta.steps_done or meta.withdrawn() or SET_WITHDRAWN in problems
@@ -292,10 +305,71 @@ def resume_refusal(meta: ReviewMeta, plan: ra.ReviewPlan, problems: Sequence[str
         return None
     if record.get(ANCHOR_PICKED) is True and not anchor_picked:
         return ANCHOR_NEEDED
+    if record.get(CHOICES_GIVEN) is True and not choices_given:
+        return CHOICES_NEEDED
     steps = ([NOTE] if record.get("mode") == ra.NEW_NOTE else []) + [SET_JSON, SET_MD]
     if all(step in meta.steps_done for step in steps):
         return None
     return REPLAN_DIFFERS if replan_differs(plan, record) else None
+
+
+def delivery_open(meta: ReviewMeta, problems: Sequence[str]) -> bool:
+    """Whether a resume continues this delivery: begun, the mark undone, not withdrawn, no emptied set and no set
+    of another delivery at the path."""
+    return (meta.started() and DOC_MARK not in meta.steps_done and not meta.withdrawn()
+            and SET_WITHDRAWN not in problems and SET_EXISTS not in problems)
+
+
+# --- the stored payloads (spec 046 T6.3) ----------------------------------------------
+
+def save_payloads(stage: Path, paths: Dict[str, str], payloads: Dict[str, str]) -> None:
+    """Persist the vault path and the text of every uploaded step the first attempt builds."""
+    data = {"paths": {step: paths[step] for step in UPLOADED if step in paths},
+            "payloads": {step: payloads[step] for step in UPLOADED if step in payloads}}
+    atomic_write_text(Path(stage) / PAYLOADS_FILE, json.dumps(data, ensure_ascii=True, indent=2) + "\n")
+
+
+def _stored_shape(data: object, new_note: bool) -> bool:
+    if not isinstance(data, dict) or not isinstance(data.get("paths"), dict) or not isinstance(data.get("payloads"), dict):
+        return False
+    paths, payloads = data["paths"], data["payloads"]
+    return (SET_JSON in paths and SET_MD in paths and (NOTE in paths or not new_note)
+            and set(paths) == set(payloads) and set(paths) <= set(UPLOADED)
+            and all(isinstance(v, str) and v for v in paths.values())
+            and all(isinstance(v, str) for v in payloads.values()))
+
+
+def read_payloads(stage: Path, meta: ReviewMeta) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
+    """``(paths, payloads)`` the first attempt stored; None when absent or not of that shape — a new-note record
+    needs the note — (a stage from before the store keeps the re-plan)."""
+    record = meta.data.get(DELIVERED_PLAN)
+    new_note = isinstance(record, dict) and record.get("mode") == ra.NEW_NOTE
+    try:
+        data = json.loads((Path(stage) / PAYLOADS_FILE).read_text(encoding="utf-8"))
+        if _stored_shape(data, new_note) and isinstance(json.loads(data["payloads"][SET_JSON]), dict):
+            return dict(data["paths"]), dict(data["payloads"])
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def remove_payloads(stage: Path) -> None:
+    """Remove the stored payloads: nothing resumes the delivery any more. A failure is ignored — housekeeping
+    never turns a finished run into an error; the next run's ``clear_closed_payloads`` tries again."""
+    try:
+        (Path(stage) / PAYLOADS_FILE).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def clear_closed_payloads(stage: Path, meta_data: Optional[dict]) -> None:
+    """Remove the stored payloads of a delivery nothing resumes: the mark recorded or the delivery withdrawn
+    (a kill between that record and the cleanup left them). Reads the raw ``meta.json`` dict, never changes it."""
+    if not isinstance(meta_data, dict):
+        return
+    steps = meta_data.get("steps_done")
+    if (isinstance(steps, list) and DOC_MARK in steps) or meta_data.get("withdrawn") is True:
+        remove_payloads(stage)
 
 
 def report_delivered_plan(meta: ReviewMeta, out: dict) -> dict:

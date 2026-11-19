@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_034_t6_4b_display_title_not_filename.py — `source_note_title` is a
 display field, not a filename.
 
@@ -274,7 +274,7 @@ def test_stripped_actions_validate_against_hashis_schema():
     _strip_internal_link_fields(actions)
     validate(
         instance={
-            "schema_version": "3", "type": "tomo-instructions",
+            "schema_version": "4", "type": "tomo-instructions",
             "generated": "2026-09-09T10:00:00Z", "profile": "miyo",
             "action_count": len(actions), "actions": actions,
         },

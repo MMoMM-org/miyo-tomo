@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_031_t6_1_end_to_end.py — spec 031 T6.1 end-to-end pipeline test.
 
 Drives the pipeline's PUBLIC entry points, not internal helpers
@@ -263,7 +263,7 @@ def _manifest_from_confirmed(confirmed: list[dict]) -> list[dict]:
 
 def _instructions_envelope(actions: list[dict]) -> dict:
     return {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "generated": "2026-09-06T12:00:00Z",
         "profile": "miyo",

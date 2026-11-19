@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> A note that moved before Hashi applied the set, a note with two frontmatter blocks, or a write refused because the note is "open with unsaved changes" usually comes from a template or a vault plugin. See [Vault Compatibility](vault-compatibility.md).
+
 ## Authentication
 
 ### Browser Auth Callback Fails (String Too Long)

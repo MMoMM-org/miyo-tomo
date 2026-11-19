@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.5
 """test_review_e2e.py — the 2-pass /review flow end to end on the fake vault, without an AI in the loop
 (spec 045 T6.1; PRD Secondary User Journeys 1, 2, 5, 6, 7; PRD Edge Cases; KPI Quality; F1-AC10; SDD Runtime View).
 
@@ -72,7 +72,7 @@ def test_week_from_first_start_through_hashi_apply(walk: Walk):
     assert out["status"] == "ok" and out["request"] == {
         "kind": WEEK, "period": WEEK_PERIOD, "year_inferred": False, "source": "arg",
         "start": "2026-03-23", "end": "2026-03-29"}, out
-    assert out["setup"] == {"week": "missing", "month": "missing"} and out["open_reviews"] == []
+    assert out["setup"] == {"week": "missing", "month": "missing", "quarter": "missing"} and out["open_reviews"] == []
     # 2. setup: match proposes from the vault, the user confirms, the writer saves it, start is rerun
     saved = walk.setup(WEEK)
     assert saved["status"] == "written" and "review.weekly.heading" in saved["keys"], saved
@@ -80,7 +80,7 @@ def test_week_from_first_start_through_hashi_apply(walk: Walk):
     assert config["review"]["weekly"]["place"] == {"anchor": "In my own words", "placement": "before"}
     assert config["naming"]["calendar_patterns"]["weekly"] == "GGGG-[W]WW"
     assert config_before != (walk.root / "config" / "vault-config.yaml").read_bytes()
-    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing"}
+    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing", "quarter": "missing"}
     assert not (walk.root / "tomo-tmp" / "review" / "confirmed-week.json").exists()
     # 4 + 5. read the period, propose, write the document to the inbox
     out = walk.pass1(WEEK_PERIOD, WEEK)
@@ -150,7 +150,7 @@ def test_setup_abort_saves_nothing_and_writes_nothing(walk: Walk):
     walk.setup(WEEK)
     saved = (walk.root / "config" / "vault-config.yaml").read_bytes()
     recorded_before = list(walk.vault.recorded)
-    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing"}
+    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing", "quarter": "missing"}
     first = walk.match(MONTH)
     assert first["status"] == "ok" and first["proposal"]["folder"] == "Calendar/303 Monthly/", first
     corrected = walk.match(MONTH, "--folder", "Calendar/Other/")          # the Correct branch: rerun with the value
@@ -158,9 +158,10 @@ def test_setup_abort_saves_nothing_and_writes_nothing(walk: Walk):
     # the user answers Abort: no confirmed file, no setup-input, no writer, no further script
     assert (walk.root / "config" / "vault-config.yaml").read_bytes() == saved
     assert walk.vault.recorded == recorded_before and walk.vault.writes == []
-    assert [p for p in (walk.root / "tomo-tmp").rglob("*") if p.is_file()] == [], \
-        "no confirmed-/setup- file (nor any other file) left by match"
-    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing"}
+    # spec 046 ADR-13: match keeps the rows it showed (setup text only); start removes it on the next run
+    assert [p.name for p in (walk.root / "tomo-tmp").rglob("*") if p.is_file()] == ["rows-month.json"], \
+        "no confirmed-/setup- file (nor any other file but the rows match showed) left by match"
+    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing", "quarter": "missing"}
 
 
 # ── F6-AC3: a rerun replaces the section, also under a renamed heading ───────────────────

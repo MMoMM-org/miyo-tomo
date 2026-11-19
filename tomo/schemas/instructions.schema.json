@@ -7,7 +7,7 @@
   "required": ["schema_version", "type", "generated", "profile", "actions"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "3"},
+    "schema_version": {"const": "4"},
     "type": {"const": "tomo-instructions"},
     "source_suggestions": {
       "type": ["string", "null"],
@@ -78,6 +78,7 @@
           {"$ref": "#/$defs/skip"},
           {"$ref": "#/$defs/insert_under_marker"},
           {"$ref": "#/$defs/replace_section"},
+          {"$ref": "#/$defs/replace_between_markers"},
           {"$ref": "#/$defs/edit_note_text"},
           {"$ref": "#/$defs/edit_frontmatter"},
           {"$ref": "#/$defs/remove_up_link"},
@@ -307,6 +308,26 @@
         "target_path": {"type": "string", "description": "Vault-relative full path of ANY existing note to modify (not a MOC stem). Hashi modifies only; Tomo guarantees the note exists before emitting."},
         "anchor": {"$ref": "#/$defs/anchor", "description": "Marker locating the section to overwrite. Heading-scoped for v1: anchor.type must be heading; the section body (line after the heading down to the next heading of same-or-higher level, or EOF) is replaced and the heading line preserved. A non-heading anchor type fails gracefully."},
         "content": {"type": "string", "description": "Multi-line markdown block that REPLACES the heading section body. MAY contain embedded \\n (blank lines preserved). Unlike insert_under_marker, replace_section overwrites — the prior section body is discarded. Anchor-not-found / missing target → graceful no-op, never a blind write."},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "replace_between_markers": {
+      "type": "object",
+      "required": ["id", "action", "target_path", "start_marker", "end_marker", "content"],
+      "additionalProperties": false,
+      "description": "Replace only the lines strictly between a start-marker line and its end-marker line in an existing note; the marker lines and every other line stay byte-identical. Modify-only.",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "replace_between_markers"},
+        "target_path": {"type": "string", "minLength": 1},
+        "start_marker": {"type": "string", "minLength": 1, "pattern": "^\\S([^\\n]*\\S)?$"},
+        "end_marker":   {"type": "string", "minLength": 1, "pattern": "^\\S([^\\n]*\\S)?$"},
+        "scope": {
+          "type": "object", "required": ["heading", "level"], "additionalProperties": false,
+          "properties": {"heading": {"type": "string", "minLength": 1},
+                         "level": {"type": "integer", "minimum": 1, "maximum": 6}}
+        },
+        "content": {"type": "string", "description": "Lines between the markers joined by \\n, no trailing newline; \"\" = zero lines."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     },

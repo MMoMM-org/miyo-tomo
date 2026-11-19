@@ -52,6 +52,17 @@ second gain: `tomo-tmp` holds no extra content file beyond those ADR-9
 already accounts for, and nothing has to delete it on a rewrite. One
 `kado-read note` is the whole cost of a `parse`.
 
+A mapped document (meta.json `pass1_sections`) adds `section_problems` and
+`section_counts` (spec 046 T4.4). `section_problems` is
+`SectionProblem.public()` per broken checkbox — the key and the line to
+restore, never the document's heading text, which may hold the user's
+words (CON-3); the skill names the section by the configured row's heading
+and gives the restore line, so the user can repair the document without
+Tomo quoting it. `section_counts` is per key `{ticked, kept, unticked,
+added, empty}`, the numbers the later `section-dropped` / `section-empty`
+notices are said from. An unmapped document's output has neither key, so
+spec 045's stdout is unchanged.
+
 ## WHY `edited` Comes From `pass1_links` in `meta.json`
 
 `write` stores, per Tomo item id, the ordered list of `[[stem]]` source
@@ -85,7 +96,7 @@ because the overwrite flag covers Tomo's own document and nothing else.
 `replace --abort` is the user declining to start over: the run that
 produced the kept `read.json` and `proposals.json` is over, and ADR-9 says
 content does not linger for a run that is not going anywhere. Both files
-are deleted; the document and `meta.json` stay untouched, because the
+(for a quarter every read file, see below) are deleted; the document and `meta.json` stay untouched, because the
 existing review goes on exactly as it was. `--confirm` and `--abort` are
 mutually exclusive on the parser so a mixed call is exit 2, not a guess.
 
@@ -145,6 +156,41 @@ user needs after Pass 1; the counts Pass 2 reports against (`pass1_counts`)
 go to the content-free `meta.json`. Deleting after the write, not before,
 means a failed write never loses the model's work.
 
+A quarter's read is not one file (ADR-7): the success path and
+`replace --abort` delete every read file of the stage through
+`lib/review_read_parts.stage_files` — `read.json`, `read-index.json` and
+every `read-YYYY-MM.json` — and `proposals.json`. The folder listing, not
+the index's part list, decides what goes: a part the index does not list
+(an earlier quarter's under a reused stem) is journal content too, and an
+index that no longer parses would otherwise keep its parts forever. A
+refused or failed write deletes none of them, for the reason above. For a
+week or a month `stage_files` is `read.json` alone, so nothing changes there.
+
+## WHY the Read Comes Through `review_read_parts.load` (Spec 046 T4.5, ADR-7)
+
+A quarter's read is `read-index.json` plus one `read-<YYYY-MM>.json` per
+month, so that the model can read each file within its Read tool's limit.
+The script has no such limit, and its checks are about the period, not
+about a file: `write`, `replace --confirm` and `replace`'s `needs-confirm`
+take the read through `review_read_parts.load`, which gives `read.json` as
+it is or the index joined with its parts in the index's order — the one
+result `read_period` returned. Every consumer of the read (`period_of`, the
+source rule through `review_doc.Sources`, `review_sections.check` and
+`definitions`, `sections-changed`, the habits over all days, `not_read`,
+`partly_read`) therefore sees the whole quarter and none of them knows that
+parts exist. A source resolves against the joined lists, never per part:
+an item may name a January daily and a March daily, and a `monthly_only`
+item a monthly note from any part.
+
+`ReadFilesMissing` (no read file) is `read-missing`; `ReadFilesInvalid` is
+`read-invalid` — a listed part missing, unreadable or holding another
+month, a duplicated or unsafe part name, or both layouts at once. A quarter
+with one part gone is not reviewed from the others: the document would
+name the quarter while each item resting on the missing month would be
+rejected "outside the period" one by one, which reads like the model's
+fault. The skill shows the problem and stops; reading the period again
+writes a whole set.
+
 ## WHY the Exit Codes and the Bare Class Name on stderr
 
 Repo rule for agent-called scripts and ADR-9: 0 for every outcome the skill
@@ -163,3 +209,46 @@ Stem Guard").
 The skill may mint a run id before Pass 1 (as `/inbox` does) and pass it,
 so the document, the cost log and the meta share one id; without it the
 script mints one through `lib/run_id.generate`, the same format.
+
+## WHY `write` and `replace` Run the Section Checks Before Any Kado Call (spec 046 T4.2)
+
+`review_sections.check` is the second half of the proposals check: unknown
+or duplicate keys, caps, double placement and marks are errors of the file
+as a whole and come back as `proposals-invalid` with `errors`
+(`<pointer>: <error>`), exactly like a schema error, so the skill's
+rewrite-once loop handles both the same way. Both subcommands share
+`render_and_write`, so `replace --confirm` runs every check `write` runs.
+The checks run before the target probe: a refused file costs no Kado call
+and leaves `read.json`, `proposals.json` and `meta.json` as they were.
+Section items without a source are rejected one by one (`{section, index,
+reason}`) and join `rejected` beside the group rejections.
+
+## WHY `sections-changed` Refuses Instead of Guessing
+
+The landing of a part comes from the configured row with the same id (see
+docs/tomo/scripts/lib/review_sections.md, "WHY the Parts Take Their Landing
+From the Config Rows"). A read whose section keys differ from the current
+rows was made under another mapping; a document built from it would place
+text by rows the user has since changed. The refusal names the cause, and
+the answer is to read the period again.
+
+## WHY `meta.json` Gains `pass1_sections` and Section Keys in `pass1_counts` (ADR-11, CON-3)
+
+Pass 2 must know which section checkboxes the document was written with, so
+a deleted checkbox stops delivery instead of dropping the section silently
+(T4.3). `pass1_sections` is `[{key, count, empty}]` in document order: row
+ids, counts and a flag — no heading, description or item text (CON-3).
+`pass1_counts` carries the section keys beside the groups so its sum stays
+the number of Tomo items written. Without a mapping `pass1_sections` is not
+written at all, so an unmapped `meta.json` keeps spec 045's keys.
+
+## WHY `write` Reads the Template for a New Mapped Note (spec 046 T5.2, F4-AC5)
+
+A section whose heading a new note will lack lands in "Tomo Review", and
+its landing line must say so before the user approves. For a new target
+(and only with a mapping) `write` reads the configured template and its
+`_tomo` variant (`review_delivery.template_paths`), chooses one by spec
+045's rule (`review_new_note.template_choice`) and marks the parts
+`review_section_set.routed_keys` names. That is one or two Kado reads per
+new-note run; the template text goes nowhere but that call. An existing
+note needs no read: its routing depends on the user's Pass 2 choices.

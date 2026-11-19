@@ -158,7 +158,8 @@ the mapping nor `--template` names a template (WHY of the words and the order: `
 and the skill asks first, before it prints the proposal, because the answer changes the proposal: `1 <name> · 2 <name> · 0 none`,
 numbered on one line in the plain-text form every other question has, `0 none` last so a user who keeps the plain
 note types the one number that never shifts. A number reruns `review-session.py match --kind --template` with the name
-and the flags already given, so the chosen template takes the same path as a configured one (read, classified,
+and the flags of the last `match` call except `--template` and `--anchor` (why: the Template choice paragraph
+below), so the chosen template takes the same path as a configured one (read, classified,
 its headings proposing the anchor); `0` keeps the first output, whose `template` is null and whose `template_kind`
 is `missing` — the plain-note line already covers it, and nothing is saved to the mapping (the writer removes a key
 that is not there). The choice is saved through `setup-input` as `template`, the key `vault-config-writer.py review
@@ -234,6 +235,140 @@ kind, and the user is told how the way out looks — a `_tomo` variant of the te
 is closed by `---`, then `/review setup` again and the variant chosen. A variant is the way out, not a code change,
 because the owner handles the same template's `tp.file.move` by a variant too, and because only the user knows which
 Templater lines of the frontmatter the variant may keep as literals.
+
+## Why the Confirm Step Carries the Section Mapping Table (Spec 046 F2, F6, F7; ADR-8, ADR-9, ADR-13)
+
+WHY: spec 046 lets the vault keeper say which sections of their own template receive review material. The PRD
+asks for it in the confirm step that already exists (F2-AC2: "one table in the existing confirm step — no extra
+question turn"), because a setup that already asks for the template, the anchor and the week rule must not grow a
+question per heading. So the table is printed in the same reply as the proposal, after the template, frontmatter,
+week and anchor questions (whose answers change which template the table is for) and before the one
+`1 Confirm · 2 Correct · 3 Abort` question; the table block itself carries no option line and no "End the turn".
+
+**The script owns the facts, the model the words (ADR-9).** `review-session.py match --kind --template --anchor`
+returns `sections`: per template heading its `heading_key` (text, level, parent, occurrence), `state`, `reason`,
+`flags`, `defaults` and the `saved` row. The skill builds the table from that list in its order and never decides
+eligibility, reasons, keys, placements or caps itself: a model that judged "this heading holds a Dataview query"
+would disagree with the analysis `setup-input` checks the rows against, and the user would meet a refusal for a row
+the table offered. What the model adds is the wording ADR-9 leaves to it: a description of what to look for in the
+period's notes (in `proposal.language`, the language the rows are stored and later searched in), keywords (the
+schema's ≤ 12) and group hints. A saved row is shown as saved, so a second setup shows what the user confirmed
+last time rather than a new wording (F2-AC10: descriptions are stored as the user confirmed them). A candidate
+with `saved` set is a row even when it is `left-out`: an analysis row (placement `review`) is saved on an
+`automatic` heading, and `match` shows it as a row too. The heading is shown with level and parent because the
+same text can occur twice ("In my own words" at two levels, F2-AC5); `flags` (`mixed`, `container`, `under-own`)
+are shown in brackets so the user sees why an offered heading may be a poor pick, without the skill naming what
+the analysis looked at.
+
+The group list is spelled out per kind (F2-AC7, the schema's `weekGroup` / `monthGroup` / `quarterGroup`), with
+`habits` excluded by name: the habits are computed by a script and always stay in the "Tomo Review" section, and a
+group the kind does not have would be refused by the schema at `setup-input`.
+
+**Left-out headings get one line each (F2-AC3).** Every candidate that is not a row is printed as `—` with its
+reason in words — Templater code, a link, a heading that repeats under per-period parents, an off-limits mark,
+automatic content only — so the user is never left wondering why a heading is missing. `automatic` says it "can get
+an analysis row" because that is the one left-out reason the user can act on (F2-AC12).
+
+**Forward-looking sections (F2-AC6).** "I look forward to", "This will be challenging", "Goals and Wishes" ask for
+what comes, not what was. The line tells the model to describe them as suggestions drawn from what the period
+shows, so Pass 1 later proposes reminders with a source (F1-AC4) instead of inventing goals. The line names the
+shapes of such a heading (what comes next, goals, wishes, start/stop/continue, challenges) rather than example
+headings, so the model does not parrot the owner's template.
+
+**Off-limits (ADR-8, F2-AC11).** The `Off-limits:` line shows the saved marks or `none`; nothing is marked by
+default and no heading name is off-limits by itself. A mark is a correction like any other, heading only or with
+its sub-sections, and a marked heading leaves the table because `setup-input` refuses a row on it
+(`section-off-limits`).
+
+**Corrections are plain text in the existing Correct step (F2-AC2, F2-AC4, F2-AC12).** The user names a row by its
+`s<n>` or its heading and says the change ("s3 Beschreibung: …", "entferne s5", "füge ‚Planning' hinzu",
+"Reflections tabu mit Unterabschnitten"). The step lists the operations — edit description / keywords / groups /
+placement / cap, remove, add, mark and unmark off-limits — and what an added heading becomes: an `offered` one a row
+with its `defaults`, an `automatic` one with a description an analysis row (`review`), any other left-out one is
+refused with its reason (F2-AC4), and a heading not in the candidate list is not in the template (the script would
+refuse it as `section-not-in-template`). A table correction reruns no `match`: nothing it changes is computed by
+the script, and a rerun would cost a Kado round trip and a reprint. The script still has the last word — the rows
+are checked by `setup-input` against the rows file `match` wrote — so a wrongly added row is refused, not saved.
+
+A `match` rerun with the same template (a corrected folder, format or week rule) keeps the table changes, because
+the rows of the template did not change; a changed template builds the table anew from the new output (F7-AC2: no
+row from the earlier template remains).
+
+**No mappable heading (F2-AC9).** `sections.mappable` false (no template, or none of its headings can take a row)
+prints one line and no table; the confirmed file then carries neither `sections` nor `off_limits`, because the
+writer stores rows under a named template and an absent key changes nothing.
+
+**Confirm writes the rows into the confirmed file.** The skill already writes `tomo-tmp/review/confirmed-<kind>.json`
+(the one setup file it may write); with a mappable template it adds `sections` (the table rows in order, with the
+`heading_key` fields, description, placement, cap, and keywords / groups when set) and `off_limits` (the marks with
+`with_subsections`), `[]` when there is none. `[]` is deliberate: the writer reads an empty list as "remove this
+template's entry", so a user who removes every row saves no mapping, while the rows of another template stay
+(F2-AC8). The skill writes no `id`: `review-session.py setup-input --kind --confirmed` gives every row the saved
+row's id of its heading key or the next free one. The skill never writes `rows-<kind>.json`; `match` writes it and
+`setup-input` deletes it on save (ADR-13, CON-1). A refusal's pointer `/sections/<i>` is the row at index `<i>`,
+counted from 0, so the skill names the heading of that row instead of a JSON path the user cannot act on; the
+`problems` themselves stay verbatim (the verbatim rule names the setup step's `errors`). The line says "starts
+with" because `setup-input` also refuses at `/sections/<i>/placement` (the row's landing is off-limits), and it
+names `/place` (the "Tomo Review" place lands off-limits) and `/template` (template not found) in words, the
+other two pointers `review_setup_rows.py` returns (Phase 2 drift check).
+
+**Template choice (F7, #267).** A typed or saved template Kado does not find comes back as `template_not_found`
+with `template: null` and the candidates listed. The skill says the name was not found — the typed one, or the
+saved one when `source` is `configured` — and the existing candidates question asks for another; the "no template
+is saved" sentence is said only without `template_not_found`, because for a typed name it would be false.
+`match` sets `template_not_found` independently of `template_candidates`, and the candidate list is empty when the
+templates folder lists nothing; then no candidates question fires, and without its own line the flow would fall
+through to `<template>` `none` without the user ever choosing a plain note. So the empty-list case asks in the same
+reply for a typed name or `0` for none — the same single question turn the candidates path has, not an extra one
+(owner decision 2026-11-15). Both template-choice reruns, the typed name and the picked candidate, add the flags of
+the last `match` call except `--template` and `--anchor` (T2.3 code review): after a `template_not_found` the last
+call carries the name that failed, and `match` keeps the last of two `--template` values (argparse's `store`
+action), so the old name added after the new one would win and the same question would come back; an old
+`--anchor` names a heading of the template it was given for, which the carve-out below keeps off a template change,
+and the rerun sentence names both flags itself because it is the line a literal model follows at that point. A
+table correction prints the whole table again with the change, so the user confirms what is actually saved, not a
+remembered earlier version plus a described edit.
+
+`sections.dropped` names the headings of the earlier mapping the template lacks: once after a template change
+(the first `match` with the new template; the rows file is then rewritten, so a later rerun shows none), and on
+every same-template run for saved rows whose heading the template lost (owner decision 2026-11-15). One line per
+entry, so a typo never leaves the user believing a mapping still applies (F7-AC3). "Not kept" is said only with
+`sections.mappable` true: `match` lists the saved rows the template lacks also when no heading can be mapped, but
+then Confirm writes no `sections` key and the writer changes no row, so the line says the save leaves the saved
+rows as they are (Phase 2 drift check).
+
+**The `--anchor` carve-out (ADR-13).** The carry rule says never drop a flag from a rerun, so each question is
+asked once. The anchor is the exception: a typed anchor names a heading of the template it was given for, and the
+script now uses even the configured anchor only for the configured template. Carrying `--anchor` into a `match`
+with another template would place the review under a heading the new template may not have. So when `<template>`
+changes, the next `match` carries no `--anchor` and `<anchor>` is unset; the new output proposes the place from
+the new template, and `needs_anchor` asks again when it cannot. The carry rule names the exception in place
+("except `--anchor` by the next line"), because a literal model reading "never drop" otherwise keeps it.
+`--template-frontmatter-ok` needs no carve-out: it names the template it was given for and the script ignores it
+for any other.
+
+**The quarter in the same flow (F6-AC1).** Step 2 runs for `quarter` exactly as for `week` and `month` (the week
+question never fires for it; `match` proposes the folder, the `YYYY-[Q]Q` format or the one found, template, place,
+language and rows). Step 1 sends a quarter request with `setup.quarter` `missing` into step 2 and reruns `start`
+after the save, like the other kinds (F2-AC10: the request continues in the same session), and then on to step 3
+like a week or a month (F6-AC6: a quarter's review applies "as for a month"). Until spec 046 T4.5 a quarter request
+stopped there with one line that Tomo could not review a quarter yet, because `review-read.py` did not read one and
+`review-doc.py write` could not load its split read; both now do, so the interim line and its pin are gone.
+`/review setup` walks the quarter after the week and the month, like them, with no `setup.quarter` gate. The gate
+(only when `setup.quarter` was `present`) kept a vault without quarterly notes out of a third dialogue while a quarter
+could not be reviewed anyway; with the quarter a reviewable kind, "setup" means the setup of every kind, the same
+way the week and the month are walked whether or not they were set up before — Abort at the quarter's confirm
+question leaves it unsaved and the week and month saved. The command's and the skill's argument hints and
+descriptions name the quarter (`quarter`, `2026-Q1`).
+
+**Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to 28,176 characters
+(+3,898, `wc -c`; 220 → 233 lines) at 0.2.0; the T2.3 review fixes (the empty-candidates question, the table
+printed again) brought it to 28,600 at 0.2.1 and the `--template` / `--anchor` exception of the two
+template-choice reruns to 28,672 at 0.2.2, still 233 lines; the Phase 2 drift fixes (the `dropped` line by
+`mappable`, the `/place` and `/template` pointers) to 28,885 at 0.2.3, still 233 lines. The SDD estimated about 1,000 characters for the sections; the estimate did not
+count the per-reason words, the per-kind group list, the Correct operations and the confirmed-file shape, each
+of which a literal model needs spelled out. The trim is #259. No `STRICT` block was added: no
+run has shown a deviation in this step yet.
 
 ## Why the Week Question Is Asked in Plain Words (ADR-7)
 
@@ -313,6 +448,110 @@ one link to a daily inside the period (F4-AC3). It writes them to `proposals.jso
 `review-doc.py write` validates the file; a `proposals-invalid` refusal names the pointers, the skill rewrites the file once, and a
 second refusal ends the run — looping on a schema the model cannot satisfy would burn the user's time. The model
 proposes only Tomo's own section, never text for the sections the setup names as the user's own (F4-AC7).
+
+## Why Pass 1 Proposes by Section in the Same Model Pass (Spec 046 ADR-1, F1)
+
+WHY: with a mapping, `read.json` carries `sections` — one SectionDefinition per configured row (`key`, heading,
+level, parent, description, keywords, groups, cap; `analysis: true` on an analysis row). ADR-1 keeps the one
+existing model pass: the model reads one file and writes `proposals.json` with `sections: [{key, items}]` beside
+the unchanged `groups`. The step adds one bullet per rule the scripts cannot enforce, and nothing for the rules they
+can — those the rewrite-once loop below covers.
+
+- **The key is copied, never invented.** One entry per `read.json` entry with something to propose, `key` copied
+  from it. A key the read did not carry is refused `unknown-section`, a second entry `duplicate-section`
+  (`lib/review_sections.check`); the bullet says it so the first write is usually the last.
+- **What a section receives follows its description and keywords (F1-AC2).** The fixed spec 045 groups are not the
+  frame: a section that asks what to start or stop doing, or what will be challenging next month, receives items
+  for that when the notes hold matching material. The bullet says "whatever group they would fit" because a model
+  that sorted by group first would leave such a section empty.
+- **A row's `groups` are its starting point (F2-AC7).** When setup names groups for a row (for example `growth` for
+  "Notes Created This Quarter"), the section starts from what those groups would hold, and such a finding goes into
+  the section instead of the group. That keeps the one-place rule and leaves a group no row names in "Tomo Review".
+  The bullet was missing until the 046 close-out (owner decision 2026-11-19). Before it, only the description
+  steered the section, which is why the walk's s2 fix had to reword the description.
+- **Reminders, not finished text (F1-AC3, F1-AC4).** A section is the user's own words in their note; Tomo
+  reminds them of what happened or will need to happen, with the source, and leaves the judgement to them. A
+  forward-looking section gets the same: a reminder drawn from what the period shows, never an invented goal.
+- **The cap by merging (F1-AC5).** `cap` is in the definition; over it the script refuses `over-cap (<key>)`. The
+  bullet says how to stay under it — merge findings that say the same and keep each one's sources — so a merge does
+  not drop the evidence the user checks.
+- **One place per item, the rest in the groups (F1-AC6, F1-AC7).** A finding goes to the section it fits best, or
+  else to its group; never twice. `double-placement` refuses only the detectable cases (same normalised text, or
+  same sources and first line), so the bullet carries the rule for the rest.
+- **Analysis rows as overviews (F2-AC12).** An analysis row sits on a heading whose content is automatic (habits,
+  trackers); its items land in the "Tomo Review" part as an overview of what the values show, not a day-by-day
+  list. The description alone does not say that reliably — the setup's model wrote it, and the user may correct it
+  to anything — and since T4.2 the placement is read from the config, not from `read.json`. So `review-read.py`
+  marks the row `analysis: true` (docs/tomo/scripts/review-read.md) and the bullet branches on the flag. The habits
+  rule still holds: the habit lines are computed; an analysis item is the model's reading of them.
+- **Marks stay on the items (F1-AC9).** A month's section item that only the weekly notes hold, or that they left
+  out, carries the group name as `mark`, its sources as for that group; the script refuses a mark the kind does not
+  have (`mark-not-allowed`). A quarter's section items carry `monthly_only` / `not_in_monthly` the same way (T4.5).
+- **Own sections.** The spec 045 line "never propose text for the user's own sections" now says "other than the
+  `sections` of `read.json`": a mapped section is the user's too, and without the carve-out a literal model leaves
+  every section empty.
+
+**The rewrite-once loop names each new refusal's fix.** `write` refuses a section error as `proposals-invalid`
+with `"<pointer>: <error>"` strings. "Rewrite once" stays (a second refusal stops; looping on a schema the model
+cannot satisfy burns the user's time), and one line maps each error to its fix in the entry the pointer names, so
+the one rewrite is aimed: `unknown-section` / `duplicate-section` → each `read.json` key once; `over-cap` → merge
+to the cap; `double-placement` → remove the item the pointer names (the check names the later one); `mark-not-allowed`
+→ drop the mark. `sections-changed` is not the model's error: the setup's rows changed after the read, so the
+definitions in `read.json` are stale. The answer is to read the period again (step 4) — the new read carries the
+current rows — once; a second `sections-changed` is shown and stops, because then the config changes under the run.
+
+**Sections in the report.** `write`'s `counts` carry the section keys next to the groups and `rejected` names
+`section` for a section item. Keys (`s1`) mean nothing to the user, so the report names a section by the `heading`
+of the configured row with that `id`, read from `config/vault-config.yaml` (the file step 5 already reads for the
+language) — never from `read.json`, which the privacy rule keeps out of the reply, and which `write` has deleted.
+
+**The Pass 2 stop for a missing section checkbox (F3-AC6, Rule 7).** `review-doc.py parse` warns
+`section-checkbox-missing` and prints `section_problems` (`key`, `restore`; no heading text, CON-3), and the plan's
+gate refuses the same warning on `preview` and `deliver` (docs/tomo/scripts/lib/review_delivery.md). Step 6 names
+each section by the configured heading of its key and gives the restore line verbatim — the user restores it under
+the heading and runs `/review` again — and stops after the warnings: a delivery the parser cannot read without
+guessing lands nothing. Step 7 reaches the token only when `parse` did not run first (a Resume goes straight to
+`deliver`); the preview output carries no `section_problems`, so the line runs `parse` for them and says the step 6
+line rather than adding the keys to the Pass 2 script's output.
+
+**Size.** Proposing by section, the rewrite fixes, `sections-changed` and the two stop lines grew the skill from
+28,885 to 31,122 characters (+2,237, `wc -c`; 233 → 243 lines) at 0.2.4 — about twice ADR-1's estimate of 1,000
+for the whole Pass 1 side, because each rule the scripts cannot check needs its own imperative and the config path
+of `<section heading>` is spelled out once. The trim is #259. No `STRICT` block: no run has shown a deviation in
+these steps yet.
+
+## Why a Quarter Is Read File by File in Step 5 (Spec 046 ADR-7, F6-AC6)
+
+WHY: the Read tool takes at most 256 KB per call, and a quarter measured 710 KB as one file (T3.4, 2026-Q1). So
+`review-read.py` splits a quarter into `read-index.json` and one `read-<YYYY-MM>.json` per month and prints
+`read_path` (the index) and `read_parts` (the month files, in order). Step 5 reads `read_path` — the same key for a
+week and a month, where it is `read.json` — so the step names one file to start from instead of a path the skill
+spells per kind; a quarter then reads each `read_parts` entry, one Read call each, in the listed order.
+
+- **One after the other, not in parallel.** The index carries what no month owns (period, report, sections, open
+  tasks, growth, `not_read`, the two mark lists) and is read first so the months are read knowing what to look for;
+  the order of the parts is the quarter's order. Parallel Read calls give no order to rely on.
+- **The parts stay in the conversation; nothing is merged on disk.** The model keeps what it read in the
+  conversation, the way it keeps a month's one file, and writes `proposals.json` once, after the last part. It writes
+  no intermediate file — the skill's opening line allows `proposals.json` and the confirmed setup only — so there is
+  no joined copy of the journal on disk and nothing for the clean-up to miss. No visible running notes either: the
+  privacy rule keeps read content out of the reply.
+- **"`read.json` means all these files together".** Every later line of step 5 says `read.json` (the sources, the
+  growth lists, the section keys, the rewrite fixes). One sentence maps the name onto the quarter's files instead of
+  rewording each line, which keeps the growth small and the week/month lines and pins unchanged.
+- **The quarter keys are named like the month's.** The groups line names, for the month, `weekly`,
+  `only_in_weekly_links` and `dailies_not_in_weekly`; the quarter line names `monthly` (its entries' `month_text`),
+  `only_in_monthly_links`, `dailies_not_in_monthly` and `report.monthly_status` — the groups only when a monthly note
+  was found, which is the script's `no-monthly-notes` rule said up front. Step 4 prints `monthly_status` and
+  `monthly_notes` like the weekly pair, so the user sees which monthly notes were not found (F6-AC5).
+- **The script joins, the model does not.** `review-doc.py write` loads all parts through `lib/review_read_parts.load`, so a
+  source from any month resolves, and its clean-up removes every read file
+  (docs/tomo/scripts/review-doc.md). A missing or broken part is `read-invalid`, which step 5 already shows and stops
+  on.
+
+**Size.** The quarter branch, the quarter keys, the setup and step 1 changes and the wider descriptions took
+the skill from 31,122 to 31,600 characters (+478, `wc -c`; 243 lines before and after) at 0.2.5. No `STRICT`
+block: no quarter run has been observed yet.
 
 ## Why the Review Language Is Read From the Config File
 
@@ -442,6 +681,96 @@ The `ok` output has one line for `mode` `replace` now, before the notices: the n
 section; it is replaced, not added to. The line is a flag of the `ok` output, not a notice, because
 `lib/review_delivery.NOTICES` is what the plan reports as notices and `mode` is not a problem of the plan.
 
+## Why Steps 7 and 8 Carry One Line per Section Stop and Notice (Spec 046 T5.5)
+
+WHY: spec 046 T5.5 added section stops (`section-missing`, `section-ambiguous`, `section-broken`, `section-moved`,
+`block-in-review-section`, `landing-off-limits`), the refusals `choice-invalid` and `choices-needed`, and the notices
+`block-replaced`, `block-moved-confirmed`, `review-section-kept`, `section-dropped` and `section-empty` to
+`lib/review_delivery.REFUSING` / `NOTICES`. The skill's coverage test demands a branch for every refusing name and a
+line for every notice, and a name the skill does not know reaches the user as a bare token — so each name got one
+plain-language line in the existing lists the same task the script learned it, not one phase later. The lines name a
+section by the heading of its `key` from step 5 (the script prints keys only, as for `section-checkbox-missing`).
+In T5.5 the stop line ended the step; T5.6 replaced that end with the per-section dialogue (next section). The `block-replaced` line already says that edits inside Tomo's block are replaced and text
+outside it is kept (F5-AC4): a re-run replaces the block whether or not T5.6 has landed. `sections` is printed in the
+`ok` line, not as a bullet, because it is output, not a problem the step branches on (F4-AC6: heading, placement
+from step 5, and the lines that land). `choices-needed` sends the user back through a fresh `preview` of step 7: the
+choices are not recorded (keys and modes only), so they are asked again, and a different answer is caught as
+`replan-differs`.
+
+## Why Steps 7 and 8 Ask per Section in the Deliver Step (Spec 046 T5.6)
+
+WHY: PRD F4-AC4 and F5-AC3 want every section stop named before anything is written, with a choice per section
+(leave it out, put its items into "Tomo Review", or Abort), and the SDD's Interaction Design says "per-section choices
+in the existing Deliver step" — no extra turn. So a preview whose `problems` hold only section stops is shown like a
+clean preview (plan, per-section lines, the replace line and the notice lines, among them `block-replaced`'s replace
+sentence: edits inside Tomo's block are replaced, text outside it is kept), and the stop lines come last, right before
+the question, so the user reads what lands before deciding what does not. The stop dialogue replaces the
+`1 Deliver · 2 Abort` question; it is never asked as well.
+
+- **One plain-text question, not AskUserQuestion.** A choice per section across several sections does not fit one
+  AskUserQuestion (at most four options), and a list printed before an AskUserQuestion call is not seen live (memory:
+  print-before-ask fails live). The skill asks once in plain text: per listed section one of its `choices`, or
+  0 Abort; the user answers in words, and Rule "when it is unclear, ask again" covers a garbled answer.
+- **The offered choices come from the script, never from the skill.** Each `sections[]` entry with a `stop` carries
+  `choices` (`lib/review_section_plan._stop` / `plan_section`, per case, not per stop name: a missing heading offers
+  skip and review, but skip and confirm-moved when Tomo's intact block pair is still in the note and skip only beside
+  a broken earlier block (a start or end marker alone, a duplicated pair); a heading there more than once offers skip
+  and review, skip only beside any earlier block of the section (one block per section, T5.7 owner decision); a moved block's ambiguous landing heading skip only; broken and in-review offer skip; a moved
+  block skip and confirm-moved, skip only when no heading stands above it; `landing-off-limits` none). A stop-name →
+  choices table in the skill would be wrong for some of these. A stop without choices can only be aborted: the skill names it and stops without a
+  question, because there is nothing to choose.
+- **Naming.** A section is named by the configured heading of its `key` (step 5, the `review.<kind>.sections` row),
+  never by `read.json`: `read.json` is model input that is never quoted (Rules), and a continued review (step 6) has
+  not read it in this session. The `placement` is named because the same heading can take the review before, under or
+  at the end of it, and the user decides knowing where. The stop lines are said in `<language>`, the document's
+  language (`review.language` of `config/vault-config.yaml`), because they name the review document's sections as the
+  user just edited them. Step 7 defines `<language>` where it uses it and Reads the config: step 7 is normally reached
+  by a later `/review` run (step 6) in which step 5 never ran, so step 5's definition is not in that run. The question
+  after the stop lines (the choices, `0 Abort`) falls under the Rule "Ask in the language the user writes in", like
+  every other question; when the two languages differ, the stop lines follow the document and the question the user.
+- **Answers become flags; the same flags reach `deliver`.** `skip` / `review` are `--section-choice <key>=…`,
+  `confirm-moved` is `--confirm-moved <key>` (SDD ADR-12). The skill reruns `preview` with them — the plan with the
+  choices taken is what the user is told about — and branches on that rerun by the same list, as the heading pick does:
+  an `ok` with empty `problems` goes through the `ok` bullet, prints the plan with the choices taken and asks
+  `1 Deliver · 2 Abort`. The choice answer is not the decision to deliver: a `review` choice moves items into "Tomo
+  Review" and `confirm-moved` replaces a block where it sits now, and the user sees that final content before anything
+  is written (PRD F4-AC6: the preview is listed before asking Deliver or Abort; the project rule: never execute without
+  user approval). An earlier version went to step 8 without asking again, so the final plan was never approved; the
+  spec compliance review of T5.6 caught it. `deliver` gets exactly the flags of the last preview, since
+  a differing set would plan a different set than the one shown. Beside any other problem only that problem's line
+  applies: every other problem stops or asks first, and choices answer a plan that is otherwise deliverable.
+- **`choice-invalid`** means a choice no longer answers a stop of its section: the note changed between the preview and
+  the call. The skill says so and previews again without the choices; a preview without choices cannot be
+  `choice-invalid`, so this cannot loop.
+- **`choices-needed`** (a resume begun with choices, rerun without) is now reachable: the choices are never recorded
+  (keys and modes only), so step 8 reruns the step 7 preview, the stops are asked again, and the rerun with the
+  answers resumes; a different answer is caught as `replan-differs`.
+- **`section-dropped` / `section-empty`.** F3-AC4 wants the user's own items lost with an unticked section counted in
+  that line; F3-AC5 wants an empty ticked section named as empty. The lines say both in those words.
+- **`name-taken` at a set step is not a foreign note.** `staged_delivery` reports `exists` when a step in flight finds
+  other bytes at its path. With `step` `note` that is a note at the new note's path that is not Tomo's (spec 045). With
+  `step` `set_json` or `set_md` it is an earlier instruction set of this review waiting at the path — the SDD case
+  "Resume over an uploaded v3 set" — and "a note that is not Tomo's" was wrong. The skill offers a fresh delivery with
+  the two cures `tests/test_046_t5_6_fresh_delivery.py` proves: the user applies that set in Hashi (an applied set is
+  written over, `replaces_set`), or deletes it in Obsidian, then Resume delivers. At `set_json` the readable
+  instructions beside it are deleted too, or Resume stops at `set_md`; at `set_md` the set JSON is this delivery's own
+  and must stay. Drop is not offered: it would write a withdrawn set over the earlier set and leave the review
+  unlisted with nothing delivered.
+
+### Why the "Tomo Review" Place Landing Off Limits Has Its Own Line (Spec 046 T5.7)
+
+WHY: `landing-off-limits` is two things. Per section it is a stop on a `sections[]` entry (`stop`, empty `choices`).
+It is also a plan-level problem for the "Tomo Review" section itself: `lib/review_actions._insertion` (a new "Tomo
+Review" would land in an off-limits section) and `_existing_note` (`review_off_limits`, an earlier one sits in one).
+Then no `sections[]` entry carries a `stop`, and the stop bullet, which speaks per entry with a `stop`, would say
+nothing and ask a question with nothing to choose. So a line of its own comes before the stop bullet: the "Tomo
+Review" section, placed at `place.anchor` (the only place field both cases carry; `placement` is `replace` on a
+re-run), would land in an off-limits section; the place is changed with `/review setup`; nothing is delivered (Rule 4:
+no choice moves Tomo's text into an off-limits section). The drift check of T5.7 found the gap
+(`tests/test_046_t5_7_place_off_limits.py` pins the script's output and the line). When a section stop stands beside
+the plan-level problem, the stop bullet applies and names the sections only; the place problem is then reported by the
+rerun after the section choices.
+
 ## Why the Heading Pick Is Offered Once for a Collision (Third T5.2 Fix Round)
 
 WHY: `user-heading-collision` with `mode` `insert` has two causes in `lib/review_actions._existing_note`, and only
@@ -481,8 +810,9 @@ note (new-note mode only), the set JSON and the set MD through `lib/staged_deliv
 with one write guarded by the `modified` the reader saw (ADR-11; steps `note → set_json → set_md → doc_mark`). The
 skill never runs those steps itself. `status: delivered` or `resumed` is reported with the target, the place, the set
 JSON and the set MD paths and the next step, apply in Hashi or by hand (F5-AC11). `status: refused` names the
-`problems` and nothing was written: `name-taken` names `exists_path` (a note at a payload's path that is not Tomo's
-identical text; never overwritten), the plan problems are the preview's. `status: stopped` carries `failed_step` and is
+`problems` and nothing was written: `name-taken` names `exists_path` (a payload's path holding other bytes than
+Tomo's identical text; never overwritten — a foreign note with `step` `note`, an earlier set with a set step, see
+"Why Steps 7 and 8 Ask per Section in the Deliver Step"), the plan problems are the preview's. `status: stopped` carries `failed_step` and is
 resumable: `doc-changed` means the document was edited or is open with unsaved edits since the preview; the skill says
 to save it and run `/review` again, and the payloads already written count as done; `kado-write-failed` is a Kado
 refusal or failure at that step. Either way the next `/review` lists the stem as `failed-delivery` with Resume / Drop
@@ -504,6 +834,27 @@ actions that clear the editor buffer, and the step that retries the mark. After 
 through. `changed-since-read` and `unknown` keep the earlier wording: for a stale stamp "save and run `/review` again"
 is right, and for an unknown conflict nothing more specific is known. The reason is read from Kado's message in the
 script, never shown: Kado's message names the document's path, and stdout carries problem classes only.
+
+### Why a `stopped` Delivery Asks Retry, Drop or Abort in Place (Spec 046 T6.3 Live Walk)
+
+WHY: the walk of 2026-11-18 stopped at the mark with `open-unsaved`, and the skill sent the user to "run `/review`
+and choose Resume". In the two minutes before that Resume, something in Obsidian moved a file onto the target path,
+and the Resume refused `place-missing` from a plan rebuilt against that vault. With no line telling it what to do, the
+model hand-wrote the document mark through Kado and edited `meta.json`. Two changes answer it. First, the script now
+resumes from the payloads its first attempt stored, so a rerun is safe whatever the vault did meanwhile
+(docs/tomo/scripts/review-instructions.md, "WHY a Resume Uploads the Stored Payloads"). Second, every `stopped`
+branch keeps its explanation (for `open-unsaved`: save or close the document first) and then asks
+`1 Retry · 2 Drop · 3 Abort` in place. Retry reruns `deliver --stem <stem>` and branches by the same step 8 list;
+Drop is step 9; Abort stops, and the next `/review` still lists the stem as `failed-delivery`, whose Resume is the
+same `deliver` rerun. A round trip through the listing was the gap in which the vault changed. Asking in place keeps
+the retry next to the cause the user has just fixed.
+
+The step also carries the skill's one `STRICT` line: never write the review document, the instruction set, the new
+note or a stage file other than `proposals.json` and `confirmed-<kind>.json` by hand; only the
+review scripts write them. The line exists because this deviation was observed. A hand-written mark and a hand-edited `meta.json`
+describe a delivery the script never made, so the next `deliver` or `drop` acts on a state that did not happen. The
+owner's wording was "anything under `tomo-tmp/`". The line excludes the two files the skill's top paragraph tells
+the model to write, so the two imperatives cannot contradict each other.
 
 ### Why a `resumed` Report Is the Plan the Delivery Wrote (Phase 6 Live Walk)
 
@@ -638,6 +989,10 @@ block (decided at T5.2): the deviation spec 044 observed was a dialog called aft
 dialog to call — `AskUserQuestion` is not in its tools and every question is the plain-text form. A `STRICT` is
 added only when a `/review` run shows a deviation of its own.
 
+The one `STRICT` it carries is in step 8 (spec 046 T6.3). The 2026-11-18 live walk observed the model hand-writing the
+document mark and editing `meta.json` after a refused resume (see "Why a `stopped` Delivery Asks Retry, Drop or Abort
+in Place").
+
 ## Why There Is No Eval Gate
 
 WHY: ADR-1's trade-off: the skill's prose is not covered by the CLAUDE.md eval gate, because gating every later edit
@@ -667,3 +1022,14 @@ vault: every vault access goes through the scripts and Kado. The skill's body fo
 list, then numbered steps) rather than the authoring plugin's Persona / Interface / Constraints layout: the repo rule
 for runtime files allows imperatives only, and a persona or an interface block would be prose the model does not act
 on.
+
+## WHY the Stop Bullet of Step 7 Is a List of Short Sub-Bullets (spec 046 T6.4, SKILL 0.2.12)
+
+The bullet for `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, `block-in-review-section` and
+`landing-off-limits` was one sentence of about 1,100 characters: print the plan, then the stop line per section with
+five named parts, then the beside-another-problem rule. The model followed it, but a reviewer could not see which
+imperative belonged to which clause. It is now a head line (the problems that match) over sub-bullets: print the plan
+without its question; one line per stopped section naming its heading, `placement`, reason and `choices`; the
+beside-another-problem rule; then the two existing sub-bullets (empty `choices` ends, otherwise ask). No imperative and
+no quoted string changed. `tests/test_046_t5_6_skill_choices.py` and `tests/test_review_skill_pass2.py` pin the new
+layout (whitespace is collapsed by `_section`, so a raw-line test pins the nesting and the line length).

@@ -1,9 +1,9 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.2.0
-"""The ``/review`` setup of one period kind (spec 045, T2.1, T2.3).
+# version: 0.3.2
+"""The ``/review`` setup of one period kind (spec 045, T2.1, T2.3; spec 046, T1.3).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
-granularities.<weekly|monthly>`` (config over profile), ``naming.
+granularities.<weekly|monthly|quarterly>`` (config over profile), ``naming.
 calendar_patterns.<kind>``, ``templates.mapping.<kind>`` and the ``review:``
 section — so what ``review-session.py start`` reads and what
 ``vault-config-writer.py review`` writes cannot drift.
@@ -13,10 +13,14 @@ section — so what ``review-session.py start`` reads and what
 setup preview alike.
 ``review_setup(config, profile, kind)`` returns a ``ReviewSetup``, None while
 the setup is missing, or raises ``SetupInvalid`` (JSON pointers) when a
-present setup is broken. ``input_problems(data, today=...)`` checks a writer
-input against ``tomo/schemas/vault-config-review.schema.json`` and the name
-format through ``period.check_format``; ``writer_edits(data)`` turns it into
-``(path, value)`` leaf edits, None meaning "remove the key". ``place_level``
+present setup is broken; its ``sections`` and ``off_limits`` are the rows stored
+for the configured template only (``review.<g>.sections.<template>``,
+``review.<g>.off_limits.<template>``), section rows with ``cap``, ``keywords``
+and ``groups`` defaulted. ``input_problems(data, today=...)`` checks a writer
+input against ``tomo/schemas/vault-config-review.schema.json``, the name
+format through ``period.check_format`` and repeated row heading keys and ids;
+``writer_edits(data)`` turns it into ``(path, value)`` leaf edits, None or
+``[]`` meaning "remove the key". ``place_level``
 is the only owner of the heading-level rule (before = the anchor's level,
 inside = one deeper, after refused; the review heading may not exceed level 5
 so its groups stay <= 6); ``inbox_path`` is the guard every review write goes
@@ -32,6 +36,7 @@ Design notes: docs/tomo/scripts/lib/review_config.md
 """
 from __future__ import annotations
 
+import copy
 import json
 import posixpath
 from dataclasses import dataclass, field
@@ -39,18 +44,26 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from lib.period import DAY_NAMES, ISO, KINDS, MONTH, WEEK, Request, WeekRule, check_format
+from lib.period import DAY_NAMES, ISO, KINDS, MONTH, QUARTER, WEEK, Request, WeekRule, check_format
+from lib.review_mapping import row_key
 from lib.vault_config_edit import get_path
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "vault-config-review.schema.json"
 
-GRANULARITY = {WEEK: "weekly", MONTH: "monthly"}
+GRANULARITY = {WEEK: "weekly", MONTH: "monthly", QUARTER: "quarterly"}
 BEFORE = "before"
 INSIDE = "inside"
 PLACEMENTS = (BEFORE, INSIDE)
 MAX_REVIEW_LEVEL = 5    # the review's group headings sit one level deeper and must stay <= 6
 DEFAULT_LANGUAGE = "en"
 DEFAULT_MAX_CHARS = 12000
+DEFAULT_CAP = 8
+SECTIONS = "sections"
+OFF_LIMITS = "off_limits"
+ROW_LISTS = (SECTIONS, OFF_LIMITS)
+_ROW_DEFAULTS = {SECTIONS: {"keywords": [], "groups": [], "cap": DEFAULT_CAP}, OFF_LIMITS: {}}
+_DUPLICATE_KINDS = {SECTIONS: "duplicate-section", OFF_LIMITS: "duplicate-off-limits"}
+DUPLICATE_ID = "duplicate-section-id"
 _UNSAFE = ("/", "\\", "..")
 _TRACKER_LISTS = (
     ("trackers", "daily_note_trackers", "today_fields"),
@@ -84,13 +97,16 @@ class UnsafePath(ValueError):
 @dataclass(frozen=True)
 class Problem:
     pointer: str
-    kind: str          # "schema" or a period.FormatProblem kind
+    kind: str          # "schema", a period.FormatProblem kind, a duplicate or a setup-input row refusal
     example: str = ""
+    reason: str = ""   # the left-out reason of a ``section-left-out`` refusal
 
     def to_dict(self) -> Dict[str, str]:
         out = {"pointer": self.pointer, "kind": self.kind}
         if self.example:
             out["example"] = self.example
+        if self.reason:
+            out["reason"] = self.reason
         return out
 
 
@@ -114,6 +130,8 @@ class ReviewSetup:
     task_notes: List[str] = field(default_factory=list)
     max_chars_per_day: int = DEFAULT_MAX_CHARS
     tracker_types: Dict[str, str] = field(default_factory=dict)
+    sections: List[dict] = field(default_factory=list)
+    off_limits: List[dict] = field(default_factory=list)
 
     def place_level(self, target_headings: Sequence[Tuple[int, str]]) -> int:
         """Level of the review heading in a target with these ``(level, text)`` headings."""
@@ -194,7 +212,7 @@ def setup_present(config: dict, kind: str) -> bool:
 def review_setup(config: dict, profile: dict, kind: str, *, today: Optional[date] = None) -> Optional[ReviewSetup]:
     """The setup of ``kind``; None while missing; ``SetupInvalid`` when present but broken."""
     if kind not in KINDS:
-        raise ValueError("kind must be week or month")
+        raise ValueError("kind must be one of: " + ", ".join(KINDS))
     if not setup_present(config, kind):
         return None
     granularity = GRANULARITY[kind]
@@ -255,6 +273,8 @@ def review_setup(config: dict, profile: dict, kind: str, *, today: Optional[date
     if template is not None and _str(template) is None:
         pointers.append(f"/templates/mapping/{granularity}")
 
+    rows = {name: template_rows(config, kind, template, name, pointers) for name in ROW_LISTS}
+
     if pointers:
         raise SetupInvalid(pointers)
     return ReviewSetup(
@@ -263,7 +283,59 @@ def review_setup(config: dict, profile: dict, kind: str, *, today: Optional[date
         template_base=_str(get_path(config, ("templates", "base_path"))[1]), template_variant=variant,
         own_sections=own_sections, daily_sections=lists["sections"], skip_sections=lists["skip_sections"],
         task_notes=lists["task_notes"], max_chars_per_day=max_chars, tracker_types=tracker_types(config),
+        sections=rows[SECTIONS], off_limits=rows[OFF_LIMITS],
     )
+
+
+def _escape(token: str) -> str:
+    """One JSON-pointer reference token (RFC 6901)."""
+    return token.replace("~", "~0").replace("/", "~1")
+
+
+def template_rows(config: dict, kind: str, template: Any, name: str, pointers: List[str]) -> List[dict]:
+    """The ``name`` rows stored for ``template`` with defaults; [] without; bad rows appended to ``pointers``."""
+    base = f"/review/{GRANULARITY[kind]}/{name}"
+    found, by_template = get_path(config, ("review", GRANULARITY[kind], name))
+    if not found or by_template is None or _str(template) is None:
+        return []
+    if not isinstance(by_template, dict):
+        pointers.append(base)
+        return []
+    rows = by_template.get(template)
+    if rows is None:
+        return []
+    problems = row_problems(rows, name, kind, template)
+    pointers.extend(f"{base}/{_escape(template)}{p.pointer[len(name) + 1:]}" for p in problems)
+    if problems:
+        return []
+    return [copy.deepcopy({**_ROW_DEFAULTS[name], **row}) for row in rows]
+
+
+def row_problems(rows: Any, name: str, kind: str, template: str) -> List[Problem]:
+    """Schema and duplicate problems of one row list, pointers as in a writer input (``/sections/0/cap``)."""
+    import jsonschema
+
+    validator = jsonschema.Draft202012Validator(_schema())
+    errors = validator.iter_errors({"kind": kind, "template": template, name: rows})
+    pointers = sorted({_pointer(e.absolute_path) for e in errors if list(e.absolute_path)[:1] == [name]})
+    if pointers:
+        return [Problem(p, "schema") for p in pointers]
+    return _duplicates(rows, name)
+
+
+def _duplicates(rows: Sequence[dict], name: str) -> List[Problem]:
+    """A heading key or (section rows) an id that an earlier row of the list already holds."""
+    keys: set = set()
+    ids: set = set()
+    problems: List[Problem] = []
+    for i, row in enumerate(rows):
+        if row_key(row) in keys:
+            problems.append(Problem(f"/{name}/{i}", _DUPLICATE_KINDS[name]))
+        elif name == SECTIONS and row["id"] in ids:
+            problems.append(Problem(f"/{name}/{i}/id", DUPLICATE_ID))
+        keys.add(row_key(row))
+        ids.add(row.get("id"))
+    return problems
 
 
 def tracker_types(config: dict) -> Dict[str, str]:
@@ -317,11 +389,11 @@ def _pointer(parts: Sequence[Any]) -> str:
 
 
 def input_problems(data: Any, *, today: Optional[date] = None) -> List[Problem]:
-    """Schema violations (kind ``schema``) and name-format problems (pointer ``/format``)."""
+    """Schema violations (kind ``schema``), name-format problems (pointer ``/format``) and repeated rows
+    (``duplicate-section`` / ``duplicate-off-limits`` at the row, ``duplicate-section-id`` at its id)."""
     import jsonschema
 
-    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    validator = jsonschema.Draft202012Validator(schema)
+    validator = jsonschema.Draft202012Validator(_schema())
     pointers = sorted({_pointer(err.absolute_path) for err in validator.iter_errors(data)})
     problems = [Problem(p, "schema") for p in pointers]
     if problems:
@@ -329,7 +401,13 @@ def input_problems(data: Any, *, today: Optional[date] = None) -> List[Problem]:
     rule = WeekRule.from_config(data["first_day"], data["min_days"]) if data["kind"] == WEEK else ISO
     for fp in check_format(data["format"], data["kind"], rule, today=today or date.today()):
         problems.append(Problem("/format", fp.kind, fp.example))
+    for name in ROW_LISTS:
+        problems.extend(_duplicates(data.get(name, []), name))
     return problems
+
+
+def _schema() -> dict:
+    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 def writer_edits(data: dict) -> List[Edit]:
@@ -358,6 +436,9 @@ def writer_edits(data: dict) -> List[Edit]:
         edits.append((("review", g, "own_sections"), data["own_sections"]))
     if "template_variant" in data:
         edits.append((("review", g, "template_variant"), data["template_variant"]))
+    for name in ROW_LISTS:
+        if name in data:
+            edits.append((("review", g, name, data["template"]), data[name]))
     if "daily_path_fix" in data:
         edits.append((("concepts", "calendar", "granularities", "daily", "path"), data["daily_path_fix"]))
     return edits

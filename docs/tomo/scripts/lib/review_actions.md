@@ -30,8 +30,8 @@ marker is an Obsidian comment, invisible in reading view, and it carries the
 period so a monthly note that quotes a weekly review's marker cannot match.
 
 The marker search covers the note's lines outside code fences by Hashi's
-fence rule (next section), the same lines Hashi's heading parser sees; a
-marker inside a fence is quoted text.
+fence rule (docs/tomo/scripts/lib/review_hashi_text.md), the same lines
+Hashi's heading parser sees; a marker inside a fence is quoted text.
 
 The marker counts only at column 0. Tomo writes it there and nowhere else;
 an indented copy is something else — most likely a landed item's
@@ -43,63 +43,11 @@ read that copy as the signature: with the real marker deleted the rerun
 Hence `line.rstrip() == marker`: no leading whitespace, trailing whitespace
 tolerated (a CRLF note keeps its `\r`, and the marker is still Tomo's line).
 
-## WHY Headings Are Parsed by Hashi's Rule, Not `review_md`'s
+## WHY Matching Is Tolerant and Emission Exact
 
-Every heading this module emits as an anchor value, or matches a configured
-anchor, `setup.heading` or an own section against, must be the heading Hashi
-will resolve — otherwise a plan that passes every check here fails in Hashi
-with `anchor not found`, or lands under a different heading. Hashi's reading
-is `Hashi/src/actions/markdownStructure.ts`: `parseHeadings` takes the text
-after the hashes, trimmed, and KEEPS closing hashes (`## Woche ##` is
-`Woche ##`); `fencedLineMask` toggles on every line that opens with optional
-whitespace and ``` or ~~~, whatever the fence character or its length, with
-no `>` prefix (a quoted fence is not a fence to Hashi). `anchorResolver.ts`
-(`resolveHeading`) and `sectionLocator.ts` then take the FIRST heading whose
-text equals the anchor value exactly, over the whole file content including
-the frontmatter — a YAML comment `# x` in the frontmatter is a level-1
-heading to Hashi, so it is one here too.
-
-`review_md.headings` reads for `review_day` — a CommonMark-shaped parser that
-strips closing hashes and closes a fence only with its own character. Its
-reading of a daily is never handed to Hashi, so it stays as it is; feeding
-its headings into an anchor would emit `Woche` for a note whose heading Hashi
-reads as `Woche ##`. The two parsers differ exactly where notes differ in the
-wild (closing hashes, a ``` opened and ~~~ closed, a fence inside a
-blockquote), so this module carries its own mirror of Hashi's two regexes
-(`hashi_headings`, `fenced_mask`) and uses nothing else for the target, the
-marker search and the template of a new note. The mirror has no behaviour of
-its own: when Hashi's parser changes, this one changes with it.
-
-The mirror is exact down to the character classes, because Python's `re`
-and ECMAScript read the same two regexes differently in three places, and
-each difference makes Tomo emit an anchor Hashi cannot resolve:
-
-- Line terminators. Hashi splits the file on `\n` only, so a CRLF note
-  keeps its `\r` at the end of every line, and ECMAScript's `.` does not
-  match `\r` (nor U+2028, U+2029) while its `$` without the `m` flag matches
-  only at the end of the string — `## Woche\r` is NOT a heading to Hashi.
-  Python's `.` matches `\r` and `str.strip()` removes it, so the naive mirror
-  found `Woche` and emitted it, and Hashi answered `anchor not found`. The
-  text group is therefore `[^\r\n  ]*`, anchored with `\Z`, and the
-  split stays `\n` only: a CRLF target has no headings at all, which the
-  plan reports as `place-missing` (with an empty heading list) instead of
-  emitting an anchor that fails downstream. The same holds for a heading
-  line that contains U+2028 or U+2029.
-- Whitespace. ECMAScript's `\s` and `String.prototype.trim` share one set:
-  WhiteSpace (U+0009, U+000B, U+000C, U+FEFF and Unicode `Zs`) plus
-  LineTerminator (U+000A, U+000D, U+2028, U+2029). Python's `\s` and
-  `str.strip()` use `str.isspace()`, which adds U+001C to U+001F and U+0085
-  and lacks U+FEFF. So a BOM after the hashes is whitespace to Hashi (the
-  heading is found, the BOM trimmed) but text to Python, and a NEL or a
-  file separator is the opposite. `JS_WS` holds the ECMAScript set as a
-  literal (the `Zs` members have been stable since Unicode 6.3 dropped
-  U+180E; a test compares the literal with `unicodedata` so a drift shows),
-  both regexes use it in place of `\s`, and the heading text is trimmed with
-  `str.strip(JS_WS)`. The V8 oracle for every edge character is in the test
-  file's docstring.
-- Only the mirror uses `JS_WS`. Tomo's own marker match (`line.rstrip() ==
-  marker`, column 0) stays Python's: the marker line is Tomo's signature,
-  not something Hashi resolves.
+Every heading is read by the Hashi mirror in `lib/review_hashi_text.py`
+(docs/tomo/scripts/lib/review_hashi_text.md, "WHY Headings Are Parsed by
+Hashi's Rule, Not `review_md`'s"); `bare` is how two headings compare.
 
 Matching is tolerant, emission exact. A configured anchor or `setup.heading`
 of `Woche` matches a note heading `Woche ##` (both sides compared after
@@ -173,26 +121,13 @@ above level 5 it is refused the same way, and the place reported with the
 refusal is that heading and its level — the place at fault — not the setup's
 anchor, which the replace never used.
 
-## WHY Every Item Line Is Escaped Again, Idempotently
+## WHY Landed Item Lines Come From `review_hashi_text.item_lines`
 
-The landed section is Markdown Hashi later re-parses for headings and
-sections. An item line that starts with `#`, `- [`, `>` or a fence would be a
-heading, a checkbox, a quote or an open fence inside the periodic note — and
-a heading would end Tomo's section early. `review_doc` escaped such lines
-when it wrote the document; the user may have added lines since. The same
-predicate (`review_doc.neutralised`, made public for this) runs over every
-landed line, first and continuation lines alike, and a line that already
-starts with the backslash is not structure, so it passes through unchanged:
-one backslash, never two. The count reported is of the lines this module
-escaped (F5-AC2).
-
-## WHY Ids Are Stripped and the Text Is Otherwise Verbatim
-
-`%%t<n>%%` is the document's bookkeeping (ADR-13); the periodic note gets the
-text the user left (Rule 2) without it. Continuation lines are re-indented by
-two spaces under their bullet — the document's own indentation — and nothing
-else changes: links stay, wording stays, a line the user escaped stays
-escaped.
+Escaping and id stripping of every landed line are the line handling both
+planners share; their rationale is in docs/tomo/scripts/lib/review_hashi_text.md
+("WHY Every Item Line Is Escaped Again, Idempotently", "WHY Ids Are Stripped
+and the Text Is Otherwise Verbatim"). The count of escaped lines this module
+reports is theirs (F5-AC2).
 
 ## WHY Only Kept Items Land and an Empty Group Leaves No Heading
 
@@ -238,51 +173,36 @@ sorted by path before the first is taken, so two builds of the same plan —
 the preview and the delivery, or a resume — pick the same note whatever
 order the search answered in.
 
-## WHY a New Note Follows ADR-8 in This Order
+## WHY the New Note's Text Is Composed in `review_new_note`
 
-Variant text present → the note is built from it. A variant configured but
-not readable → the raw template with `variant_missing`, so the user learns
-the convention file is gone instead of silently getting Templater code.
-No variant → the raw template; a raw template holding `<%` sets
-`templater_hint` so the readable instructions tell the user to run Templater
-after the move. No template, or an unreadable one → a plain note: the title
-as H1 and the review section at level 2. The section is placed by the same
-before/inside rule as in an existing note, on the template's own headings;
-an anchor the template lacks is `place-missing` with those headings.
+Which template text a new note is built from (ADR-8), the plain note, the
+splice of the blocks and the stamp live in `lib/review_new_note.py`; the
+rationale is in docs/tomo/scripts/lib/review_new_note.md ("WHY a New Note
+Follows ADR-8 in This Order"). This module still decides where "Tomo Review"
+goes in that text (`_insertion`, shared with an existing note), plans the
+sections on it (`_sectioned`) and emits the `move_note`: those steps read and
+write `ReviewPlan`, so they stay beside it.
 
-The new note is stamped `rendered-note` / `pending-move` with
-`updated_at = generated`, like `/note`'s draft (`note-instructions.py`), so a
-resume rebuilds the same bytes and Hashi strips the block on the move.
+## WHY the Set Holds One Action per Landing Part (spec 046 T5.4, ADR-12)
 
-The stamp goes through `doc_frontmatter.merge_tomo_block_into_markdown`,
-which refuses two template shapes with `FrontmatterMergeError`: a
-frontmatter that already holds a top-level `tomo:` key (the merge would
-write a duplicate key, which a YAML reader silently resolves to one of the
-two) and a leading `---` fence that never closes (there is no frontmatter
-to merge into). Both came out of the template the user
-configured, not out of the review, so neither refuses the delivery: the
-plan falls back to the plain note — the same note a missing template
-yields — and records the notice `template_unmergeable`, holding the merge
-helper's reason, so the preview can say which of the two shapes to fix
-(T4.2 shows it as a notice, like `variant_missing`). One notice name, not
-two: both shapes share the consequence (the template was dropped for this
-delivery) and the fix site (edit the template file); the reason text
-already tells them apart, and a second flag would duplicate that. The
-fallback resets `templater_hint` (the plain note holds no Templater code)
-and keeps `variant_missing` (it is still true of the variant). A template
-whose frontmatter carries `tomo:` is not the variant convention — the
-variant replaces Templater tokens, nothing else.
+Without a mapping an existing target gets one `insert_under_marker` or one
+`replace_section`; a new note gets one `move_note` — the section (and with
+a mapping every spliced block) is already inside the note. With a mapping
+an existing note gets one action per section that lands as its own block
+(`insert_under_marker` or `replace_between_markers`), in mapping order,
+then the "Tomo Review" action when anything is left for it, numbered
+`I01…In` by `review_section_set.compose` (docs/tomo/scripts/lib/review_section_set.md,
+"WHY Ids Are Dense Over the Emitted Actions"). The section actions are
+composed on every path that does not refuse the "Tomo Review" part —
+also when "Tomo Review" itself emits nothing (`review-section-kept`, or no
+content for a new one), because a section's block does not depend on it.
+A refused "Tomo Review" part (a plan problem) leaves the set empty: the
+delivery is refused as a whole, as in spec 045.
 
-The template's text is taken by the exact bytes: `_split_lines` mirrors
-Hashi's `content.split("\n")`, and the rebuilt note ends with a newline
-only when the template did. A note whose template lacks the final newline
-lands without one; adding it would make the plain-vs-template byte
-promise above false for that template.
-
-## WHY the Set Holds One Action
-
-An existing target gets one `insert_under_marker` or one `replace_section`;
-a new note gets one `move_note` — the section is already inside the note.
+Which sections land — on an existing note as actions, on a new note as
+spliced blocks — is one rule, `review_section_set.lands`: an empty section
+lands on neither (docs/tomo/scripts/lib/review_section_set.md, "WHY Ids Are
+Dense Over the Emitted Actions").
 Hashi's `move_note` refuses when source and destination both exist
 (`moveNote.ts:71`), which is the "the user created the note in the meantime"
 guard of F6-AC4; Tomo's side of it is choosing the existing note at delivery
@@ -297,8 +217,127 @@ delivery that began with a picked heading needs the same list without a
 refusal — the re-plan at the configured anchor may be clean —
 (docs/tomo/scripts/review-instructions.md, "WHY a Picked Anchor Is Recorded
 as a Flag and Asked Again"). `pick_headings(setup, target, template)` is that
-one definition, built from the same `_template_choice` and `_split_lines`
+one definition, built from the same `review_new_note.template_choice` and `split_lines`
 the planner uses, so the list the resume offers is the list the first pick
 offered; a plain note (no template) has none. A plan that always carried
 `headings` was rejected: `preview` prints them only on a place problem (SDD
 Interface `headings?`), and the privacy allowlist names them for that case.
+
+## WHY `_gate` Refuses `section-checkbox-missing` (spec 046, F3-AC6)
+
+`_gate` refuses a document with `section-checkbox-missing` the way it refuses
+a missing Approved line. A broken section checkbox makes that section's state
+unknowable, and the parser's column-0 grammar may then file the section's
+items under another key (the `%%s3%% %%s1%%` case); delivering nothing is the
+only safe outcome. The check sits after `approved-line-missing` and before
+`not-approved`, so a document that cannot be read is named as such before the
+Approved line is judged. The loop is line-neutral on purpose:
+`review_actions.py` was over its size guide when this refusal was added (it
+is 413 lines since the T5.2 and T5.4 splits), so the refusal extends the
+existing tuple instead of adding a branch.
+
+## WHY Mapped Sections Are Split From the Groups (spec 046 T5.2)
+
+The ApprovedReview record files a section's items under its key, next to
+the groups. Before spec 046 any key outside `review_doc.GROUPS` was
+`unlanded`; a configured row's key is not: its items land in their own
+block (an existing note: the per-section plans in `ReviewPlan.sections`,
+composed into actions by the set builder; a new note: spliced into the
+note) or in "Tomo Review" (analysis rows, routed sections). So the
+configured keys are taken out before `landed_groups` runs, and only a key
+neither a group nor a row stays `unlanded-items`. Without rows nothing is
+taken out and spec 045's output is byte-identical (CON-2).
+`nothing-to-deliver` refuses only when neither a group nor a section has a
+line to land.
+
+`escaped_lines` counts every escaped line that lands: the groups', the
+"Tomo Review" sub-parts', and on a new note the blocks spliced into it
+(`SectionPlan.escaped_lines` of every `insert`), because those blocks are
+written with the note. It is recomputed from the groups' count on every
+planning, so the fallback that re-plans a new note on the plain note counts
+each line once. An existing note's `insert`/`replace` blocks land as actions
+of their own (T5.4), so their escapes count too
+(`review_section_set.landed_escapes`; docs/tomo/scripts/lib/review_section_set.md,
+"WHY Every Landed Block's Escapes Are Counted Once").
+
+## WHY "Tomo Review" Holds Analysis Rows, Routed Sections, Then the Groups
+
+An analysis row's heading is script-only (dataview, tracker); writing into
+it would be overwritten or break the query, so its material lands as a
+sub-heading inside "Tomo Review" (F2-AC12). A routed section has no
+heading in the note to land under. Both become sub-parts at the Tomo
+Review level + 1 in mapping order, before spec 045's groups; the habits
+stay a group and so stay in "Tomo Review" (F2-AC7). The sub-parts are built
+by `review_section_set.review_parts`.
+
+## WHY Sections Are Planned Before the "Tomo Review" Insertion Point
+
+Whether "Tomo Review" is written at all depends on what lands in it, and
+routing depends only on missing or doubled headings, never on where Tomo
+Review goes. So the sections are planned first with `review_at=None`; when
+Tomo Review has content and is new on an existing note, they are planned
+again with `review_at` set to its insertion index (what `_insertion`
+returns), so a section insert at that same index stops as
+`block-in-review-section` — Hashi orders two inserts at one index by kind,
+not by Tomo's intent. When Tomo Review already exists, `plan_section`
+finds it by its spec 045 marker and `review_at` stays None.
+
+## WHY `review-section-kept` and No `replace_section`
+
+On a re-run whose Tomo Review receives nothing (every group empty, no
+analysis or routed material), a `replace_section` with only the marker
+would delete the earlier review. The section stays as it is, no action is
+emitted for it, and the notice `review-section-kept` tells the user;
+removing it is the user's choice. The notice is a name only — no heading,
+no text (CON-3). Without rows this case is still spec 045's
+`nothing-to-deliver`.
+
+It sits in `ReviewPlan.notices`, not in `problems`: `review_delivery.classify`
+refuses every problem name it does not list, and listing a name there
+requires the skill's wording for it (`test_review_skill_pass2`), which is a
+later task's (T5.5 wired the notice into the output, T5.6 worded it). The
+constant lives in `review_section_plan` beside the other spec 046 notice
+names, so the guard that every problem constant of this module is
+classified keeps meaning "every spec 045 problem".
+
+## WHY the "Tomo Review" Placement Is Checked Against Off-Limits Rows
+
+`landing-off-limits` (`review_section_plan.place_off_limits`) runs where
+"Tomo Review" is inserted — an existing note without the marker and a new
+note's template — so neither the Tomo Review heading nor an analysis or
+routed sub-heading lands in an off-limits section (ADR-8). It is a refusal
+without a heading pick: the fix is the setup's place. The name is
+`review_section_plan.STOPS`' `landing-off-limits`, the same stop a section
+gets; `classify` lists it among the refusing names (T5.5). With no off-limits
+rows the check finds nothing and spec 045's plans are unchanged.
+
+A re-run is checked too (`review_section_plan.review_off_limits`), because
+the re-run's `replace_section` rewrites the whole section — now with
+analysis and routed sub-headings — wherever it sits, and that place can be
+off limits by then: the user marked the heading off limits after the first
+run, or moved the section under an off-limits heading. Checking only at
+insert time would let the 0-writes-to-an-off-limits-section rule (PRD
+Rule 4) hold on the first run and break on every later one. The rule
+mirrors the section planner's re-run rule (check where it actually sits):
+the existing section is off limits when a row covers the Tomo Review heading
+itself, or the heading whose body holds that heading's line (its parent, or
+the earlier sibling whose body it follows — the landing an insert at that
+spot would get). A `with_subsections` row covers both through their
+ancestors. The check runs after `review-section-kept` (a re-run with nothing
+for the section writes nothing there, so there is nothing to stop) and
+before the collision checks; it refuses without a heading pick, like the
+insert's.
+## WHY Two Modules Were Split Out (spec 046 T5.2, owner decision 2026-11-16)
+
+`review_actions.py` reached its 500-line limit and `review_section_plan.py`
+its 350, with T5.4/T5.5 still to add, and the two imported each other: the
+section planner needed the Hashi mirror this module owned, this module
+needed the section planner. The Hashi mirror moved to
+`lib/review_hashi_text.py` and the new note's text composition to
+`lib/review_new_note.py`; imports now go one way —
+`review_actions` → `review_new_note` → `review_section_plan` →
+`review_hashi_text` — and no compatibility names are re-exported here, so a
+caller names the module that owns what it uses. T5.4 added
+`lib/review_section_set.py` between `review_new_note` and
+`review_section_plan` for the set-level steps and the composition
+(docs/tomo/scripts/lib/review_section_set.md, "WHY a Module of Its Own").

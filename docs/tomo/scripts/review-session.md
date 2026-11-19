@@ -311,13 +311,34 @@ WHY: SDD Error Handling row for `setup-input`: an invalid confirmed input is
 `status: invalid` with pointers and nothing saved. The writer validates
 again, but the skill needs the pointers before it spends a writer call, and
 the confirmed proposal is not the writer's shape: `template_kind` is dropped,
-a month proposal's null `first_day`/`min_days` are dropped (the schema forbids
-them for a month), and `daily_path_fix` is reduced to the found spelling.
+a month or quarter proposal's null `first_day`/`min_days` are dropped (the
+schema forbids them for every kind but the week; spec 046 T1.4 made the test
+`kind != week` so a new kind cannot inherit the week rule by accident), and `daily_path_fix` is reduced to the found spelling.
 Validation is `review_config.input_problems`, the writer's own check, so the
 two cannot disagree. The input is written atomically to
 `tomo-tmp/review/setup-<kind>.json` (`--output` overrides) and `input_path`
 names it; the skill passes it to the writer and removes it, as `/note` does
 with `note-include.json`.
+
+### WHY `setup-input` Carries the Rows and Checks Them (spec 046 T2.2)
+
+`sections` and `off_limits` join `_INPUT_KEYS`, so the confirmed rows reach
+the writer input. Before validation every section row without an id gets one
+(ADR-10); after `input_problems` passes, `lib/review_setup_rows` refuses what
+may not be saved — a missing template, a left-out heading with its reason, a
+heading not in the template, an off-limits heading, a placement landing in
+off-limits text, an analysis row on a heading that is not `automatic` (F2-AC4,
+F2-AC11, F2-AC12, Rule 4). The evidence is the rows file `match` wrote, not
+the confirmed file (docs/tomo/scripts/lib/review_setup_rows.md). The saved
+rows the ids are taken from come from `--config`; nothing reaches Kado.
+
+On a save (`status ok`) `setup-input` removes `rows-<kind>.json`: the
+dialogue it belonged to is over, and the next `match` must not report the
+saved rows as `dropped` against a template the user no longer sees
+(ADR-13). A file that cannot be removed is left (as in `start`); an invalid
+input keeps the file, because the Correct step reruns `match` and
+`setup-input` against it. `setup-input` takes the hidden `--tmp` for the same
+reason `match` does.
 
 ## WHY `start` Parses the Argument Before It Reaches Kado
 
@@ -455,6 +476,26 @@ setup is present but `review_config` refuses it — the dialogue then names
 the keys instead of silently proposing over them. `setup.week` /
 `setup.month` (`present` / `missing`) are in every output so the skill runs
 the setup first when the requested kind has none (F2).
+
+## WHY `start` Removes the Rows Files and `match` Takes `--tmp`
+
+WHY: spec 046 ADR-13. `match` keeps the rows it showed in
+`tomo-tmp/review/rows-<kind>.json` so a template correction can name the
+rows it drops (docs/tomo/scripts/lib/review_match.md). That file belongs to
+one setup dialogue. A dialogue that ended in Abort, or a session that ended
+mid-setup, leaves it behind; the next session's first `match` would then
+compare its template with a mapping the user no longer sees and report
+headings as dropped that were never part of this dialogue. Every `/review`
+starts with `start`, so `start` removes every `rows-<kind>.json` before it
+does anything else, whatever the argument; `setup-input` removes it on save
+(T2.2). A file that cannot be removed (`OSError`) is left: the cost is a
+spurious `dropped` line, not a wrong save, and `start` keeps its exit-0
+contract. Nothing else under `tomo-tmp/review/` is touched.
+
+`match` gains `--tmp` (the same default as `start`'s) so both subcommands
+name one folder and a test can point them elsewhere. It is hidden from
+`--help` like `--today`: the skill never passes it, and a visible flag is
+one the setup dialogue would have to carry back.
 
 ## WHY the JSON Is Written ASCII-Escaped
 

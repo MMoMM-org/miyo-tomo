@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_edit_note_text_action.py — Tests for the edit_note_text Hashi action (ADR-3).
 
 Covers:
@@ -44,7 +44,7 @@ def instructions_schema() -> dict:
 def _make_minimal_doc(actions: list[dict]) -> dict:
     """Build the minimal valid instructions document wrapping `actions`."""
     return {
-        "schema_version": "3",
+        "schema_version": "4",
         "type": "tomo-instructions",
         "generated": "2026-07-20T00:00:00Z",
         "profile": None,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.4.2
 """test_review_period.py — reading a period for /review: dailies flat and in
 year folders, the day after the period, duplicates, link stems resolved to
 vault paths, task notes read once, the weekly notes of a month with their
@@ -34,6 +34,7 @@ from review_period_fixtures import (  # noqa: E402
     TASK_NOTE_TEXT,
     W09_NOTE,
     W13,
+    W13_NOTE,
     WEEKLY,
     daily,
     day_report,
@@ -265,6 +266,16 @@ def test_only_in_weekly_links_and_dailies_not_in_weekly_are_computed():
     result = run(month_vault(), MARCH, month_sources())
     assert result["only_in_weekly_links"] == ["Thought Note", "Own Note", "Delta", "Epsilon"]
     assert result["dailies_not_in_weekly"] == ["Only Daily", "Omega", "Beta"]
+
+
+def test_link_differences_leave_out_targets_that_are_not_notes():
+    """Image and PDF embeds are attachments, not notes a review could miss (046 T6.3 walk: weather icons)."""
+    first_day = daily(date(2026, 3, 1), "first [[March Note]] [[Only Daily]] ![[snow.png]] [[scan.pdf|Scan]]")
+    w13 = W13_NOTE.replace("- sunday block", "- sunday block ![[chart.PNG]] [[Kappa.md]] [[Foo.Bar]] [[v1.2 Plan]]")
+    result = run(month_vault(**{first_day[0]: first_day[1], f"{WEEKLY}2026-W13.md": w13}), MARCH, month_sources())
+    assert result["dailies_not_in_weekly"] == ["Only Daily", "Omega", "Beta"]
+    assert result["only_in_weekly_links"] == ["Thought Note", "Own Note", "Delta", "Kappa.md", "Foo.Bar",
+                                              "v1.2 Plan", "Epsilon"], "a dotted note name stays a note"
 
 
 def test_month_without_weekly_notes_says_none_found():

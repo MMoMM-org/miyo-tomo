@@ -1,7 +1,8 @@
 # WHY: lib/period.py
 
 > Rationale for decisions in `tomo/scripts/lib/period.py`.
-> The module owns week and month arithmetic for `/review` (spec 045, T1.1):
+> The module owns week, month and quarter arithmetic for `/review` (spec 045, T1.1;
+> the quarter: spec 046 T1.4, ADR-6):
 > the week rule, the `Period` value, periodic name formats and the parsing of
 > the `/review` argument into a request or an error object.
 
@@ -175,3 +176,52 @@ Validity (does the week exist?) comes before finishedness (is it over?), so
 `2026-W54` is `invalid-period` even though it would also be unfinished. The
 unfinished error carries `last_finished` as its own field as well as in
 `example`, so the skill can name it without parsing the example (F2-AC6).
+
+## WHY the Quarter Is a Third Period Kind, Calendar Quarters Only
+
+Spec 046 (ADR-6) reviews a quarter the way spec 045 reviews a month, so the
+quarter is a `Period` like the other two rather than a list of months the
+callers assemble: `QUARTER` joins `KINDS`, `Period.quarter(year, number)`
+holds the first and last day, and `containing`, `previous`, `last_finished`,
+`is_finished`, `note_paths` and the argument parsing work for it unchanged.
+Only calendar quarters exist (Q1 = January to March). A fiscal or shifted
+quarter would need a rule like the week rule; nobody asked for one (YAGNI),
+and the Periodic Notes plugin's quarterly notes are calendar quarters too.
+
+`months()` returns a quarter's three months; it is the quarter's own child
+list, so it is refused for a week or a month instead of answering with an
+empty or single-element list a caller could mistake for a result.
+`weeks_overlapping` now covers a quarter as well as a month, by the same
+walk: 2026-Q1 touches 2026-W01 (starting 2025-12-29) to 2026-W14 (ending
+2026-04-05). The reader clips the boundary weeks, as it does for a month.
+
+## WHY the `Q` Token and the Default `YYYY-[Q]Q`
+
+`Q` is Moment's quarter token (1..4), the one Periodic Notes uses; its
+default quarterly format is `YYYY-[Q]Q` (`2026-Q1`), which is also the
+quarter's canonical `name`. Before the quarter, `Q` was an unknown token;
+now it is the quarter's number token, so `format_kind` decides between three
+kinds and a format must carry exactly one of a week number, a month number
+or a quarter number — `YYYY-MM-Q` is `no-period-token`, as a format holding
+both a week and a month number already was. The quarter's year is the
+calendar year (`YYYY`), and the year folder of `note_paths` is the calendar
+year as for a month. On parsing, `Q` reads one or two digits like `M`, so
+`2026-Q12` fits the shape and is then refused as a number outside the year
+rather than read as `2026-Q1` followed by a stray `2`.
+
+## WHY the Quarter Arguments Mirror the Month's
+
+`quarter`, `2026-Q1`, `Q1` and `@<quarterly note>` follow the week and month
+grammar word for word (PRD F6-AC2, F6-AC3): the kind word alone is the last
+finished quarter; a full name is that quarter; a bare `Q1` walks back to the
+most recent finished Q1 and sets `year_inferred` so the skill names the year
+before reading; a kind word before another kind's period is `invalid-period`.
+`2026-Q5` is `invalid-period` with the named year's last quarter as the
+example (`2026-Q4`), the same rule as `2026-W54`; a bare `Q5` names the range
+1..4 and offers the last finished quarter. The `@` path tries the week, month
+and quarter formats in that order; the formats are disjoint by `format_kind`,
+so the order only fixes which error text is shown. The repeated
+"week, month or quarter?" choice is one function (`build(kind, year, number,
+rule)`), used by `parse_name`, the argument parser and the walk back, so
+adding the kind did not add a third copy of each branch. It is public because
+the period reader (spec 046 Phase 3) needs the same choice.

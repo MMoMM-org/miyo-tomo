@@ -63,3 +63,14 @@ takes the last path component without `.md` through `vault_paths.path_key`
 of `|alias` and `#heading` because Kado's `listNotes` `links` field carries
 raw `metadataCache` link text, and a hand-written weekly does too. The first
 spelling seen is reported, so the model cites what the user wrote.
+
+## WHY a Monthly Note Is Split by the Same Function
+
+WHY: spec 046 SDD Directory Map ("content split reused for monthly notes").
+A monthly review has the same shape for the reader as a weekly one: day
+headings that link a daily (blocks clipped to the period), hand-written own
+sections (`review.monthly.own_sections`), and planning sections cut by the
+skip prefixes. A second parser would drift from the first on fences, heading
+levels and skips. `weekly_content` takes `text_key` (default `week_text`) so
+a monthly entry names its own-section text `month_text`; nothing else in the
+split differs. The caller is `lib/review_children.read`.

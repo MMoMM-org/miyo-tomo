@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.8
+# version: 1.11
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -128,6 +128,7 @@ templates:
     daily: "Daily Note.md"
     weekly: "Weekly Note.md"
     monthly: "Monthly Note.md"
+    quarterly: "Quarterly Note.md"
     yearly: "Yearly Note.md"
     project: "Project.md"
     source: "Source.md"
@@ -533,13 +534,13 @@ daily_log:
 # ──────────────────────────────────────────────────────────────────────────────
 # Review
 # ──────────────────────────────────────────────────────────────────────────────
-# The /review setup for weekly and monthly reviews. Written by `/review setup`
-# through scripts/vault-config-writer.py review (schema:
+# The /review setup for weekly, monthly and quarterly reviews. Written by
+# `/review setup` through scripts/vault-config-writer.py review (schema:
 # tomo/schemas/vault-config-review.schema.json). Do not hand-edit — the setup
-# also enables the weekly/monthly folder under concepts.calendar.granularities,
-# sets naming.calendar_patterns.weekly/monthly and templates.mapping.weekly/
-# monthly in the same run. The section is absent until the first setup; the
-# block below shows a complete example.
+# also enables the weekly/monthly/quarterly folder under
+# concepts.calendar.granularities, sets naming.calendar_patterns.<g> and
+# templates.mapping.<g> in the same run. The section is absent until the first
+# setup; the block below shows a complete example.
 #
 # language                 — review language, BCP 47 (de, en, pt-BR)
 # week.first_day           — first day of the week: monday..sunday
@@ -549,11 +550,27 @@ daily_log:
 # daily.skip_sections      — sections never read, prefix match on the heading text
 # daily.task_notes         — living task notes shared by all days
 # daily.max_chars_per_day  — read cap per day; beyond it the day counts as partly read
-# weekly|monthly.heading   — the review heading written into the periodic note
-# weekly|monthly.place     — anchor heading + placement: before (same level,
+# <g>.heading              — the review heading written into the periodic note
+#                            (<g> = weekly | monthly | quarterly)
+# <g>.place                — anchor heading + placement: before (same level,
 #                            above it) | inside (one level deeper, at its end)
-# weekly|monthly.own_sections — sections of the periodic note you write by hand
-# weekly|monthly.template_variant — Tomo-ready variant of a Templater template, or null
+# <g>.own_sections         — sections of the periodic note you write by hand
+# <g>.template_variant     — Tomo-ready variant of a Templater template, or null
+# <g>.sections.<template>  — template sections the review fills, per template
+#                            (the templates.mapping.<g> name, quoted); each row:
+#   id                     — s1, s2, … kept across corrections
+#   heading, level, parent, occurrence — the template heading (parent null at
+#                            the top; occurrence counts identical headings)
+#   description, keywords  — what the section asks for (≤ 12 keywords)
+#   groups                 — optional review groups to start from: done, open,
+#                            themes, growth; monthly also weekly_only,
+#                            not_in_weekly; quarterly also monthly_only,
+#                            not_in_monthly (never habits)
+#   placement              — before | under | end of the heading; review = an
+#                            automatic section analysed in the Tomo Review section
+#   cap                    — most items, 1..30 (default 8)
+# <g>.off_limits.<template> — template headings Tomo never writes into;
+#                            with_subsections: true covers the headings below too
 #
 # review:
 #   language: "de"
@@ -572,6 +589,33 @@ daily_log:
 #       placement: "before"
 #     own_sections: ["In my own words", "Reflections"]
 #     template_variant: null
+#     sections:
+#       "Weekly Note.md":
+#         - id: "s1"
+#           heading: "What Went Well This Week?"
+#           level: 4
+#           parent: "In my own words"
+#           occurrence: 1
+#           description: "What went well: finished tasks, good days, things that worked"
+#           keywords: ["erledigt", "geschafft"]
+#           groups: ["done", "themes"]
+#           placement: "end"
+#           cap: 8
+#         - id: "s2"
+#           heading: "Energy and Sleep"
+#           level: 3
+#           parent: "Overview"
+#           occurrence: 1
+#           description: "What the week's sleep and energy values show"
+#           placement: "review"
+#           cap: 4
+#     off_limits:
+#       "Weekly Note.md":
+#         - heading: "Reflections"
+#           level: 3
+#           parent: "Review of the Week"
+#           occurrence: 1
+#           with_subsections: true
 #   monthly:
 #     heading: "Tomo Review"
 #     place:
@@ -579,3 +623,22 @@ daily_log:
 #       placement: "before"
 #     own_sections: ["In my own words", "Reflections"]
 #     template_variant: null
+#   quarterly:
+#     heading: "Tomo Review"
+#     place:
+#       anchor: "Conclusions"
+#       placement: "before"
+#     own_sections: ["Conclusions"]
+#     template_variant: null
+#     sections:
+#       "Quarterly Note.md":
+#         - id: "s1"
+#           heading: "Goals Reached"
+#           level: 3
+#           parent: "Review of the Quarter"
+#           occurrence: 1
+#           description: "Which goals of the quarter were reached, and through what"
+#           keywords: ["Ziel", "erreicht"]
+#           groups: ["done", "monthly_only"]
+#           placement: "end"
+#           cap: 10

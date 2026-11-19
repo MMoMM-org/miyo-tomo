@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_027_t4_1_schema_wire_rename.py — TDD coverage for T4.1 schema cutover.
 
 ADR-3: hard rename origin_inbox_item → source_inbox_item in both
@@ -44,7 +44,7 @@ def hashi_schema() -> dict:
 # Helpers — minimal valid envelope + move_note fixture builders
 # ---------------------------------------------------------------------------
 
-def _envelope(actions: list, schema_version: str = "3") -> dict:
+def _envelope(actions: list, schema_version: str = "4") -> dict:
     """Return a minimal valid instruction-set envelope wrapping the given actions."""
     return {
         "schema_version": schema_version,
@@ -73,7 +73,7 @@ def _move_note(field_name: str = "source_inbox_item") -> dict:
 # ---------------------------------------------------------------------------
 
 class TestNewFieldAndCurrentSchemaVersion:
-    """source_inbox_item + schema_version:"3" must validate against both schemas.
+    """source_inbox_item + schema_version:"4" must validate against both schemas.
 
     Spec 036 T4.1 bumped the instruction wire "2" -> "3"; this fixture tracks
     the current const rather than the "2" spec 027 originally introduced.

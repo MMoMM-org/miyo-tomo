@@ -168,3 +168,19 @@ reference the user wrote and stays.
 from its title on; the owner's journal keeps the question of the day there
 and the planner its links, neither being the day's words. The same block
 is the one the trailing-block rule drops at the end of a daily.
+
+## WHY the Automatic Fences and the Field and Embed Patterns Live Here
+
+Spec 046 (T1.2) adds a second reader of the same line shapes:
+`review_mapping` decides which template sections hold only automatic
+content. `AUTOMATIC_FENCES` is the full list of plugin fences whose content
+is rendered, not written (`QUERY_FENCES`, `EMBED_FENCES`, `tracker`,
+`chartsview`, `calendar-nav`, `meta-bind-button`, `toc`, `tasks`).
+`FIELD_RE` (a `Name:: v` or `**Name**:: v` inline field, list and quote
+markers allowed in front) and `EMBED_LINE_RE` (a line opening with `![[`)
+were private to `review_day`; both readers must agree on what a field and an
+embed line are, and `review_mapping` must not import the day reader, so the
+patterns moved to this lower layer and `review_day` imports them unchanged.
+`cleaned` still drops only query and embed fences: a day read keeps the
+other fences as skeleton text, while the template analysis needs the whole
+list.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """review_skill_helpers.py — the paths, text slicers and rule-line pins shared by the test_review_skill*.py files.
 
 Spec 045 Phase 5 (D8): tests/test_review_skill.py grew past the constitution's ~500 LOC and was split
@@ -59,7 +59,7 @@ ANSWER_RULE = ("- The next user message is the answer: a typed number or option 
 VERBATIM_RULE = ("- Show the `error`, `expected`, `example` and `errors` of a script verbatim, and the `hints` of "
                  "step 2 and the `problems` of step 4; never paraphrase them. Every other `problems` entry, "
                  "`warnings` entry and `notices` entry is said by the line its step gives it; without one, verbatim.")
-PRIVACY_RULE = ("- Never quote `read.json`, a daily note, a journal answer or a tracker value in your reply; print "
+PRIVACY_RULE = ("- Never quote `read*.json`, a daily note, a journal answer or a tracker value in your reply; print "
                 "the scripts' reports and `section_md` only.")
 ACCESS_RULE = ("- Never say a folder is empty or a note does not exist: `kado-none`, `kado_empty` and an empty result "
                "may mean the Kado key cannot read the folder; say so.")

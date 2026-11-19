@@ -373,6 +373,8 @@ Responsibilities (one owner each):
 | `lib/render_md.py` | Readable `instructions.md`: copy-ready fenced content for `insert_under_marker` and `replace_section`, placement wording |
 | `inbox-triage.py` | Treating `review` documents as known and skipping them silently |
 
+*Superseded for a mapped review or a quarter by spec 046 (docs/XDD/specs/046-review-template-sections/solution.md, Components).*
+
 Every new script and lib starts with a header docstring that says why the file exists and an initial `# version: 0.1.0`. Every script's `main` catches any exception and prints only its class name to stderr (CON-3).
 
 ### Directory Map
@@ -586,6 +588,8 @@ Same-day links and embeds are collected from the **whole** daily, before the sec
 
 Tracker fields are not duplicated: F8 reads the existing `trackers.daily_note_trackers` (`today_fields`, `yesterday_fields`, `end_of_day_fields`) and their types; the setup may propose a type change (for example `Sleep` `text` → `duration`) through the existing `vault-config-writer.py trackers` subcommand.
 
+*Superseded for a mapped review or a quarter by spec 046 (docs/XDD/specs/046-review-template-sections/solution.md, Data Storage Changes).*
+
 ```yaml
 # tomo-tmp/review/<stem>/   (<stem> = "<period-name>_review", e.g. "2026-W13_review")
 read.json        # content of the period (Pass 1 only; deleted after the document is written or on abort;
@@ -598,6 +602,8 @@ meta.json        # content-free: period, kind, doc_path, target, mode, generated
 #### Internal API Changes
 
 Every script prints one JSON object on stdout. Exit codes: **0** for every outcome the skill can act on (the outcome is in `status` / `problems` / `error`), **2** for a usage error (unknown subcommand or flag, missing required argument), **1** only for an unexpected exception (stderr: the exception class name, nothing else). stderr never carries note text, titles or proposal text.
+
+*Superseded for a mapped review or a quarter by spec 046 (docs/XDD/specs/046-review-template-sections/solution.md, Internal API Changes).*
 
 ```yaml
 review-session.py start --args '<raw $ARGUMENTS>'
@@ -788,6 +794,8 @@ review-instructions.py status --stem S
 **Canonical open-review states** (owned by `lib/review_state.py`, used everywhere): `open` · `failed-delivery` · `delivered` · `applied` · `move-refused` · `target-missing`. Not a state but None (not listed, `status` prints `state: null`): a withdrawn review, and a complete delivery (`doc_mark` recorded) whose set JSON is gone from the inbox — the user deleted it after Hashi applied it (SDD 1.11, owner decision 2026-11-12).
 
 #### Application Data Models
+
+*Superseded for a mapped review or a quarter by spec 046 (docs/XDD/specs/046-review-template-sections/solution.md, Application Data Models).*
 
 ```pseudocode
 ENTITY: Period (NEW, lib/period.py)
@@ -1112,6 +1120,8 @@ sequenceDiagram
 
 ### Error Handling
 
+*Superseded for a mapped review by spec 046 (docs/XDD/specs/046-review-template-sections/solution.md, Error Handling).*
+
 | Operation | Failure | stdout | User message (by the skill) |
 |---|---|---|---|
 | `start` | invalid argument, `@` note not periodic | `error.kind` invalid-period / not-periodic-note, `expected`, `example` | what was expected + one example; nothing written (F2-AC5, F2-AC7) |
@@ -1359,7 +1369,7 @@ stateDiagram-v2
   - User confirmed: 2026-11-11 ("1 und 2")
   - Amendment (P6 live walk, 2026-11-13): a raw template whose opening `---` is only rendered by a Templater include has no block at line 1 for Pass 2's merge, which prepends its own; Templater then ran on creation and the note carried two frontmatter blocks. The setup (step 2 — `/review setup` and the first-run setup of `/review week|month` alike) reports `template_frontmatter` from the merge's own rule and asks once when it is false: `1 Use it as it is` keeps the raw path exactly as above, carried as `--template-frontmatter-ok` on every rerun of the step; `2 I'll create a Tomo variant` stops the setup of that kind with nothing saved and names the way out (a `_tomo` variant starting with `---`, then `/review setup` again). Pass 1 and Pass 2 are unchanged; a variant is the way out, not a code change (owner decision 2026-11-13).
 
-- [x] ADR-9 Privacy: Tomo's own logs, stderr and cost records stay content-free (tested); where read content rests (session transcripts in the container home, `tomo-tmp`, the inbox) is documented in PRIVACY.md with the advice to protect instance and home like the vault; no cleanup promise or script.
+- [x] ADR-9 Privacy: Tomo's own logs, stderr and cost records stay content-free (tested); where read content rests (session transcripts in the container home, `tomo-tmp`, the inbox) is documented in PRIVACY.md with the advice to protect instance and home like the vault; no cleanup promise or script. (Amendment 2026-11-18, owner, spec 046 T6.3: an open delivery also keeps the texts it writes in `<stage>/payloads.json`, so a stopped delivery resumes without a re-plan; removed when the delivery is complete or withdrawn; documented in PRIVACY.md.)
   - Rationale: the data is local anyway; a cleanup script would be forgotten or inflexible; Tomo's own records can end up in shared places (the cost log lives in the repo).
   - Trade-offs: transcripts keep journal content until the user removes them.
   - User confirmed: 2026-11-11

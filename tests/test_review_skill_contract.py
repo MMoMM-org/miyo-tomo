@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.5
 """test_review_skill_contract.py — spec 045 T5.2 / P5: the SDD's Error Handling rows, the WHY document's
 option lines and the CLI-contract sweep over every skill that names a review script.
 
@@ -75,8 +75,9 @@ ERROR_HANDLING_ROWS = {
     "preview / deliver set-withdrawn": "say an earlier Drop emptied the instruction set but did not finish",
     "drop kado-write-failed twice": "say the next `/review` lists this review again and offers Drop",
     "deliver name-taken": "say a note at `exists_path` is not Tomo's and nothing was overwritten",
-    "deliver doc-changed": "save it and run `/review` again; the payloads in `paths` already written count as done",
-    "deliver doc-changed open-unsaved": "say the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then run `/review` and choose Resume",
+    "deliver doc-changed": "the user saves it first; the payloads in `paths` already written count as done",
+    "deliver doc-changed open-unsaved": "say the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that): the user saves it (Cmd+S) or closes it first",
+    "deliver stopped retry": "Then ask `1 Retry · 2 Drop · 3 Abort`. Retry → rerun `deliver --stem <stem>` and branch on it by this list.",
     "deliver failed step": "the next `/review` offers Resume or Drop",
     "preview / deliver target appeared": "the target note was created since Pass 1; the plan targets it instead of a new note",
     "drop no step began": "say only the stage was removed (`removed`); nothing was in the inbox",
@@ -116,7 +117,8 @@ def _all_review_calls() -> list[tuple[str, str, str]]:
 
 def test_the_review_skill_calls_every_script_of_the_flow():
     calls = Counter(script for skill, script, _ in _all_review_calls() if skill == "periodic-review")
-    assert calls == {"review-session.py": 5, "review-read.py": 1, "review-doc.py": 4, "review-instructions.py": 3,
+    # review-doc.py 5: write, parse, replace --confirm / --abort, and the parse of step 7's section stop (046 T4.4)
+    assert calls == {"review-session.py": 6, "review-read.py": 1, "review-doc.py": 5, "review-instructions.py": 3,
                      "vault-config-writer.py": 1}
 
 

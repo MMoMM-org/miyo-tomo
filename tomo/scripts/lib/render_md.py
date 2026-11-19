@@ -1,4 +1,4 @@
-# version: 0.37.1
+# version: 0.38.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -54,7 +54,7 @@ def _md_section_for(action: dict) -> str:
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
-    if kind in ("insert_under_marker", "replace_section"):
+    if kind in ("insert_under_marker", "replace_section", "replace_between_markers"):
         return "tag_handler_updates"
     if kind == "delete_source":
         return "deletions"
@@ -74,6 +74,13 @@ def _fenced_content(content: str) -> list[str]:
     body = content[:-1] if content.endswith("\n") else content
     lines = body.split("\n") if content else []
     return [f"{fence}markdown", *lines, fence]
+
+
+def _fenced_lines(content: str) -> list[str]:
+    """`replace_between_markers.content` (lines joined by "\\n", no trailing
+    newline, "" = zero lines) as one copy-ready fenced block; "\\n"-only split."""
+    fence = fence_for(content)
+    return [f"{fence}markdown", *content.split("\n"), fence]
 
 
 def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:
@@ -348,6 +355,35 @@ def _render_action_md(
         )
         lines.append("- **Replace it with this block:**")
         lines.extend(_fenced_content(action.get("content") or ""))
+        return "\n".join(lines)
+
+    if kind == "replace_between_markers":
+        target = action.get("target_path", "")
+        start = code_span(action.get("start_marker") or "")
+        scope = action.get("scope")
+        if scope:
+            heading = code_span(scope.get("heading") or "")
+            level = scope.get("level")
+            title = f"Replace Tomo's block under {heading}"
+            where_scope = (f"the section under the level-{level} heading {heading}, down to the next "
+                           f"heading of level {level} or above ({level} or fewer `#`)")
+        else:
+            title = f"Replace Tomo's block {start}"
+            where_scope = "the whole note"
+        lines = [f"{heading_prefix}{title} in [[{_stem(target)}]]", "- [ ] Applied"]
+        lines.append(f"- **Target:** [[{_stem(target)}]]")
+        lines.append(f"- **Scope:** {where_scope}")
+        lines.append(f"- **Start marker line:** {start}")
+        lines.append(f"- **End marker line:** {code_span(action.get('end_marker') or '')}")
+        lines.append("- **Where:** every line between these two marker lines is replaced; both "
+                     "marker lines and all other text stay as they are")
+        content = action.get("content") or ""
+        if content:
+            lines.append("- **Put these lines between them:**")
+            lines.extend(_fenced_lines(content))
+        else:
+            lines.append("- **Put these lines between them:** none — remove every line between "
+                         "the two marker lines")
         return "\n".join(lines)
 
     if kind == "edit_note_text":

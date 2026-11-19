@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.6
+# version: 0.2.17
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.15")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.2.13")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -86,9 +86,23 @@ def test_help_version_was_bumped():
     assert tuple(int(p) for p in version.split(".")) > (0, 2, 22)
 
 
+# The one STRICT line of the skill (spec 046 T6.3): the model hand-wrote the document mark and edited meta.json
+# after a refused resume in the live walk. Its `Why:` is the one rationale the runtime text may carry.
+STRICT_LINE = ("# STRICT — never write the review document, the instruction set, the new note or a file under "
+               "`tomo-tmp/` other than the two named at the top yourself, not through Kado and not with Write; only the review scripts write "
+               "them. Why: a hand-written document mark and a hand-edited `meta.json` "
+               "make the next deliver or drop act on a delivery that never happened.")
+
+
+def test_the_skill_carries_one_strict_line_in_the_deliver_step():
+    text = _text(SKILL)
+    assert text.count("# STRICT") == 1 and text.count(STRICT_LINE) == 1
+    assert STRICT_LINE.split(" Why:")[0][:60] in _section("8. Deliver")
+
+
 @pytest.mark.parametrize("path", [COMMAND, SKILL], ids=["command", "skill"])
 def test_has_no_rationale_prose(path):
-    text = _text(path)
+    text = _text(path).replace(STRICT_LINE, "")
     for pattern in (r"\bF\d+-AC\d+\b", r"\bADR-\d+\b", r"\bWhy:", r"\bWHY\b", r"\b20\d\d-\d\d-\d\d\b",
                     r"#31\b", r"\b[Ss]pec 0\d\d\b", r"\bT\d\.\d\b", r"\b[Bb]ecause\b", r"\b[Rr]ationale\b",
                     r"# STRICT"):
@@ -251,9 +265,10 @@ def test_a_withheld_request_ends_the_run_after_the_listed_reviews():
 
 def test_after_the_list_the_request_routes_by_kind_and_setup():
     text = _section("1. Start")
-    assert "- `setup` → step 2 for `week`, then for `month`, each starting from `current.<kind>`; then stop." in text
-    assert ("- `week` or `month` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the `start` call "
-            "above (skip the open reviews already handled) and continue here.") in text
+    assert ("- `setup` → step 2 for `week`, then for `month`, then for `quarter`, each starting from "
+            "`current.<kind>`; then stop.") in text
+    assert ("- `week`, `month` or `quarter` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the "
+            "`start` call above (skip the open reviews already handled) and continue here.") in text
     assert "- Otherwise → step 3." in text
 
 
@@ -297,7 +312,8 @@ CARRY_RULE = ("- Every later `match` call of this step carries `--template <temp
               "`--anchor \"<anchor>\"`, once the week question is answered `--first-day <day> --min-days <n>`, and "
               "once the frontmatter question is answered with `1` `--template-frontmatter-ok <ok-template>`: the "
               "script then lists no candidates, asks for no anchor, reports `week_rule` `given` and sets no "
-              "`needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun.")
+              "`needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun, except "
+              "`--anchor` by the next line.")
 
 
 def test_every_later_match_call_carries_the_week_answer_like_the_template_and_the_anchor():
@@ -350,17 +366,20 @@ def test_setup_abort_saves_nothing_and_an_earlier_saved_kind_stays():
 
 def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     """Phase 6 live walk: no `templates.mapping.<kind>` → `match` lists `template_candidates`; the skill asks,
-    numbered with `0 none` last, ends the turn, and reruns `match --template` for a number (owner decisions 1, 2)."""
+    numbered with `0 none` last, ends the turn, and reruns `match --template` for a number (owner decisions 1, 2).
+    Spec 046 T2.3 code review: the rerun adds the last call's flags except `--template` and `--anchor`."""
     text = _section("2. Setup")
-    assert ("`template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes "
-            "of the templates folder fit it; ask, numbered on one line with `0 none` last: "
+    assert ("`template_candidates` is non-empty → without `template_not_found`, say that no template is saved for "
+            "`<kind>`; say that these notes of the templates folder fit it; ask, numbered on one line with "
+            "`0 none` last: "
             "`1 <name> · 2 <name> · 0 none`. End the turn.") in text
     assert ("A number → `<template>` is `\"<name>\"`, the chosen name in double quotes; a typed name → `<template>` "
             "is that name in double quotes; run:") in text
     assert "python3 scripts/review-session.py match --kind <kind> --template <template>" in text
-    assert ("with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is "
-            "`none`; continue with this output: no template, a plain note. Without `template_candidates`, "
-            "`<template>` is `\"<proposal.template>\"` when `proposal.template` is set, else `none`.") in text
+    assert ("with the flags of the last `match` call added, except `--template` and `--anchor`, and continue with "
+            "its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note. Without "
+            "`template_candidates`, `<template>` is `\"<proposal.template>\"` when `proposal.template` is set, else "
+            "`none`.") in text
     assert CARRY_RULE in text
     assert text.index("`template_candidates` is non-empty") < text.index("Print `proposal`"), \
         "the template question comes before the proposal is printed: its answer changes the proposal"
@@ -477,11 +496,12 @@ def test_every_advice_of_the_read_script_has_its_line():
 
 def test_the_model_reads_read_json_and_the_language_and_writes_proposals_json_only():
     text = _section("5. Propose and write the document")
-    assert ("Read `tomo-tmp/review/<stem>/read.json` and `config/vault-config.yaml`; `<language>` is the value of "
+    assert ("Read `read_path` of step 4 and `config/vault-config.yaml`; `<language>` is the value of "
             "`review.language` in the config file.") in text
     assert "Write `tomo-tmp/review/<stem>/proposals.json`:" in text
     assert '{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": [' in text
-    assert "Habits are computed by the script: never propose them. Never propose text for the user's own sections." in text
+    assert ("Habits are computed by the script: never propose them. Never propose text for the user's own sections "
+            "other than the `sections` of `read.json`.") in text
     assert "at least one a daily of the period (for `weekly_only` a weekly note of the period)" in text
     assert "python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<stem>/proposals.json" in text
 
@@ -535,5 +555,6 @@ def test_write_statuses_hand_listed_here_are_the_scripts():
 def test_pass_1_ends_the_turn_with_the_document_report():
     text = _section("5. Propose and write the document")
     assert ("- `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, "
-            "`counts` per group and every `rejected` item with its `group`, `index` and `reason`. Then say: edit "
+            "`counts` per group and per section (by `<section heading>`), and every `rejected` item with its "
+            "`group` or `section`, `index` and `reason`. Then say: edit "
             "the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.") in text

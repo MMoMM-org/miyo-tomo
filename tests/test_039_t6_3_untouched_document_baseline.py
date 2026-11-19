@@ -28,6 +28,12 @@ test pins both exactly, so a third difference fails it:
    (2026-10-12/13: one remedy per withheld kind, `--pass2 --force` before
    apply). CON-5 names the T5.4 supersessions; this sentence is one of them.
 
+A later spec added one more, also pinned exactly: spec 046 T6.1 moved the
+instruction wire `schema_version` "3" -> "4" (`replace_between_markers`). The
+baseline was recorded from a pre-v4 tree, so re-recording cannot absorb it;
+the replay reads the version off the schema the renderer reads and compares
+the rest unchanged.
+
 Mechanism falsified: "an untouched document changes Pass 2's output". Mutation
 proven RED in an isolated `git archive` copy: drop the subtraction of this
 run's moved inbox copies from the basename census (`lib/attachment_plan.py`),
@@ -47,6 +53,12 @@ from pathlib import Path
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 FIXTURE = TESTS_DIR / "fixtures" / "039-t6-3-untouched-baseline" / "expected.json"
+
+
+def _wire_version() -> str:
+    """The instruction wire version the renderer reads (read as data: importing lib here would pin the recorder's tree)."""
+    schema = json.loads((REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json").read_text(encoding="utf-8"))
+    return schema["properties"]["schema_version"]["const"]
 
 INBOX = "100 Inbox/"
 ASSET = "Atlas/290 Assets/295 Attachments/"
@@ -230,6 +242,9 @@ def test_an_untouched_document_renders_todays_output_apart_from_two_sanctioned_c
     # of the attachment that origin's note embeds.
     before = json.loads(expected["files"]["instructions.json"])
     after = json.loads(actual["files"]["instructions.json"])
+    # spec 046 T6.1: the wire version moved, nothing else in the envelope.
+    assert (before["schema_version"], after["schema_version"]) == ("3", _wire_version()) == ("3", "4")
+    after["schema_version"] = before["schema_version"]
     move_id = {a["source"]: a["id"] for a in after["actions"] if a["action"] == "move_asset"}
     assert sorted(move_id) == [RENAMED, PLAIN]
     embeds = {f"{INBOX}Eins.md": [move_id[RENAMED]], f"{INBOX}Zwei.md": [move_id[PLAIN]],

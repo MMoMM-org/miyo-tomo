@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_edit_frontmatter_schema.py — spec 032-up-source-routing T4.1.
 
 Registers `edit_frontmatter` in both instruction schemas (producer +
@@ -179,12 +179,15 @@ def test_schema_version_unchanged():
 
     Spec 036 T4.1 has since bumped the instruction wire "2" -> "3" for an
     unrelated reason (delete_source's new required depends_on). This test
-    tracks the current const so it keeps proving both schemas agree, not
-    that no later spec is ever allowed to bump the version.
+    tracks the current version so it keeps proving both schemas agree, not
+    that no later spec is ever allowed to bump the version. Spec 046 T6.1
+    moved the wire to "4"; Hashi's contract now accepts both "3" and "4"
+    (an enum), so the producer's const must be one the mirror accepts.
     """
-    for label, path in SCHEMA_PATHS.items():
-        schema = _load(path)
-        assert schema["properties"]["schema_version"] == {"const": "3"}, label
+    producer = _load(TOMO_SCHEMA_PATH)["properties"]["schema_version"]
+    mirror = _load(HASHI_SNAPSHOT_PATH)["properties"]["schema_version"]
+    assert producer == {"const": "4"}
+    assert mirror["enum"] == ["3", "4"] and producer["const"] in mirror["enum"]
 
 
 def test_edit_frontmatter_def_structurally_identical_across_tomo_schemas():

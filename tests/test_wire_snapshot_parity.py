@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.4.1
 """test_wire_snapshot_parity.py — cross-repo wire-schema parity against
 Hashi's vendored copies (spec 035 T2.4/T4.2, ADR-7; Constitution L2).
 
@@ -576,7 +576,10 @@ class TestVendoredCopies:
         copies. Each must parse as JSON and carry the same
         `properties.schema_version.const` shape `wire_gate.py`'s own
         validation requires — a stub or malformed vendored file would
-        otherwise pass this test by merely existing."""
+        otherwise pass this test by merely existing. Since spec 046 T6.1
+        the instructions contract declares the versions it accepts as a
+        string `enum` ("3" and "4", Hashi handoff 2026-11-17); a non-empty
+        string enum is the same usable shape."""
         from lib.wire_shape import PUBLISHED_WIRES
 
         assert len(PUBLISHED_WIRES) == 3, (
@@ -591,7 +594,9 @@ class TestVendoredCopies:
         ):
             assert snapshot_path.is_file(), f"missing vendored copy: {snapshot_path}"
             schema = json.loads(snapshot_path.read_text(encoding="utf-8"))
-            assert "const" in schema["properties"]["schema_version"], (
+            version = schema["properties"]["schema_version"]
+            accepted = [version["const"]] if "const" in version else version.get("enum") or []
+            assert accepted and all(isinstance(v, str) for v in accepted), (
                 f"{snapshot_path.name}: not a usable schema shape"
             )
 
@@ -772,7 +777,16 @@ class TestVendoredCopies:
             changes, HASHI_SCHEMA_SNAPSHOT.name
         )
 
-        assert reportable == [], (
+        # Spec 046 T6.1: the contract accepts "3" and "4" (an enum, Hashi
+        # handoff 2026-11-17), the producer writes only "4" (a const). The
+        # producer narrows what it sends within what the consumer accepts,
+        # so this one change is the handoff's own answer, not drift; it is
+        # named exactly rather than sanctioned by prefix, because the only
+        # prefix covering it ("") would hide everything.
+        version_narrowing = {"pointer": "", "kind": "removed_enum_value",
+                             "detail": "schema_version: removed value '3'",
+                             "consumer_affecting": False}
+        assert reportable == [version_narrowing], (
             "an entry here is drift on the instructions wire that no handoff "
             f"has carried: {reportable}"
         )

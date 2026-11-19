@@ -55,7 +55,7 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
 
   Done (2026-11-17): debt pass 808c94ce…0de1ca7e; docs 0fef6f55 + 63c232ba (README, PRIVACY, tomo-help 0.2.24, vault-example 1.11, SDD component rows); e2e 88696093 + 6fcabb9c (`tests/test_046_t6_2_e2e_sections.py`, `tests/e2e_046_sections_walk.py`, WHY-mirror glob in `test_review_why_docs.py`; 9 mutations RED). Correction to the note above: the first preview reports `place-missing` and `section-missing` together and the skill asks the place first; still one extra round, both answer orders tested. Open for T6.4: `tomo-help.md:123` "a rerun replaces Tomo's section" could read as covering mapped blocks — say "Tomo's review section" when T6.1 lands.
 
-- [ ] **T6.3 Live walk with Hashi in the test vault (owner-run)** `[activity: validate]`
+- [x] **T6.3 Live walk with Hashi in the test vault (owner-run)** `[activity: validate]`
 
   1. Prime: spec 045 `live-walk.md` format; reference memories on test-vault plugins (update-time-on-edit, Templater on create)
   2. Test, as explicit owner-gated steps:
@@ -95,6 +95,8 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
   4. Validate: KPIs — weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.75, quarterly Pass 1 ≤ $5.00 and ≤ 20 min; 0 changed characters of user text outside markers; 0 sections with two blocks; 0 writes to off-limits.
   5. Success: Tomo and Hashi work together on all three kinds, first delivery and re-run `[ref: PRD/Success Metrics; PRD/Constraints]`
 
+  Ticked at T6.4 (2026-11-19) on the Success line: R1 (week, month first delivery), R2 (both re-runs), R3a / R3b (quarter first delivery and re-run) applied with 0 lines outside the blocks, 1 + 1 markers per key, off-limits untouched. Not met inside this task, recorded in `close-out.md` §4, §5, §7: weekly Pass 1 cold $0.749 / $0.686 and Pass 2 $0.814 / $0.799 / $3.328 over their KPIs (owner decision open); the quarter Pass 1 KPI passes on partial reads only (#270); no section-fit rows and no `live-walk.md` were recorded (the walk record is the notes above, the joint-run handoffs and the close-out).
+
 - [ ] **T6.4 Close-out** `[activity: validate]`
 
   1. Prime: spec 045 `close-out.md` and spec 044's (method)
@@ -102,3 +104,5 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
   3. Implement: `close-out.md`; spec README Finalize after merge; memory index entry (Critical Documentation). Carried from Phase 5: `load_run` reads the note before the set (a millisecond window where an applied set plus a stale note could plan a second insert; read the set first); the skill step 7 stop bullet is one ~1,100-character sentence (split into sub-bullets, re-pin `QUESTION` / `STOPS_HEAD`); the negative pin in `tests/test_046_t5_6_skill_choices.py` has a tautological half; the file-size debt above. Carried from T6.3: `dailies_not_in_*` should leave out non-note embeds. The quarter read size moved out of this spec to #270 (owner 2026-11-19). Measured: 717 KB, ~390k tokens in total; the index alone is 82.5k tokens against the Read limit of 25k. The redesign (chunked data, agents tiered by model) goes through brainstorming. The close-out records the quarter's Pass 1 as running on partial `grep` reads, a known limit.
   4. Validate: drift check spec vs code; the Kokoro FYI (`_outbox/for-kokoro/2026-11-14_…`) status checked and, if the contract changed at T6.1, a follow-up FYI; the PR carries the spec ID, the issues (#263, #256, #267) and the Hashi release.
   5. Success: the spec closes with its evidence `[ref: PRD all criteria]`
+
+  Close-out written (2026-11-19): `close-out.md` — 49 criteria (as planned), 322 node ids in one invocation (518 passed), 8 gaps closed by RED-proven tests in `tests/test_046_close_out_gaps.py`, inbox cost log updated, Kokoro follow-up FYI `_outbox/for-kokoro/2026-11-19_tomo-to-kokoro_spec-046-wire-v4-released-v3-stays-valid.md` (the 2026-11-14 FYI still pending on Kokoro's side). Not ticked: the drift check spec vs code, the PR (spec ID, #263, #256, #267, Hashi 0.33.0) and the README Finalize after merge are still open.

@@ -1,5 +1,5 @@
 # review_period.py — reads a period for /review: dailies, the day after, child-review notes, link differences, growth.
-# version: 0.5.0
+# version: 0.5.1
 """Reading a period for ``/review`` (spec 045, T3.3; PRD F3-AC5..7, F3-AC9).
 
 Owns what lies between one day and the report: finding the dailies of every
@@ -40,6 +40,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from lib import review_children as children
+from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.moc_folders import moc_folder_prefixes
 from lib.period import ISO, MONTH, QUARTER, WEEK, Period, WeekRule, parse_name
 from lib.review_children import ChildNotes, Found
@@ -259,20 +260,29 @@ class _PeriodRead:
                       if item.get("path")}
         return [t for t in entry.get("links", []) if link_key(t) not in structural]
 
+    @staticmethod
+    def _is_attachment(target: str) -> bool:
+        """An embed or link to a file such as ``snow.png``: not a note a review could miss."""
+        stem, dot, ext = target.rpartition(".")
+        return bool(dot and stem) and ext.lower() != "md" and ext.lower() in KNOWN_FILE_EXTENSIONS
+
+    def _compared(self, target: str) -> bool:
+        return not self._is_periodic(target) and not self._is_attachment(target)
+
     def _link_differences(self, days: List[dict], notes: List[dict], kind: str) -> Tuple[List[str], List[str]]:
         daily_keys = {link_key(t) for e in days for t in e.get("links", [])}
         child_keys: Dict[str, Set[str]] = {}
         for note in notes:
             child_keys.setdefault(note[kind], set()).update(link_key(t) for t in note["links"])
         only_in_child = unique_targets([t for n in notes for t in n["links"]
-                                        if link_key(t) not in daily_keys and not self._is_periodic(t)])
+                                        if link_key(t) not in daily_keys and self._compared(t)])
         not_in_child: List[str] = []
         for e in days:
             name = Period.containing(kind, date.fromisoformat(e["date"]), self.sources.rule).name
             if name not in child_keys:
                 continue
             not_in_child.extend(t for t in self._content_links(e)
-                                if link_key(t) not in child_keys[name] and not self._is_periodic(t))
+                                if link_key(t) not in child_keys[name] and self._compared(t))
         return only_in_child, unique_targets(not_in_child)
 
     def _child_result(self, child: ChildNotes, found: Optional[Found], days: List[dict],

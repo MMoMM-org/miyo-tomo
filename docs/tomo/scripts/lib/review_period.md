@@ -164,7 +164,13 @@ to be called `2026-02`. The same rules hold for a quarter's
 `only_in_monthly_links` / `dailies_not_in_monthly`. A
 daily's `links` also hold the same-day notes it read or missed
 (`DP-2026-03-23`): those are structure the weekly never mentions, so they
-are not "left out" either. Targets compare by `review_weekly.link_key`.
+are not "left out" either. Links to attachments (`![[snow.png]]`, `[[scan.pdf]]`)
+are left out of both lists too. They are files, not notes a review could miss:
+the spec 046 live walk found a daily template's weather icons in
+`dailies_not_in_monthly`. An attachment is a target whose extension is in
+`lib/file_extensions.KNOWN_FILE_EXTENSIONS`, other than `md`. That is the same
+allowlist the renderer uses, because Obsidian allows dots in note names
+(`v1.2 Plan` stays a note). Targets compare by `review_weekly.link_key`.
 
 ## WHY Growth Is Two Listings, Not a History
 

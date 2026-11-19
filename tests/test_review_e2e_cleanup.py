@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_e2e_cleanup.py — a review set's MD peer names what Hashi's cleanup may trash (spec 046 T6.3).
 
 Hashi's cleanup after a full apply (Hashi ADR-018 §4, #146) reads `tomo.sources[]` from the MD peer's
@@ -123,7 +123,7 @@ def test_peer_block_passes_the_doc_frontmatter_schema_strictly(monkeypatch):
     plan = ra.ReviewPlan(ra.NEW_NOTE, "Cal/2026-03.md", False, [], {})
     plan.note_path = "In/2026-03.md"
     meta = rdl.ReviewMeta({"run_id": "r", "generated": "2026-11-17T08:00:00Z", "doc_path": "In/2026-03 Review.md"})
-    block = frontmatter(rdl.set_md(plan, meta, None))["tomo"]
+    block = frontmatter(rdl.set_md(plan, meta, None, "In"))["tomo"]
     assert block["sources"] == [{"path": "In/2026-03 Review.md"}, {"path": "In/2026-03.md"}]
     assert list(block) == ["doc_type", "state", "run_id", "updated_at", "sources"], "the /inbox peer's key order"
     assert os.environ["TOMO_SCHEMA_STRICT"] == "1"
@@ -132,7 +132,7 @@ def test_peer_block_passes_the_doc_frontmatter_schema_strictly(monkeypatch):
 def test_a_meta_without_doc_path_lists_no_source():
     plan = ra.ReviewPlan(ra.INSERT, "Cal/2026-W13.md", False, [], {})
     meta = rdl.ReviewMeta({"run_id": "r", "generated": "2026-11-17T08:00:00Z"})
-    assert frontmatter(rdl.set_md(plan, meta, None))["tomo"]["sources"] == []
+    assert frontmatter(rdl.set_md(plan, meta, None, "In"))["tomo"]["sources"] == []
 
 
 # ── after the cleanup ─────────────────────────────────────────────────────────────────────
@@ -197,4 +197,4 @@ def test_the_review_target_is_never_a_source_even_when_a_path_names_it():
     plan = ra.ReviewPlan(ra.NEW_NOTE, "In/2026-03.md", False, [], {})
     plan.note_path = "In/2026-03.md"
     meta = rdl.ReviewMeta({"run_id": "r", "generated": "2026-11-17T08:00:00Z", "doc_path": "In/2026-03.md"})
-    assert rdl.peer_sources(plan, meta) == []
+    assert rdl.peer_sources(plan, meta, "In") == []

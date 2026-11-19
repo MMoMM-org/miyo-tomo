@@ -237,6 +237,6 @@ cleanup of that file; the set and the review stay correct either way. This
 differs from `inbox_path`, which raises `UnsafePath` for a name the caller
 builds itself: there a bad name is a bug, here a stored path is data.
 
-`inbox` is optional so a caller that does not know it yet keeps the old
-unguarded list; the guard holds only where the caller passes it
-(`review-instructions.py` deliver, with `run.setup.inbox`).
+`inbox` is a required argument, so the guard fails closed. A caller cannot
+forget it and silently get an unguarded list. The one live caller is
+`lib/review_instructions_deliver.py`, which passes `run.setup.inbox`.

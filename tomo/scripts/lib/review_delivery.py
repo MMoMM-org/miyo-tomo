@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.6.2
+# version: 0.6.3
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -230,16 +230,14 @@ def in_inbox(path: str, inbox: str) -> bool:
             and path.startswith(base + "/") and path != base + "/")
 
 
-def peer_sources(plan: ra.ReviewPlan, meta: ReviewMeta, inbox: Optional[str] = None) -> List[Dict[str, str]]:
+def peer_sources(plan: ra.ReviewPlan, meta: ReviewMeta, inbox: str) -> List[Dict[str, str]]:
     """What Hashi's cleanup may trash after a full apply: the review document, then the new note's inbox
-    copy; never the review target. With ``inbox`` a path outside it is dropped (never listed, never refused);
-    without it the list is unguarded."""
+    copy; never the review target. A path outside ``inbox`` is dropped (never listed, never refused)."""
     paths = [meta.doc_path, plan.note_path if plan.mode == ra.NEW_NOTE else None]
-    return [{"path": path} for path in paths
-            if path and path != plan.target and (inbox is None or in_inbox(path, inbox))]
+    return [{"path": path} for path in paths if path and path != plan.target and in_inbox(path, inbox)]
 
 
-def set_md(plan: ra.ReviewPlan, meta: ReviewMeta, profile: Optional[str], inbox: Optional[str] = None) -> str:
+def set_md(plan: ra.ReviewPlan, meta: ReviewMeta, profile: Optional[str], inbox: str) -> str:
     """The readable instructions of ``plan`` with the stable tomo block and its ``sources``."""
     md = render_instructions_md(plan.actions, {"generated": meta.generated, "profile": profile},
                                 {"templater_hint": plan.templater_hint})

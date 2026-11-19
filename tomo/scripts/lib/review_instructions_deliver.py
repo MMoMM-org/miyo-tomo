@@ -1,5 +1,5 @@
 # review_instructions_deliver.py — the write side of review-instructions deliver: steps, resume, document mark.
-# version: 0.1.0
+# version: 0.1.1
 """Delivery of one ``Run`` (split out of ``review-instructions.py`` at spec 046 T6.4, constitution L2 file size).
 
 ``deliver_run`` decides between the resume with stored payloads, a refusal and a fresh delivery, then
@@ -154,7 +154,7 @@ def deliver_run(run: Run) -> dict:
     set_doc = ra.build_review_instruction_set(run.plan, stem=run.stem, generated=run.meta.generated,
                                               profile=run.profile)
     payloads = {rdl.SET_JSON: json.dumps(set_doc, indent=2, ensure_ascii=False) + "\n",
-                rdl.SET_MD: rdl.set_md(run.plan, run.meta, run.profile)}
+                rdl.SET_MD: rdl.set_md(run.plan, run.meta, run.profile, run.setup.inbox)}
     if rdl.NOTE in paths:
         payloads[rdl.NOTE] = run.plan.note_text or ""
     resumed = run.meta.started()

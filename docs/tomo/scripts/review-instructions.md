@@ -793,3 +793,57 @@ a period the setup's naming does not parse, and the script raises
 `setup-invalid` with the same pointer, so no lib imports the script's
 `Refused`. Nothing the script prints changed; the delivery tests run
 unchanged, two source-reading pins follow the code to its new place.
+
+## WHY the Run, the Delivery Writes and a Trimmed Header Live Elsewhere (spec 046 T6.4)
+
+The script stood at 510 lines against the constitution's L2 guide (300 to
+500 lines of dense logic). Two seams carry no CLI knowledge and moved
+unchanged: the context of one call (`Run`, `Refused`, `NotFound`,
+`build_run`, the setup lookups) into `lib/review_instructions_run.py`, and
+the write side of `deliver` (the staged steps, the resume with stored
+payloads, the overwrite of an applied set, the guarded document mark) into
+`lib/review_instructions_deliver.py`. The script keeps `load_run`,
+`preview`, `deliver`, `drop`, `status`, the parser and `main` — 242 lines.
+
+Why `load_run` stays in the script: the document read and the Kado client
+are made here (`Vault(KadoClient)`, `read_document`), because the tests
+replace those two names on the script module. The lib's `build_run` takes
+the vault and the document read as arguments, so no lib constructs a client
+or imports the script. `drop` stays for the same reason and because the
+skill tests read its source order (set JSON write before the MD write before
+the `withdrawn` mark).
+
+Why the set is read before the target note, in `build_run`: Hashi applies a
+set at any time. A note read first and a set read after could pair a stale
+note with an applied set and plan a second insert; reading the set first
+makes the worst case a set that is newer than the note, which `deliver`
+treats as written-over (`set_replaced`) rather than as a second insert. The
+order was already fixed at T6.2 (`test_the_set_is_read_before_the_target_note`);
+T6.4 kept it through the split.
+
+Why the header docstring is shorter: it is the LLM-facing contract of the
+CLI, so it keeps every subcommand, argument, output key, rule and exit code,
+and only the narrative paragraph that described how `deliver` works inside
+moved here. What it said, in short: `preview` reads the approved document
+fresh through Kado and builds the plan against the target note as it is now;
+`deliver` writes the new note (new-note mode), the set JSON and the set MD
+through `lib/staged_delivery`, then marks the document with one write guarded
+by the `modified` the reader saw; `meta.json` records each step and the plan
+written (`delivered_plan`: mode, target, place, `anchor_picked` — never the
+heading), and the payloads are stored in `<stage>/payloads.json` before the
+first in-flight mark so a resume uploads exactly what the first attempt built
+(see "WHY a Resume Uploads the Stored Payloads"); a stage without it writes
+the rebuilt payloads and refuses `replan-differs` or `anchor-needed` where the
+record and the rebuilt plan differ; a set at the stem's path that this
+delivery did not write is `set-exists` while no action in it is applied, and
+is written over once any is (`set_replaced`); `drop` withdraws a begun
+delivery with an empty-`actions` set and an MD naming the files the delivery
+left, refuses when Hashi marked any action applied, and marks `meta.json`
+withdrawn last; `status` goes through `lib/review_state.stem_state`. The
+target reads are `lib/review_target_read`'s, the flags
+`lib/review_instructions_args`'s, Kado's refused guard is read by
+`lib/review_kado_conflict`.
+
+One test follows the code to its new place: `test_review_skill_pass2`
+collects the `Refused` tokens of the setup lookups from
+`lib/review_instructions_run.py`. Nothing the script prints changed.

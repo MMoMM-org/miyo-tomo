@@ -1,36 +1,13 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.5.1
-"""Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
-ADR-13; spec 046 ADR-12: section stops, choices).
+# version: 0.6.0
+"""Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
 
-``preview`` reads the approved document fresh through Kado, builds the plan (``lib/review_actions``) against the
-target note as it is now, and prints the section as it will land, its target and place, the refusing problems and
-the notices — nothing is written. ``deliver`` builds the same plan and writes, in this order, the new note
-(``new-note`` mode only), ``<stem>_instructions.json`` and ``<stem>_instructions.md`` to the inbox through
-``lib/staged_delivery``, then marks the document delivered with one write guarded by the ``modified`` the reader
-saw; ``meta.json`` records every step so a failed delivery resumes without a duplicate, and the plan the delivery
-writes (``delivered_plan``: mode, target, place, ``anchor_picked`` when ``--place-anchor`` was given — never the
-heading), recorded with the first step, so a resume reports what was written rather than the plan rebuilt against
-the vault now. With the record the first attempt stores its paths and payloads in ``<stage>/payloads.json``
-(``lib/review_delivery.save_payloads``, before the first in-flight mark); a resume of an open delivery whose stage
-holds them uploads the undone steps' stored payloads unchanged and marks the document — the rebuilt plan's problems
-and the resume refusals do not apply; the file is removed when the mark is recorded or the delivery withdrawn. A
-stage without it (a delivery begun before spec 046 T6.3) writes the rebuilt payloads: a resume with an undone set
-step whose rebuilt plan differs from the record refuses ``replan-differs``, and a resume of a picked-anchor record
-without ``--place-anchor`` refuses ``anchor-needed`` with the ``headings`` of the pick (nothing written either way). A set
-at the stem's path that this delivery did not write refuses ``set-exists`` while no action in it is applied; once
-any is (``lib/review_state.any_applied``: an earlier run's finished or partly applied set, spec 046 ADR-12)
-``deliver`` writes the new set JSON over it, guarded by the ``modified`` the probe read, and the new MD over the old
-one, and keeps ``set_replaced`` in ``meta.json`` so a resume overwrites the old MD too and never rewrites the set it
-landed itself. ``drop`` withdraws any delivery that began — a step done or in flight — by writing the set with an
-empty ``actions`` list and an MD that names every file the delivery left (the new note among them); it reads the set
-JSON first (``lib/review_state.read_set``) and refuses when Hashi marked any action ``applied`` (nothing written,
-nothing changed), withdraws over an absent or unreadable set, and writes the set JSON guarded by the ``modified``
-that read returned; before any step it removes the stage. It marks ``meta.json`` withdrawn last, so a drop that
-failed on the MD write is listed again by the next ``/review``. ``status`` names the review's state through
-``lib/review_state.stem_state`` — the function ``review-session.py start`` uses per listed document — which reads
-the set JSON for an approved document and probes the target and the inbox copy for a waiting set (ADR-6).
+``preview`` builds the plan from the approved document and the target note as they are now and prints it; nothing is
+written. ``deliver`` writes the new note (``new-note`` mode only), ``<stem>_instructions.json`` and
+``<stem>_instructions.md`` to the inbox, then marks the document delivered; ``meta.json`` records every step, so a
+failed delivery resumes without a duplicate. ``drop`` withdraws a begun delivery. ``status`` names the review's
+state.
 
 Usage (cwd = instance root):
     python3 scripts/review-instructions.py preview --stem <period>_review [--place-anchor H] [CHOICES]
@@ -89,9 +66,6 @@ Exit codes:
     1 — unexpected exception; stderr carries the exception class name only
     2 — bad invocation (unknown subcommand or flag, missing argument, unsafe --stem)
 
-The target reads are ``lib/review_target_read``'s, the flags ``lib/review_instructions_args``'s, Kado's refused
-guard is read by ``lib/review_kado_conflict``.
-
 Design notes: docs/tomo/scripts/review-instructions.md
 """
 from __future__ import annotations
@@ -101,121 +75,32 @@ import json
 import posixpath
 import shutil
 import sys
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from lib import review_actions as ra  # noqa: E402
-from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
-from lib import review_doc as rd  # noqa: E402
 from lib import review_instructions_args as rargs  # noqa: E402
+from lib import review_instructions_deliver as rid  # noqa: E402
+from lib import review_instructions_run as rir  # noqa: E402
 from lib import review_kado_conflict as rkc  # noqa: E402
-from lib import review_target_read as rtr  # noqa: E402
-from lib.kado_client import KadoClient, KadoError  # noqa: E402
-from lib.note_io import ConfigError, load_vault_config  # noqa: E402
 from lib import review_state as rs  # noqa: E402
-from lib.review_doc_parse import APPROVED_MISSING  # noqa: E402
-from lib.review_doc_read import DocRead, doc_path_of, read_document  # noqa: E402
+from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.review_doc_read import doc_path_of, read_document  # noqa: E402
+from lib.review_instructions_run import NotFound, Refused, Run  # noqa: E402
 from lib.review_vault import Stopped, Vault  # noqa: E402
-from lib.staged_delivery import DeliveryStop, StagedDelivery  # noqa: E402
+from lib import review_config as rc  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_TMP = "tomo-tmp/review"
-SCRIPT = "review-instructions"
-NEXT = "hashi-or-by-hand"
-DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
-SET_CHANGED = "set-changed"
-SET_REPLACED = "set_replaced"                           # meta.json: this delivery writes over an earlier run's applied set
-
-
-class Refused(Exception):
-    def __init__(self, problem: str, **extra):
-        super().__init__(problem)
-        self.problem, self.extra = problem, extra
-
-
-class NotFound(Exception):
-    def __init__(self, doc_path: Optional[str] = None):
-        super().__init__("not-found")
-        self.doc_path = doc_path
-
-
-# ---------------------------------------------------------------- the context of one run
-
-@dataclass
-class Run:
-    stem: str
-    stage: Path
-    meta: rdl.ReviewMeta
-    setup: rc.ReviewSetup
-    profile: Optional[str]
-    vault: Vault
-    read: DocRead
-    paths: Dict[str, str]
-    held: Optional[rs.SetRead]
-    replaces_set: bool
-    plan: ra.ReviewPlan
-    problems: List[str]
-    notices: List[str]
-    anchor_picked: bool                        # --place-anchor was given on this call
-    pick_headings: List[str]                   # what a heading pick chooses from, refusal or not
-    choices: Dict[str, str]                    # --section-choice / --confirm-moved, key -> choice
-    counts: Dict[str, dict]                    # the parsed document's section_counts
-
-    @property
-    def set_exists(self) -> bool:
-        return self.held is not None
-
-    @property
-    def set_applied(self) -> bool:
-        return self.held is not None and rs.all_applied(self.held.data)
-
-    def output(self, *, section: bool, **extra) -> dict:
-        """The plan's preview shape; ``section_md`` only when ``section`` (the preview prints it on purpose)."""
-        out: Dict[str, object] = {"stem": self.stem, "doc_path": self.read.doc_path, **self.plan.preview()}
-        if not section:
-            del out["section_md"]
-        out["problems"], out["notices"] = list(self.problems), list(self.notices)
-        if self.meta.data.get("mode") == ra.NEW_NOTE and self.plan.mode != ra.NEW_NOTE:
-            out["target_appeared"] = True
-        out.update(self.sections(lines=section), **extra)
-        return out
-
-    def sections(self, *, lines: bool) -> dict:
-        return rdl.section_report(self.plan, self.counts, self.choices, lines=lines)
-
-
-def _config_and_profile(args: argparse.Namespace) -> tuple:
-    try:
-        config = load_vault_config(args.config)
-    except ConfigError:
-        config = {}
-    return config, rc.load_profile(Path(args.profiles_dir), config)
-
-
-def _setup(args: argparse.Namespace, kind: str) -> tuple:
-    config, profile = _config_and_profile(args)
-    try:
-        setup = rc.review_setup(config, profile, kind, today=args.today)
-    except rc.SetupInvalid as invalid:
-        raise Refused("setup-invalid", errors=invalid.pointers) from None
-    except ValueError:
-        raise Refused("setup-invalid", errors=["/review_kind"]) from None
-    if setup is None:
-        raise Refused("setup-missing")
-    name = config.get("profile")
-    return setup, (name if isinstance(name, str) else None)
+KADO_WRITE_FAILED, SET_CHANGED = rid.KADO_WRITE_FAILED, "set-changed"
 
 
 def load_run(args: argparse.Namespace) -> Run:
-    """Read the document, the set at the stem's path, the target and the template; build the plan; classify its
-    problems."""
-    stage = Path(args.tmp) / args.stem
+    """Read the document, then everything ``lib/review_instructions_run.build_run`` reads; build the plan."""
     meta_data = rs.read_meta(Path(args.tmp), args.stem)
     doc_path = doc_path_of(meta_data)
     if doc_path is None:
@@ -225,34 +110,7 @@ def load_run(args: argparse.Namespace) -> Run:
     read = read_document(vault, doc_path, meta.data)
     if read is None:
         raise NotFound(doc_path)
-    front = read.parsed.frontmatter
-    kind = front.get("review_kind") if isinstance(front.get("review_kind"), str) else str(meta.data.get("kind"))
-    period_name = front.get("review_period") if isinstance(front.get("review_period"), str) else meta.data.get("period")
-    setup, profile = _setup(args, kind)
-    try:
-        paths = rdl.set_paths(setup, args.stem)
-    except rc.UnsafePath:
-        raise Refused("inbox-not-configured") from None
-    held = rs.read_set(vault, paths[rdl.SET_JSON])     # before the note, never after it (T6.2)
-    target = rtr.locate(vault, setup, str(period_name or ""))
-    if target is None:
-        raise Refused("setup-invalid", errors=[f"/naming/calendar_patterns/{rc.GRANULARITY[setup.kind]}"])
-    template = rtr.template(vault, setup, target)
-    anchor, choices = getattr(args, "place_anchor", None), getattr(args, "choices", None) or {}
-    plan = ra.build_review_plan(read.parsed.approved_review(), setup, target, template, anchor=anchor,
-                                choices=choices, run_id=meta.run_id, generated=meta.generated)
-    # a set with any action applied is written over: a partly applied set never gets stuck (spec 046 ADR-12)
-    set_exists, applied_any = held is not None, held is not None and rs.any_applied(held.data)
-    if set_exists and meta.started() and not meta.withdrawn() and rs.is_emptied_set(held.data):
-        extra = [rdl.SET_WITHDRAWN]                                    # a drop that did not finish: never resumed over
-    else:
-        extra = [rdl.SET_EXISTS] if meta.second_set(set_exists, applied_any) else []
-    counts = read.parsed.section_counts()
-    problems, notices = rdl.classify(plan, extra, counts, choices)
-    # the finished set of an earlier run is written over; the flag outlives the first write for the resume
-    replaces_set = not problems and (applied_any or meta.data.get(SET_REPLACED) is True)
-    return Run(args.stem, stage, meta, setup, profile, vault, read, paths, held, replaces_set, plan, problems, notices,
-               anchor is not None, ra.pick_headings(setup, target, template), choices, counts)
+    return rir.build_run(args, Path(args.tmp) / args.stem, meta, vault, read)
 
 
 # ---------------------------------------------------------------- preview
@@ -265,127 +123,9 @@ def preview(args: argparse.Namespace) -> dict:
 
 # ---------------------------------------------------------------- deliver
 
-def _mark_document(run: Run, delivery: StagedDelivery) -> None:
-    """The last step: one guarded write of the marked document, unless it already carries the mark."""
-    if rdl.DOC_MARK in run.meta.steps_done:
-        return
-    language = run.setup.language
-    if rd.is_delivered(run.read.text, language):
-        delivery.record(rdl.DOC_MARK)
-        return
-    marked = rd.mark_delivered(run.read.text, language, _utc_now())
-    delivery.mark_in_flight(rdl.DOC_MARK)
-    try:
-        run.vault.client.write_note(run.read.doc_path, marked, expected_modified=run.read.modified)
-    except KadoError as exc:
-        stop = delivery.fail(rdl.DOC_MARK, exc)
-        if rkc.is_conflict(exc):
-            stop.status, stop.reason = DOC_CHANGED, rkc.conflict_reason(exc)
-        raise stop from exc
-    delivery.record(rdl.DOC_MARK)
-
-
-def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str, set_doc: dict) -> None:
-    """A set step written over the finished set of an earlier run: the set JSON under the ``modified`` the probe
-    read, the MD plain; the set this delivery landed itself (the same actions, ``applied`` aside) is never
-    rewritten. Recorded like an uploaded step."""
-    path = delivery.targets[step]
-    if step == rdl.SET_JSON and run.held is not None and rs.without_applied(run.held.data) == rs.without_applied(set_doc):
-        delivery.record(step)
-        return
-    delivery.mark_in_flight(step)
-    try:
-        if step == rdl.SET_JSON:
-            run.vault.client.write_file(path, payload.encode("utf-8"),
-                                        expected_modified=run.held.modified if run.held is not None else None)
-        else:
-            run.vault.client.write_note(path, payload)
-    except KadoError as exc:
-        raise delivery.fail(step, exc) from exc
-    delivery.record(step)
-
-
-def _write_steps(run: Run, paths: Dict[str, str], payloads: Dict[str, str], set_doc: dict, replaces_set: bool,
-                 resumed: bool) -> dict:
-    """Upload the undone steps of ``payloads`` in order, then mark the document; the output of the run."""
-    delivery = StagedDelivery(run.vault.client, rdl.STEPS, paths, run.meta,
-                              lambda: rdl.save_meta(run.stage, run.meta), script=SCRIPT)
-    try:
-        for step in (rdl.NOTE, rdl.SET_JSON, rdl.SET_MD):
-            if step not in paths or step in run.meta.steps_done:
-                continue
-            if replaces_set and step != rdl.NOTE:
-                _overwrite_step(run, delivery, step, payloads[step], set_doc)
-            else:
-                delivery.deliver_step(step, payloads[step])
-        _mark_document(run, delivery)
-    except DeliveryStop as stop:
-        if stop.status == "exists":
-            if not run.meta.started():
-                rdl.remove_payloads(run.stage)                 # nothing began: a fresh delivery builds them again
-            return {"status": "refused", "stem": run.stem, "problems": [NAME_TAKEN], "exists_path": stop.exists_path,
-                    "step": stop.step}
-        stopped = {"status": "stopped", "stem": run.stem, "step": stop.step, "failed_step": run.meta.failed_step,
-                   "paths": rdl.public_paths(paths), "problems": [KADO_WRITE_FAILED]}
-        if stop.reason is not None:
-            stopped["problems"], stopped["reason"] = [DOC_CHANGED], stop.reason
-        return stopped
-    rdl.remove_payloads(run.stage)
-    out = run.output(section=False, status="resumed" if resumed else "delivered", step="",
-                     paths=rdl.public_paths(paths), next=NEXT)
-    return rdl.report_delivered_plan(run.meta, out) if resumed else out
-
-
-def _approval_problem(run: Run) -> Optional[str]:
-    """Why the document no longer approves what was stored: its Approved line unreadable or unticked."""
-    review = run.read.parsed.approved_review()
-    if APPROVED_MISSING in review["warnings"]:
-        return APPROVED_MISSING
-    return None if review["approved"] else ra.NOT_APPROVED
-
-
-def _resume_stored(run: Run, paths: Dict[str, str], payloads: Dict[str, str]) -> dict:
-    """An open delivery resumed with the payloads its first attempt stored: the rebuilt plan's problems and the
-    resume refusals do not apply, the stored texts are uploaded unchanged."""
-    approval = _approval_problem(run)
-    if approval is not None:
-        return {"status": "refused", "stem": run.stem, "problems": [approval], "notices": []}
-    replaces_set = run.meta.data.get(SET_REPLACED) is True or (run.held is not None and rs.any_applied(run.held.data))
-    run.problems, run.notices = [], []
-    return _write_steps(run, paths, payloads, json.loads(payloads[rdl.SET_JSON]), replaces_set, resumed=True)
-
-
 def deliver(args: argparse.Namespace) -> dict:
     rdl.clear_closed_payloads(Path(args.tmp) / args.stem, rs.read_meta(Path(args.tmp), args.stem))
-    run = load_run(args)
-    stored = rdl.read_payloads(run.stage, run.meta) if rdl.delivery_open(run.meta, run.problems) else None
-    if stored is not None:
-        return _resume_stored(run, *stored)
-    refusal = (rdl.resume_refusal(run.meta, run.plan, run.problems, run.anchor_picked, bool(run.choices))
-               if run.meta.started() else None)
-    if refusal is not None:
-        out = {"status": "refused", "stem": run.stem, "problems": [refusal], "notices": run.notices}
-        if refusal == rdl.ANCHOR_NEEDED:
-            out["headings"] = run.pick_headings
-        return out
-    if run.problems:
-        return {"status": "refused", "stem": run.stem, "problems": run.problems, "notices": run.notices,
-                **run.sections(lines=False)}
-    paths = rdl.delivery_paths(run.paths, run.plan)
-    set_doc = ra.build_review_instruction_set(run.plan, stem=run.stem, generated=run.meta.generated,
-                                              profile=run.profile)
-    payloads = {rdl.SET_JSON: json.dumps(set_doc, indent=2, ensure_ascii=False) + "\n",
-                rdl.SET_MD: rdl.set_md(run.plan, run.meta, run.profile)}
-    if rdl.NOTE in paths:
-        payloads[rdl.NOTE] = run.plan.note_text or ""
-    resumed = run.meta.started()
-    if run.replaces_set:
-        run.meta.data[SET_REPLACED] = True                     # persisted with the first step's in-flight mark
-    if not resumed:                                            # the plan and payloads this run writes, stored the same way
-        run.meta.data[rdl.DELIVERED_PLAN] = rdl.plan_record(run.plan, run.setup.anchor, run.anchor_picked,
-                                                            bool(run.choices))
-        rdl.save_payloads(run.stage, paths, payloads)
-    return _write_steps(run, paths, payloads, set_doc, run.replaces_set, resumed)
+    return rid.deliver_run(load_run(args))
 
 
 # ---------------------------------------------------------------- drop
@@ -403,12 +143,8 @@ def drop(args: argparse.Namespace) -> dict:
     meta = rdl.ReviewMeta(meta_data) if meta_data is not None else None
     if meta is None or not meta.started():
         return {"status": "dropped", "stem": args.stem, "removed": _remove_stage(stage)}
-    kind = str(meta.data.get("kind"))
-    setup, profile = _setup(args, kind)
-    try:
-        paths = rdl.set_paths(setup, args.stem)
-    except rc.UnsafePath:
-        raise Refused("inbox-not-configured") from None
+    setup, profile = rir.setup_of(args, str(meta.data.get("kind")))
+    paths = rir.set_paths_of(setup, args.stem)
     if rdl.NOTE in meta.steps_done or meta.failed_step == rdl.NOTE:
         target = str(meta.data.get("target") or "")
         paths[rdl.NOTE] = setup.inbox_path(posixpath.basename(target))
@@ -446,7 +182,7 @@ def status(args: argparse.Namespace) -> dict:
     doc_path = doc_path_of(meta)
     if doc_path is None:
         raise NotFound()
-    config, profile = _config_and_profile(args)
+    config, profile = rir.config_and_profile(args)
     inbox = rc.inbox_folder(config, profile)
     if inbox is None:
         raise Refused("inbox-not-configured")
@@ -462,10 +198,6 @@ def status(args: argparse.Namespace) -> dict:
 
 
 # ---------------------------------------------------------------- main
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Pass 2 of /review: preview, deliver, drop, status.")

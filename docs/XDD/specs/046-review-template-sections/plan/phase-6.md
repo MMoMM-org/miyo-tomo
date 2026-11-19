@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Wire v4, integration, live walk and close-out"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 6
 ---
@@ -97,7 +97,7 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
 
   Ticked at T6.4 (2026-11-19) on the Success line: R1 (week, month first delivery), R2 (both re-runs), R3a / R3b (quarter first delivery and re-run) applied with 0 lines outside the blocks, 1 + 1 markers per key, off-limits untouched. Not met inside this task, recorded in `close-out.md` §4, §5, §7: weekly Pass 1 cold $0.749 / $0.686 and Pass 2 $0.814 / $0.799 / $3.328 over their KPIs (owner decision open); the quarter Pass 1 KPI passes on partial reads only (#270); no section-fit rows and no `live-walk.md` were recorded (the walk record is the notes above, the joint-run handoffs and the close-out).
 
-- [ ] **T6.4 Close-out** `[activity: validate]`
+- [x] **T6.4 Close-out** `[activity: validate]`
 
   1. Prime: spec 045 `close-out.md` and spec 044's (method)
   2. Test: every one of the 49 PRD criteria traced to node ids run in ONE pytest invocation, or to a recorded live-walk row for model behaviour; criteria parts no test can fail closed by RED-proven tests in `tests/test_046_close_out_gaps.py`; inbox cost log updated. Known prose-pin-only parts to trace to live-walk rows (Phase 2 drift check): F2-AC10 "the request continues in the same session", F2-AC3 "one line per left-out heading with its reason", F2-AC2/F2-AC6 (the table and suggestion descriptions as the model words them).

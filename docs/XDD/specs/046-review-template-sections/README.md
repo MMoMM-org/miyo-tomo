@@ -5,10 +5,10 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-13 |
-| **Current Phase** | Ready |
+| **Current Phase** | Implemented |
 | **Decomposition tier** | Incremental |
 | **Model tier** | hard |
-| **Last Updated** | 2026-11-16 |
+| **Last Updated** | 2026-11-19 |
 
 ## Documents
 
@@ -95,6 +95,7 @@
 | 2026-11-16 | Phase 6 started before Hashi's release: T6.2's parts that need no v4 schema run now (carried code debt, end-to-end tests against the test-only candidate schema, documentation); T6.1 and the v4 re-validation wait for Hashi | Owner chose "start T6.2 parts now"; no reply in _inbox/from-hashi/ yet |
 | 2026-11-18 | Joint run complete (rounds 1, 2, 3a, 3b passed). Hashi 0.33.0 released (PR #181 → `1c11045`, tag `5a3ea2f`); `src/schema/instructions.schema.json` at tag `0.33.0` is byte-identical to the vendored copy (sha256 `51b80e49…c23c91`). README and `docs/instructions-json.md` now name 0.33.0 as the minimum Hashi for v4 | Release-tag re-check from T6.1 done; Hashi #180 (`cachedRead` splice) stays open on Hashi's side |
 | 2026-11-19 | Quarter read size out of 046 into #270 (redesign: chunked data, agents tiered by model, brainstorm first); `section-ambiguous` stays strict ("found exactly once", also when the anchor is the first copy of its text); `end` landing wording „am Ende des eigenen Texts von „X“" / "at the end of the own text of" | Owner. Measured: 717 KB, ~390k tokens for a quarter. Hashi resolves anchors by first match, but strict stays safe should that ever change |
+| 2026-11-19 | Implementation complete | PR #271 (squash into main); wire v4, needs Tomo Hashi 0.33.0+; close-out.md: 49 criteria traced (518 passed in one invocation), 8 gap tests; quarter read redesign → #270 |
 
 ## Context
 

@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.6.1
+# version: 0.6.2
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -55,6 +55,7 @@ No Kado call, no clock. Design notes: docs/tomo/scripts/lib/review_delivery.md
 from __future__ import annotations
 
 import json
+import posixpath
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -218,18 +219,31 @@ def template_paths(setup: rc.ReviewSetup) -> Tuple[Optional[str], Optional[str]]
 
 # --- the peers ------------------------------------------------------------------------
 
-def peer_sources(plan: ra.ReviewPlan, meta: ReviewMeta) -> List[Dict[str, str]]:
+def in_inbox(path: str, inbox: str) -> bool:
+    """Whether ``path`` is a canonical vault path strictly inside the ``inbox`` folder: no backslash, parent hop,
+    ``.`` or empty segment, not absolute, not the folder itself, not a sibling that shares the folder's name as
+    a prefix. An inbox that is empty or leaves the vault admits nothing."""
+    base = posixpath.normpath(inbox.strip().strip("/") or ".")
+    if base == "." or base.startswith("..") or "\\" in base:
+        return False
+    return (path == posixpath.normpath(path) and "\\" not in path and not path.startswith("/")
+            and path.startswith(base + "/") and path != base + "/")
+
+
+def peer_sources(plan: ra.ReviewPlan, meta: ReviewMeta, inbox: Optional[str] = None) -> List[Dict[str, str]]:
     """What Hashi's cleanup may trash after a full apply: the review document, then the new note's inbox
-    copy; never the review target."""
+    copy; never the review target. With ``inbox`` a path outside it is dropped (never listed, never refused);
+    without it the list is unguarded."""
     paths = [meta.doc_path, plan.note_path if plan.mode == ra.NEW_NOTE else None]
-    return [{"path": path} for path in paths if path and path != plan.target]
+    return [{"path": path} for path in paths
+            if path and path != plan.target and (inbox is None or in_inbox(path, inbox))]
 
 
-def set_md(plan: ra.ReviewPlan, meta: ReviewMeta, profile: Optional[str]) -> str:
+def set_md(plan: ra.ReviewPlan, meta: ReviewMeta, profile: Optional[str], inbox: Optional[str] = None) -> str:
     """The readable instructions of ``plan`` with the stable tomo block and its ``sources``."""
     md = render_instructions_md(plan.actions, {"generated": meta.generated, "profile": profile},
                                 {"templater_hint": plan.templater_hint})
-    block = stable_block("instructions", "pending-apply", meta, sources=peer_sources(plan, meta))
+    block = stable_block("instructions", "pending-apply", meta, sources=peer_sources(plan, meta, inbox))
     return merge_tomo_block_into_markdown(md, block)
 
 

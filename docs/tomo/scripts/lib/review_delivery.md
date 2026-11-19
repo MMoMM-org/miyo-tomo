@@ -217,3 +217,26 @@ payload. `remove_payloads` ignores an `OSError`, and `clear_closed_payloads`
 reads the raw `meta.json` dict, so a finished or withdrawn record loses a
 leftover file on the next `deliver` or `status` without `ReviewMeta`
 filling in defaults on a dict `status` passes on.
+
+
+## WHY `peer_sources` Checks the Inbox (spec 046 T6.4)
+
+Hashi's cleanup trashes every path in `tomo.sources` after a full apply, so
+a path that does not belong there costs the user a file. The review
+document's path comes from `meta.json` (or `--doc-path`), not from the
+inbox folder, so `peer_sources(plan, meta, inbox)` admits a path only when
+`in_inbox` says it lies strictly inside the configured inbox: a canonical
+path (no `..`, `.`, empty segment or backslash), not absolute, not the
+folder itself, and under `<inbox>/` with the slash — `100 Inbox Archive/x`
+shares only a prefix with `100 Inbox` and is out. An empty inbox or one
+that leaves the vault admits nothing.
+
+A path outside the inbox is dropped, not refused. Refusing would stop the
+whole delivery over one wrong path, while a dropped path costs only the
+cleanup of that file; the set and the review stay correct either way. This
+differs from `inbox_path`, which raises `UnsafePath` for a name the caller
+builds itself: there a bad name is a bug, here a stored path is data.
+
+`inbox` is optional so a caller that does not know it yet keeps the old
+unguarded list; the guard holds only where the caller passes it
+(`review-instructions.py` deliver, with `run.setup.inbox`).

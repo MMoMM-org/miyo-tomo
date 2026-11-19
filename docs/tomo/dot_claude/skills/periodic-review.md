@@ -464,6 +464,11 @@ can — those the rewrite-once loop below covers.
   frame: a section that asks what to start or stop doing, or what will be challenging next month, receives items
   for that when the notes hold matching material. The bullet says "whatever group they would fit" because a model
   that sorted by group first would leave such a section empty.
+- **A row's `groups` are its starting point (F2-AC7).** When setup names groups for a row (for example `growth` for
+  "Notes Created This Quarter"), the section starts from what those groups would hold, and such a finding goes into
+  the section instead of the group. That keeps the one-place rule and leaves a group no row names in "Tomo Review".
+  The bullet was missing until the 046 close-out (owner decision 2026-11-19). Before it, only the description
+  steered the section, which is why the walk's s2 fix had to reword the description.
 - **Reminders, not finished text (F1-AC3, F1-AC4).** A section is the user's own words in their note; Tomo
   reminds them of what happened or will need to happen, with the source, and leaves the judgement to them. A
   forward-looking section gets the same: a reminder drawn from what the period shows, never an invented goal.

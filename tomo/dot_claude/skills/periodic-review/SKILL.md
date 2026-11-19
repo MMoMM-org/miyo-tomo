@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.12
+# version: 0.2.13
 
 Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -142,6 +142,7 @@ Write `tomo-tmp/review/<stem>/proposals.json`:
 - Habits are computed by the script: never propose them. Never propose text for the user's own sections other than the `sections` of `read.json`.
 - `read.json` holds `sections` → add `"sections": [{"key": "<key>", "items": [{"text": "<reminder>", "sources": ["<path or stem from read.json>"]}]}]` beside `groups`: one entry per `sections` entry with something to propose, its `key` copied; no other key.
 - A section's items are what its `description` and `keywords` ask for in the period's notes, whatever group they would fit. Each is a reminder of what happened or will need to happen, with its sources; never finished review text, never a judgement. At most `cap` items: merge findings that say the same, keeping the sources of each.
+- A section whose `groups` names groups starts from what those groups would hold; such a finding goes into the section, not into the group.
 - Each finding goes in one place: the section it fits best, else its group; never in a second section or a group as well.
 - A `sections` entry with `analysis` true → items that sum up what the period's values for it show, each an overview, never one item per day.
 - Month: a section item that only the weekly notes hold, or that they left out, carries `"mark": "weekly_only"` or `"mark": "not_in_weekly"`; its sources as for that group.

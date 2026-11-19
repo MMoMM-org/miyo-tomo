@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t4_4_skill_sections.py — the periodic-review skill proposes by section (spec 046 T4.4).
 
 What each section receives is model behaviour (PRD F1-AC2, the model part of
@@ -42,6 +42,13 @@ def test_a_section_receives_what_its_description_and_keywords_ask_for_as_reminde
     assert ("Each is a reminder of what happened or will need to happen, with its sources; never finished review "
             "text, never a judgement.") in text
     assert "At most `cap` items: merge findings that say the same, keeping the sources of each." in text
+
+
+def test_a_sections_groups_are_its_starting_point_and_the_field_is_the_one_review_read_writes():
+    """F2-AC7: a mapped row's `groups` name the spec 045 groups the section starts from (046 close-out gap)."""
+    assert ("- A section whose `groups` names groups starts from what those groups would hold; such a finding goes "
+            "into the section, not into the group.") in _section(STEP5)
+    assert "groups" in load_script("review-read.py").DEFINITION_FIELDS
 
 
 def test_one_place_per_item_and_the_rest_in_the_groups():

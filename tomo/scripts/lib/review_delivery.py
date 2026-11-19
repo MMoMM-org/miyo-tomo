@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.6.3
+# version: 0.6.4
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -224,7 +224,7 @@ def in_inbox(path: str, inbox: str) -> bool:
     ``.`` or empty segment, not absolute, not the folder itself, not a sibling that shares the folder's name as
     a prefix. An inbox that is empty or leaves the vault admits nothing."""
     base = posixpath.normpath(inbox.strip().strip("/") or ".")
-    if base == "." or base.startswith("..") or "\\" in base:
+    if base in (".", "..") or base.startswith("../") or "\\" in base:
         return False
     return (path == posixpath.normpath(path) and "\\" not in path and not path.startswith("/")
             and path.startswith(base + "/") and path != base + "/")

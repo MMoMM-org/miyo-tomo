@@ -271,10 +271,11 @@ def test_only_in_weekly_links_and_dailies_not_in_weekly_are_computed():
 def test_link_differences_leave_out_targets_that_are_not_notes():
     """Image and PDF embeds are attachments, not notes a review could miss (046 T6.3 walk: weather icons)."""
     first_day = daily(date(2026, 3, 1), "first [[March Note]] [[Only Daily]] ![[snow.png]] [[scan.pdf|Scan]]")
-    w13 = W13_NOTE.replace("- sunday block", "- sunday block ![[chart.PNG]] [[Kappa.md]]")
+    w13 = W13_NOTE.replace("- sunday block", "- sunday block ![[chart.PNG]] [[Kappa.md]] [[Foo.Bar]] [[v1.2 Plan]]")
     result = run(month_vault(**{first_day[0]: first_day[1], f"{WEEKLY}2026-W13.md": w13}), MARCH, month_sources())
     assert result["dailies_not_in_weekly"] == ["Only Daily", "Omega", "Beta"]
-    assert result["only_in_weekly_links"] == ["Thought Note", "Own Note", "Delta", "Kappa.md", "Epsilon"]
+    assert result["only_in_weekly_links"] == ["Thought Note", "Own Note", "Delta", "Kappa.md", "Foo.Bar",
+                                              "v1.2 Plan", "Epsilon"], "a dotted note name stays a note"
 
 
 def test_month_without_weekly_notes_says_none_found():

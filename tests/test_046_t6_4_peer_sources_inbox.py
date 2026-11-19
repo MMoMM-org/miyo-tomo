@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t6_4_peer_sources_inbox.py — a peer's `tomo.sources` never lists a path outside the inbox (spec 046 T6.4).
 
 Hashi's cleanup trashes every `sources[].path` after a full apply. A review document path comes from `meta.json`
@@ -47,7 +47,7 @@ def _meta(doc_path):
     return rdl.ReviewMeta({"run_id": "r", "generated": "2026-11-19T08:00:00Z", "doc_path": doc_path})
 
 
-@pytest.mark.parametrize("inbox", ["100 Inbox/", "100 Inbox", "/100 Inbox/", "Deep/Inbox"])
+@pytest.mark.parametrize("inbox", ["100 Inbox/", "100 Inbox", "/100 Inbox/", "Deep/Inbox", "..Inbox"])
 def test_inbox_paths_are_listed(inbox):
     doc = f"{inbox.strip('/')}/2026-W13 Review.md"
     assert rdl.peer_sources(_plan(), _meta(doc), inbox=inbox) == [{"path": doc}]
@@ -80,7 +80,7 @@ def test_the_new_note_copy_is_guarded_too():
     assert rdl.peer_sources(plan, _meta("Calendar/doc.md"), inbox=INBOX) == [{"path": "100 Inbox/2026-03.md"}]
 
 
-@pytest.mark.parametrize("inbox", ["", "  ", "/", ".", "..", "a/../.."])
+@pytest.mark.parametrize("inbox", ["", "  ", "/", ".", "..", "a/../..", "../Inbox"])
 def test_an_empty_inbox_lists_nothing(inbox):
     assert rdl.peer_sources(_plan(), _meta("100 Inbox/doc.md"), inbox=inbox) == []
 

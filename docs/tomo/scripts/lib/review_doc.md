@@ -264,3 +264,11 @@ read them (repo rule: JSON schemas have no version header).
 - An inline `[[...]]` or `![[...]]` in the model's item text stays verbatim:
   only the links the script renders from resolved sources are checked. The
   user reviews the text before approval.
+
+## WHY the `end` Landing Line Says "the Text Under" the Heading (spec 046 T6.4, 0.5.2)
+
+Since spec 046 T6.3 (`end_own_text`), `end` at a heading that has sub-headings lands at the end of the heading's own
+text, before its first sub-heading, not at the end of its whole subtree. "At the end of "H"" read as the subtree end
+and so promised the wrong place. The `end_h` label now says `at the end of the text under "H"` /
+`am Ende des Texts unter „H“`. Tests: `test_046_t4_2_doc_sections.py`, `test_046_t5_2_new_note_sections.py`.
+`docs/tomo/scripts/lib/review_sections.md` still quotes the old German/English words (outside this change).

@@ -154,7 +154,7 @@ WEEK_BODY = [
     "",
     "## What Went Well This Week? %%s1%%",
     "- [x] Abschnitt übernehmen %%s1%%",
-    "*Landet: am Ende von „What Went Well This Week?“ (Ebene 4, unter „In my own words“)*",
+    "*Landet: am Ende des Texts unter „What Went Well This Week?“ (Ebene 4, unter „In my own words“)*",
     "- [x] Steuererklärung abgeschickt ([[2026-03-24]]) %%t1%%",
     "- [x] Drei Abende ohne Bildschirm ([[2026-03-25]], [[2026-03-27]]) %%t2%%",
     "",
@@ -203,7 +203,7 @@ def test_the_english_labels_and_the_inside_place(script, inst, monkeypatch, caps
     _, _, fake = write(script, monkeypatch, capsys, inst, mapped_week(), props)
     body = body_of(fake)
     assert "- [x] Use this section %%s1%%" in body and "- [ ] Use this section %%s3%%" in body
-    assert '*Lands: at the end of "What Went Well This Week?" (level 4, under "In my own words")*' in body
+    assert '*Lands: at the end of the text under "What Went Well This Week?" (level 4, under "In my own words")*' in body
     assert '*Lands: before "Planning" (level 3)*' in body
     assert '*Lands: right under "Notes" (level 2)*' in body
     assert '*Lands: as the section "Tomo Review" inside "In my own words"*' in body
@@ -420,7 +420,7 @@ def test_a_hostile_row_heading_forges_no_line_and_no_id():
     text, _ = rd.render_document(_doc_input(sections=[part]))
     assert _heading_lines(text) == ["# 2026-Q1 Review", "## X ## y %%s1%%"]
     assert text.count("%%s1%%") == 2 and "%%s9%%" not in text
-    assert '*Lands: at the end of "X ## y" (level 3)*' in text.splitlines()
+    assert '*Lands: at the end of the text under "X ## y" (level 3)*' in text.splitlines()
 
 
 def test_a_hostile_review_heading_yields_one_review_id():

@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.5.1
+# version: 0.5.2
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -106,7 +106,7 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "elsewhere": "found at {path}", "before": "before", "inside": "inside",
         "not_read": "not read", "partly_read": "partly read", "delivered": "delivered",
         "take": "Use this section", "lands": "Lands", "level": "level {level}", "parent": 'under "{h}"',
-        "before_h": 'before "{h}"', "under_h": 'right under "{h}"', "end_h": 'at the end of "{h}"',
+        "before_h": 'before "{h}"', "under_h": 'right under "{h}"', "end_h": 'at the end of the text under "{h}"',
         "review_h": 'in the section "{r}" under "{h}"', "place_h": 'as the section "{r}" {where} "{h}"',
         "mark_weekly_only": "only in the weekly review", "mark_not_in_weekly": "in no weekly review",
         "mark_monthly_only": "only in the monthly review", "mark_not_in_monthly": "in no monthly review",
@@ -119,7 +119,7 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "elsewhere": "gefunden unter {path}", "before": "vor", "inside": "in",
         "not_read": "nicht gelesen", "partly_read": "teilweise gelesen", "delivered": "geliefert",
         "take": "Abschnitt übernehmen", "lands": "Landet", "level": "Ebene {level}", "parent": "unter „{h}“",
-        "before_h": "vor „{h}“", "under_h": "direkt unter „{h}“", "end_h": "am Ende von „{h}“",
+        "before_h": "vor „{h}“", "under_h": "direkt unter „{h}“", "end_h": "am Ende des Texts unter „{h}“",
         "review_h": "im Abschnitt „{r}“ unter „{h}“", "place_h": "als Abschnitt „{r}“ {where} „{h}“",
         "mark_weekly_only": "nur im Wochenrückblick", "mark_not_in_weekly": "in keinem Wochenrückblick",
         "mark_monthly_only": "nur im Monatsrückblick", "mark_not_in_monthly": "in keinem Monatsrückblick",

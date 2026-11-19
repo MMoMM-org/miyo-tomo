@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.10
+# version: 0.1.11
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -106,15 +106,18 @@ PREVIEW_PROBLEMS = {
     "place-landing-off-limits": ("- `landing-off-limits` with no entry of `sections` carrying a `stop` → say that the \"Tomo Review\" section, placed at `place.anchor`, would land in an off-limits section, that the place is changed with `/review setup`, and that nothing is delivered; stop."),
     # spec 046 T5.5 lines, T5.6 dialogue (tests/test_046_t5_6_skill_choices.py pins the sub-bullets)
     "section-stops": ("- `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, "
-                      "`block-in-review-section` or `landing-off-limits` with no other problem in `problems` → print "
-                      "the plan as `ok` with empty `problems` below does, without its question; then per entry of "
-                      "`sections` with a `stop` one line in `<language>` (`review.language` of "
-                      "`config/vault-config.yaml`, Read it): the section `<section heading>` (step 5) of its `key`, its `placement`, why it stops (its heading is not in the target note, is "
-                      "there more than once, Tomo's earlier block in it is broken, the block was moved under "
-                      "`block_at.heading`, the block sits inside the \"Tomo Review\" section, or it would land in an "
-                      "off-limits section) and its `choices`: `skip` leaves the section out, `review` puts its items "
-                      "into the \"Tomo Review\" section, `confirm-moved` replaces the block where it sits now. Beside "
-                      "another problem only that problem's line applies."),
+                      "`block-in-review-section` or `landing-off-limits` with no other problem in `problems` → "
+                      "- Print the plan as `ok` with empty `problems` below does, without its question. "
+                      "- Then per entry of `sections` with a `stop` one line in `<language>` (`review.language` of "
+                      "`config/vault-config.yaml`, Read it), naming: "
+                      "- the section `<section heading>` (step 5) of its `key` "
+                      "- its `placement` "
+                      "- why it stops: its heading is not in the target note, is there more than once, Tomo's "
+                      "earlier block in it is broken, the block was moved under `block_at.heading`, the block sits "
+                      "inside the \"Tomo Review\" section, or it would land in an off-limits section "
+                      "- its `choices`: `skip` leaves the section out, `review` puts its items into the "
+                      "\"Tomo Review\" section, `confirm-moved` replaces the block where it sits now "
+                      "- Beside another problem only that problem's line applies."),
     "choice-invalid": ("- `choice-invalid` → say the note changed since the preview: the choice for each key in "
                        "`choices_invalid` answers no stop of that section now; rerun `preview` without the section "
                        "choice flags and branch on the rerun by this list."),
@@ -355,7 +358,8 @@ def _drop_problems() -> set[str]:
     from lib import review_delivery as rdl
 
     source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
-    setup_body = source[source.index("def _setup("):source.index("def load_run(")]
+    run_lib = (REPO / "tomo" / "scripts" / "lib" / "review_instructions_run.py").read_text(encoding="utf-8")
+    setup_body = run_lib[run_lib.index("def setup_of("):run_lib.index("def build_run(")]    # setup_of, set_paths_of
     drop_body = source[source.index("def drop("):source.index("def status(")]
     raised = set(re.findall(r'Refused\("([a-z-]+)"', setup_body + drop_body))
     assert raised == {"setup-missing", "setup-invalid", "inbox-not-configured"}, sorted(raised)

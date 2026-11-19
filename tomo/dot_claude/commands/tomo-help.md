@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.24
+# version: 0.2.25
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -120,7 +120,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - `/review` reviews the last finished week; `/review month` the last finished month; `/review quarter` the last finished quarter; `/review 2026-W13`, `/review W13`, `/review 2026-03`, `/review 2026-Q1` or an `@`-picked weekly, monthly or quarterly note name a period
   - First run per period kind: `/review` proposes the setup (folder, name format, first day of the week, template, review heading and place, daily sections, language, and which headings of your template the review fills or must never touch) against your existing notes and saves it only after you confirm; `/review setup` shows the saved values and runs the same dialogue again
   - 2-pass: Pass 1 writes `<period> Review.md` to your inbox — edit the items, tick `[x] Approved`, run `/review` again; Pass 2 shows the section as it will land and delivers the instruction set for Hashi (readable instructions included for applying by hand)
-  - Open reviews are always offered first (continue, start over, resume or drop); one review per period — a rerun replaces Tomo's section, never adds a second
+  - Open reviews are always offered first (continue, start over, resume or drop); one review per period — a rerun replaces Tomo's review section (a mapped section gets its own block replaced), never adds a second
   - Point at: `.claude/skills/periodic-review/SKILL.md`, `.claude/commands/review.md`, `config/vault-config.yaml` (`review:`)
 
 ### Concepts

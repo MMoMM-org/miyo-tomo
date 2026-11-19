@@ -1017,3 +1017,14 @@ vault: every vault access goes through the scripts and Kado. The skill's body fo
 list, then numbered steps) rather than the authoring plugin's Persona / Interface / Constraints layout: the repo rule
 for runtime files allows imperatives only, and a persona or an interface block would be prose the model does not act
 on.
+
+## WHY the Stop Bullet of Step 7 Is a List of Short Sub-Bullets (spec 046 T6.4, SKILL 0.2.12)
+
+The bullet for `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, `block-in-review-section` and
+`landing-off-limits` was one sentence of about 1,100 characters: print the plan, then the stop line per section with
+five named parts, then the beside-another-problem rule. The model followed it, but a reviewer could not see which
+imperative belonged to which clause. It is now a head line (the problems that match) over sub-bullets: print the plan
+without its question; one line per stopped section naming its heading, `placement`, reason and `choices`; the
+beside-another-problem rule; then the two existing sub-bullets (empty `choices` ends, otherwise ask). No imperative and
+no quoted string changed. `tests/test_046_t5_6_skill_choices.py` and `tests/test_review_skill_pass2.py` pin the new
+layout (whitespace is collapsed by `_section`, so a raw-line test pins the nesting and the line length).

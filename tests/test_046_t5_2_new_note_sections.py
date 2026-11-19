@@ -328,7 +328,7 @@ def test_pass1_names_the_routed_section_of_a_new_note_in_its_landing_line(script
     _, out, fake = write(script, monkeypatch, capsys, inst, week_read(sections=definitions_of(rows)), props, fake)
     assert out["status"] == "written" and out["target_exists"] is False, out
     lines = body_of(fake)
-    assert "*Landet: am Ende von „Highlights“ (Ebene 2)*" in lines
+    assert "*Landet: am Ende des Texts unter „Highlights“ (Ebene 2)*" in lines
     assert "*Landet: im Abschnitt „Tomo Review“ unter „Gone“*" in lines
     assert "## Tomo Review %%review%%" in lines                  # a routed part alone opens the divider
 

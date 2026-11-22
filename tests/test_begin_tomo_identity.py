@@ -237,3 +237,45 @@ class TestStatuslineInstanceIdentity:
         assert "友" not in result.stdout, (
             f"Unexpected 友 section in output without instance vars: {result.stdout!r}"
         )
+
+
+# ── D. Terminal tab title ────────────────────────────────────────────────────
+
+def _set_tab_title_via_bash(title: str) -> bytes:
+    """Run the REAL _set_tab_title extracted from the template; return raw stdout."""
+    extract = subprocess.run(
+        ["sed", "-n", "/^_set_tab_title()/,/^}/p", str(TEMPLATE)],
+        capture_output=True, text=True, check=True,
+    )
+    assert extract.stdout.strip(), "_set_tab_title not found in template"
+    result = subprocess.run(
+        ["/bin/bash", "-c", extract.stdout + '\n_set_tab_title "$_TITLE"'],
+        capture_output=True, timeout=10, env={"_TITLE": title, "PATH": "/usr/bin:/bin"},
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+class TestTabTitle:
+    """The tab is named after Tomo, not after the docker process."""
+
+    def test_title_is_an_osc0_sequence(self):
+        out = _set_tab_title_via_bash("友 Tomo · my-instance")
+        assert out == "\033]0;友 Tomo · my-instance\007".encode("utf-8")
+
+    def test_empty_title_resets(self):
+        assert _set_tab_title_via_bash("") == b"\033]0;\007"
+
+    def test_launcher_sets_title_before_docker_run(self, tmp_path):
+        content = _render(tmp_path, "my-instance")
+        call = content.find('_set_tab_title "友 Tomo · ${INSTANCE_NAME}"')
+        assert call != -1, "launcher never sets the Tomo tab title"
+        assert call < content.find("docker run -it"), "title must be set before docker run"
+
+    def test_launcher_resets_title_on_exit(self, tmp_path):
+        content = _render(tmp_path, "my-instance")
+        assert "trap '_set_tab_title \"\"' EXIT" in content
+
+    def test_claude_code_does_not_overwrite_the_title(self, tmp_path):
+        content = _render(tmp_path, "my-instance")
+        assert '-e "CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1"' in content

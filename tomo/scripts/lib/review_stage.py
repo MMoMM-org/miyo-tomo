@@ -1,5 +1,5 @@
 # review_stage.py — the stage a /review read rests in: day, growth, child and context files, weeks.json, the manifest.
-# version: 0.1.2
+# version: 0.2.0
 """The stage folder of a ``/review`` read (spec 047 T2.3; PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; ADR-1/2/3/10).
 
 ``write(stage, result, *, stem, rule, sections_digest)`` discards the stage's
@@ -15,7 +15,10 @@ kept ≤ ``FILE_CEILING`` bytes: an oversized day is re-cut and ``partly_read``
 (``clipped``); a file still over it after every cut is listed in the
 manifest's ``over_ceiling``. Returns the manifest.
 
-``load(stage)`` gives back the result ``write`` was given, plus ``previous``,
+``render(result, ...)`` gives the same files as ``{name: text}`` with the
+manifest and writes nothing (``review-read.py --measure``); ``manifest(stage)``
+reads the manifest back. ``load(stage)`` gives back the result ``write`` was
+given, plus ``previous``,
 ``condensed`` (``condensed.json`` or ``None``) and ``carryover``
 (``carryover.json`` when the condensed carryover passed, else ``None``).
 ``StageMissing``: no manifest (also a pre-047 stage); ``StageInvalid``: an
@@ -138,12 +141,11 @@ def _weeks_text(read_id: str, result: dict, rule: WeekRule, day_texts: Dict[str,
 
 # ---------------------------------------------------------------- write
 
-def write(stage: Path, result: dict, *, stem: str, rule: WeekRule, sections_digest: str,
-          read_id: Optional[str] = None, read_at: Optional[str] = None) -> dict:
-    """Discard the stage, write ``result`` as stage files, the manifest last; returns the manifest."""
+def render(result: dict, *, stem: str, rule: WeekRule, sections_digest: str, read_id: Optional[str] = None,
+           read_at: Optional[str] = None) -> Tuple[Dict[str, str], dict]:
+    """``({stage-relative name: text}, manifest)`` of ``result``, exactly as ``write`` writes them."""
     read_id = read_id or run_ids.generate()
     read_at = read_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    discard(stage)
     cut = {e["date"]: day_text(read_id, e) for e in result["days"]}
     day_texts = {d: text for d, (text, _) in cut.items()}
     growth = growth_files(read_id, (result.get("growth") or {}).get("created") or [], result["period"]["start"])
@@ -155,18 +157,27 @@ def write(stage: Path, result: dict, *, stem: str, rule: WeekRule, sections_dige
         (GROWTH, {n: t for day in growth.values() for n, t in day.items()}),
         (CHILDREN, children), (PREVIOUS, previous)) for name, text in files.items()},
         **context, WEEKS: _weeks_text(read_id, result, rule, day_texts, growth, children)}
+    report = mark_partly_read(result.get("report"), [d for d, (_, recut) in cut.items() if recut])
+    doc = {"layout": LAYOUT, "read_id": read_id, "read_at": read_at, "stem": stem, "period": result["period"],
+           "sections_digest": sections_digest,
+           "files": {"days": [f"{d}.json" for d in day_texts],
+                     "growth": [n for day in growth.values() for n in day], "children": list(children),
+                     "previous": list(previous), "context": list(context), "weeks": WEEKS},
+           "child_labels": labels, "report": report, "not_read": result.get("not_read", []),
+           "over_ceiling": [name for name, text in written.items() if size(text) > FILE_CEILING]}
+    return written, doc
+
+
+def write(stage: Path, result: dict, *, stem: str, rule: WeekRule, sections_digest: str,
+          read_id: Optional[str] = None, read_at: Optional[str] = None) -> dict:
+    """Discard the stage, write ``result`` as stage files, the manifest last; returns the manifest."""
+    discard(stage)
+    written, doc = render(result, stem=stem, rule=rule, sections_digest=sections_digest, read_id=read_id,
+                          read_at=read_at)
     for name, text in written.items():
         _put(stage / name, text)
-    report = mark_partly_read(result.get("report"), [d for d, (_, recut) in cut.items() if recut])
-    manifest = {"layout": LAYOUT, "read_id": read_id, "read_at": read_at, "stem": stem, "period": result["period"],
-                "sections_digest": sections_digest,
-                "files": {"days": [f"{d}.json" for d in day_texts],
-                          "growth": [n for day in growth.values() for n in day], "children": list(children),
-                          "previous": list(previous), "context": list(context), "weeks": WEEKS},
-                "child_labels": labels, "report": report, "not_read": result.get("not_read", []),
-                "over_ceiling": [name for name, text in written.items() if size(text) > FILE_CEILING]}
-    _put(stage / MANIFEST, compact(manifest))
-    return manifest
+    _put(stage / MANIFEST, compact(doc))
+    return doc
 
 
 # ---------------------------------------------------------------- load
@@ -202,22 +213,23 @@ def _stamped(folder: Path, name: object, read_id: str) -> dict:
     return data
 
 
-def _manifest(stage: Path) -> dict:
+def manifest(stage: Path) -> dict:
+    """The stage's manifest; ``StageMissing`` without one, ``StageInvalid`` when it cannot be read back."""
     if not (stage / MANIFEST).is_file():
         raise StageMissing(f"no {MANIFEST} in {stage.name}")
-    manifest = _object(stage / MANIFEST)
-    if not isinstance(manifest.get("read_id"), str) or not isinstance(manifest.get("files"), dict):
+    doc = _object(stage / MANIFEST)
+    if not isinstance(doc.get("read_id"), str) or not isinstance(doc.get("files"), dict):
         raise StageInvalid(f"{MANIFEST} has no read_id or file list")
-    return manifest
+    return doc
 
 
 def load(stage: Path) -> dict:
     """The read result of the stage plus ``previous``, ``condensed`` and ``carryover``."""
-    manifest = _manifest(stage)
+    stored = manifest(stage)
     try:
-        return _load(stage, manifest)
+        return _load(stage, stored)
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        raise StageInvalid(f"malformed stage file: {type(exc).__name__}") from None
+        raise StageInvalid(f"malformed stage file: {type(exc).__name__}") from exc
 
 
 def _load(stage: Path, manifest: dict) -> dict:
@@ -277,8 +289,8 @@ def sections_digest(definitions: Optional[Sequence[dict]]) -> str:
 def can_continue(stage: Path, period: Period, digest: str) -> bool:
     """Whether the stored read matches layout, period, kind and section digest."""
     try:
-        manifest = _manifest(stage)
+        stored = manifest(stage)
     except (StageMissing, StageInvalid):
         return False
-    return (manifest.get("layout") == LAYOUT and manifest.get("period") == _period_dict(period)
-            and manifest.get("sections_digest") == digest)
+    return (stored.get("layout") == LAYOUT and stored.get("period") == _period_dict(period)
+            and stored.get("sections_digest") == digest)

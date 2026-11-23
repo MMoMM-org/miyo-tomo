@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.3
+# version: 0.3.4
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -32,7 +32,7 @@ file, not-found without document or meta.json, --doc-path overrides, Kado
 failures stop, a digest-version meta.json (pass1_items) is ignored; replace
 needs --confirm (no Kado call before), --confirm writes over Tomo's document
 from the kept files, resets meta.json and clears the stage, a non-Tomo file
-is still doc-name-taken, --abort deletes read.json and proposals.json only;
+is still doc-name-taken, --abort deletes the stage content and proposals.json only;
 write records only link-stem lists per Tomo item in meta.json — nothing
 text-derived, a low-entropy habit line is not recoverable from it. All
 data is synthetic.
@@ -60,6 +60,8 @@ from lib.kado_client import KadoAuthError, KadoConnectionError  # noqa: E402
 from test_review_doc import GOOD, INBOX, MARKER, SCRIPT_PATH, WEEKLY, _config, _doc_input, stage, week_read  # noqa: E402
 
 STEM = "2026-W13_review"
+# the kept stage of a week read (spec 047 T2.4): no growth, no children
+KEPT_STAGE = ["context.json", "days", "manifest.json", "meta.json", "proposals.json", "weeks.json"]
 
 
 @pytest.fixture
@@ -656,13 +658,13 @@ def test_parse_kado_failure_is_stopped_and_writes_nothing(mod, instance, monkeyp
 
 
 def _review_exists(mod, monkeypatch, capsys, instance):
-    """Pass 1 written, then a second write refused with review-exists: the stage keeps read.json and proposals.json."""
+    """Pass 1 written, then a second write refused with review-exists: the stage keeps the read and proposals.json."""
     fake, text, stage_dir = written(mod, monkeypatch, capsys, instance)
     meta_before = (stage_dir / "meta.json").read_text(encoding="utf-8")
     stem, path = stage(instance, week_read(), GOOD)
     code, out, _ = _run(mod, monkeypatch, capsys, ["write", "--stem", stem, "--proposals", str(path), "--run-id", "r2"], fake)
     assert out["status"] == "refused" and out["problems"] == ["review-exists"]
-    assert sorted(p.name for p in stage_dir.iterdir()) == ["meta.json", "proposals.json", "read.json"]
+    assert sorted(p.name for p in stage_dir.iterdir()) == KEPT_STAGE
     return fake, text, stage_dir, meta_before
 
 
@@ -672,7 +674,7 @@ def test_replace_without_confirm_needs_confirm_and_names_the_document(mod, insta
     code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", STEM], fake)
     assert code == 0 and out == {"status": "needs-confirm", "stem": STEM, "doc_path": DOC_PATH}
     assert fake.call_count == calls and fake.text(DOC_PATH) == text
-    assert sorted(p.name for p in stage_dir.iterdir()) == ["meta.json", "proposals.json", "read.json"]
+    assert sorted(p.name for p in stage_dir.iterdir()) == KEPT_STAGE
     assert (stage_dir / "meta.json").read_text(encoding="utf-8") == meta_before
 
 
@@ -698,7 +700,7 @@ def test_replace_confirm_on_a_non_tomo_document_is_still_doc_name_taken(mod, ins
     code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", stem, "--confirm"], fake)
     assert code == 0 and out["status"] == "refused" and out["problems"] == ["doc-name-taken"]
     assert fake.writes == [] and fake.text(DOC_PATH) == mine
-    assert (instance / "tomo-tmp" / "review" / stem / "read.json").exists() and path.exists()
+    assert (instance / "tomo-tmp" / "review" / stem / "manifest.json").exists() and path.exists()
 
 
 def test_replace_abort_deletes_the_content_files_and_leaves_document_and_meta(mod, instance, monkeypatch, capsys):

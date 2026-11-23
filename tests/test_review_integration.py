@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_integration.py — review-read.py over Privat-Test through a live Kado
 (spec 045 T6.2; PRD Assumptions; SDD Quality Requirements).
 
@@ -62,6 +62,7 @@ SCRIPT_PATH = SCRIPTS_DIR / "review-read.py"
 INSTANCE_MCP_JSON = REPO_ROOT / "tomo-instance" / ".mcp.json"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from lib import review_stage  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoConnectionError, KadoError, _extract_from_mcp_json  # noqa: E402
 
 pytestmark = pytest.mark.integration
@@ -214,7 +215,7 @@ class Run:
         return self.out["report"]
 
     def read_json(self) -> dict:
-        return json.loads((self.root / self.out["read_path"]).read_text(encoding="utf-8"))
+        return review_stage.load(self.root / self.out["stage"])
 
     def day(self, day: date) -> dict:
         return next(d for d in self.report["days"] if d["date"] == day.isoformat())
@@ -245,7 +246,7 @@ def _run_period(live: Tuple[str, str], root: Path, period: str, kind: str) -> Ru
     out = json.loads(buffer.getvalue())
     assert out["stem"] == f"{period}_review", out.get("stem")
     assert out["status"] == "ok", {k: out.get(k) for k in ("status", "problems", "error")}
-    assert out["nothing_to_review"] is False and out["read_path"], out.get("read_path")
+    assert out["nothing_to_review"] is False and out["stage"], out.get("stage")
     return Run(out, client, root)
 
 

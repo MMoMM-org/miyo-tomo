@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.8
+# version: 0.4.0
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -34,17 +34,17 @@ which marker kinds it may carry and why. The walk then asserts:
   table needs no test of its own;
 - no marker in any file under tomo-tmp/review/ that a step leaves behind;
 - (spec 046 T6.3, owner decision 2026-11-18) `payloads.json`, the paths and texts the first delivery
-  attempt stores for its resume, carries the set and note text by design and is exempt like read.json
-  and proposals.json; it exists while a delivery is open and is gone once every delivery of the walk
+  attempt stores for its resume, carries the set and note text by design and is exempt like the stage's content
+  files (spec 047 T2.4: days/, growth/, children/, previous/, context*.json) and proposals.json; it exists while a delivery is open and is gone once every delivery of the walk
   finished or was withdrawn. The week's stop at the set MD removes it before the resume, so the walk
   keeps covering the legacy `anchor-needed` refusal with its `headings`;
-- the readable tracker value reaches read.json and the document's habits
+- the readable tracker value reaches the stage content and the document's habits
   line, and nothing else of Tomo's: not stderr, not stdout outside the named
-  fields, no working file but read.json;
+  fields, no working file but the stage content files;
 - every marker kind really reached the scripts: the daily text, the journal
-  answer and the tracker values were in read.json before the write deleted
+  answer and the tracker values were in the stage before the write deleted
   it, the tracker marker's days are named unreadable in the habits line;
-- read.json and proposals.json are gone after `write`, `replace --confirm`
+- the stage manifest and proposals.json are gone after `write`, `replace --confirm`
   and `replace --abort`, and kept after a refused or failed write.
 - (spec 046 T4.2, amended CON-3) a mapped write's meta.json is a closed key set: spec 045's keys
   plus `pass1_sections` with entries exactly {key, count, empty}; section headings, parents,
@@ -182,6 +182,17 @@ def _patched(obj, name: str, value):
         setattr(obj, name, original)
 
 
+CONTENT_DIRS = ("days", "growth", "children", "previous")
+
+
+def _content_file(path: Path) -> bool:
+    """A file that holds note or proposal text by design (the stage content, proposals.json, payloads.json)."""
+    if path.parent.name in CONTENT_DIRS and path.parent.parent.parent.name == "review":
+        return True
+    return path.name in ("proposals.json", "payloads.json") or (
+        path.name.startswith("context") and path.name.endswith(".json"))
+
+
 class Walk:
     """Runs the scripts in-process and keeps every call's output and Tomo's files after it."""
 
@@ -190,7 +201,7 @@ class Walk:
         self.subcommands = {name: _subcommands(mod) for name, mod in mods.items()}
         self.calls, self.bad_calls, self.forced_calls = [], [], []
         self.stage_files: dict = {}
-        self.read_files: dict = {}          # label -> read.json text, taken before the write deletes it
+        self.read_files: dict = {}          # label -> the stage's content files' text, taken before the write deletes it
 
     def _call(self, script: str, argv: list[str]) -> dict:
         try:
@@ -205,11 +216,12 @@ class Walk:
                 "tmp_leaks": self._tmp_leaks()}
 
     def _tmp_leaks(self) -> list:
-        """Markers or the readable value in any file under tomo-tmp/review/ except the two the model
-        reads and writes by design."""
+        """Markers or the readable value in any file under tomo-tmp/review/ except the stage's content files
+        (spec 047 T2.4: days/, growth/, children/, previous/, context*.json), proposals.json and payloads.json,
+        which hold note text by design; manifest.json and weeks.json stay under the guard."""
         leaks = []
         for path in sorted((self.root / "tomo-tmp").rglob("*")):
-            if path.is_file() and path.name not in ("read.json", "proposals.json", "payloads.json"):
+            if path.is_file() and not _content_file(path):
                 kinds = _kinds_and_readable(path.read_text(encoding="utf-8", errors="replace"))
                 if kinds:
                     leaks.append((str(path.relative_to(self.root)), sorted(kinds)))
@@ -245,10 +257,11 @@ class Walk:
 
     def note_stage_files(self, label: str, stem: str) -> None:
         stage = self.stage(stem)
-        self.stage_files[label] = ((stage / "read.json").exists(), (stage / "proposals.json").exists())
+        self.stage_files[label] = ((stage / "manifest.json").exists(), (stage / "proposals.json").exists())
 
-    def keep_read_file(self, label: str, read_path: str) -> None:
-        self.read_files[label] = Path(read_path).read_text(encoding="utf-8")
+    def keep_read_file(self, label: str, stage: str) -> None:
+        self.read_files[label] = "\n".join(p.read_text(encoding="utf-8") for p in sorted(Path(stage).rglob("*.json"))
+                                           if _content_file(p))
 
 
 def _named(call: dict) -> dict:
@@ -345,7 +358,7 @@ def _week(w: Walk) -> None:
     rc, out = w.run("review-read", "-", ["--period", "2026-W13", "--kind", "week", "--today", TODAY])
     assert rc == 0 and out["status"] == "ok" and out["nothing_to_review"] is False, out
     assert out["report"]["days"][2]["linked"][0]["state"] == "read"
-    w.keep_read_file("week", out["read_path"])
+    w.keep_read_file("week", out["stage"])
     path = w.write_proposals(WEEK_STEM, "week")
     rc, out = w.run("review-doc", "write", ["write", "--stem", WEEK_STEM, "--proposals", str(path),
                                             "--run-id", "r-week", "--today", TODAY])
@@ -392,7 +405,7 @@ def _week(w: Walk) -> None:
 def _month_read(w: Walk) -> Path:
     rc, out = w.run("review-read", "-", ["--period", "2026-03", "--kind", "month", "--today", TODAY])
     assert rc == 0 and out["status"] == "ok" and out["report"]["weekly_status"] == "found", out
-    w.keep_read_file("month", out["read_path"])
+    w.keep_read_file("month", out["stage"])
     return w.write_proposals(MONTH_STEM, "month")
 
 
@@ -627,7 +640,7 @@ def test_no_stored_payload_outlives_its_delivery(walk):
 
 
 def test_a_readable_tracker_value_stays_in_read_json_and_the_document(walk):
-    """The value the habits count is in read.json and the habits line; the averages must not carry it
+    """The value the habits count is in the stage content and the habits line; the averages must not carry it
     anywhere else of Tomo's: stderr, stdout outside the named fields, a working file."""
     assert READABLE in walk.read_files["week"] and READABLE in walk.read_files["month"]
     assert f"Energy: average {READABLE}.0 over 1 days" in walk.vault.text(WEEK_DOC), "the habits counted it"
@@ -654,9 +667,9 @@ def test_every_marker_reached_the_scripts(walk):
     assert any(WKL in json.dumps(_payload(c["stdout"]).get("headings", [])) for c in preview)
     forced = {(c["script"], c["sub"]): c for c in walk.forced_calls}
     assert forced[("review-read", "-")]["stderr"] == "ValueError\n", "the daily field parser saw a marker line"
-    # read.json held the daily text, the journal answers and the tracker values before the write deleted it
-    reads = [c for c in walk.calls if c["script"] == "review-read" and _payload(c["stdout"]).get("read_path")]
-    assert reads and all(not Path(_payload(c["stdout"])["read_path"]).exists() for c in reads)
+    # the stage held the daily text, the journal answers and the tracker values before the write deleted it
+    reads = [c for c in walk.calls if c["script"] == "review-read" and _payload(c["stdout"]).get("stage")]
+    assert reads and all(not (Path(_payload(c["stdout"])["stage"]) / "manifest.json").exists() for c in reads)
     assert _payload(reads[0]["stdout"])["report"]["days"][2]["linked"][0]["name"] == "5J-2026-03-25"
     for label in ("week", "month"):
         assert _kinds(walk.read_files[label]) >= {"daily", "answer", "tracker"}, label

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """Record tests/fixtures/046-t4-2-unmapped-doc-golden/{week,month}.md and .json from
 the `review-doc.py write` of the source tree passed as --tree.
 
@@ -21,6 +21,10 @@ Normalisation: the `updated_at` line of the tomo: block (the clock) becomes
 `updated_at: <normalised>`; everything else is the bytes the fake vault
 received. The .json beside each document holds the stdout result and the
 meta.json keys, `pass1_counts` and `pass1_links`.
+
+Staging (spec 047 T2.4): a tree with ``lib/review_stage.py`` gets the read as the
+stage ``review_stage.write`` leaves; an older tree (before spec 047) gets it as
+``read.json``, the file its ``review-doc.py`` loads.
 
 Usage: python3 record.py --tree <exported source tree>
 """
@@ -120,6 +124,16 @@ def _config(language: str) -> dict:
     }
 
 
+def _stage_read(tree: Path, stage: Path, stem: str, read: dict) -> None:
+    """The read as ``tree``'s review-doc.py loads it: the stage, or ``read.json`` before spec 047."""
+    if not (tree / "tomo/scripts/lib/review_stage.py").is_file():
+        (stage / "read.json").write_text(json.dumps(read), encoding="utf-8")
+        return
+    from lib import review_stage
+    from lib.period import ISO
+    review_stage.write(stage, read, stem=stem, rule=ISO, sections_digest=review_stage.sections_digest(None))
+
+
 def capture(tree: Path, name: str) -> dict:
     """``{doc, result}`` of one case written by ``tree``'s review-doc.py on ``tree``'s fake vault."""
     for sub in ("tomo/scripts", "tests"):
@@ -144,7 +158,7 @@ def capture(tree: Path, name: str) -> dict:
         stem = f"{case['read']['period']['name']}_review"
         stage = root / "tomo-tmp" / "review" / stem
         stage.mkdir(parents=True)
-        (stage / "read.json").write_text(json.dumps(case["read"]), encoding="utf-8")
+        _stage_read(tree, stage, stem, case["read"])
         (stage / "proposals.json").write_text(json.dumps(case["proposals"]), encoding="utf-8")
         os.chdir(root)
         try:

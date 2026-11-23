@@ -522,6 +522,9 @@ these steps yet.
 
 ## Why a Quarter Is Read File by File in Step 5 (Spec 046 ADR-7, F6-AC6)
 
+Since spec 047 T2.4 `review-read.py` writes the stage of `lib/review_stage` and prints `stage` instead of
+`read_path` / `read_parts`; this section records the spec 046 step 5 that T6.3 rewrites for the stage.
+
 WHY: the Read tool takes at most 256 KB per call, and a quarter measured 710 KB as one file (T3.4, 2026-Q1). So
 `review-read.py` splits a quarter into `read-index.json` and one `read-<YYYY-MM>.json` per month and prints
 `read_path` (the index) and `read_parts` (the month files, in order). Step 5 reads `read_path` — the same key for a
@@ -544,8 +547,9 @@ spells per kind; a quarter then reads each `read_parts` entry, one Read call eac
   `only_in_monthly_links`, `dailies_not_in_monthly` and `report.monthly_status` — the groups only when a monthly note
   was found, which is the script's `no-monthly-notes` rule said up front. Step 4 prints `monthly_status` and
   `monthly_notes` like the weekly pair, so the user sees which monthly notes were not found (F6-AC5).
-- **The script joins, the model does not.** `review-doc.py write` loads all parts through `lib/review_read_parts.load`, so a
-  source from any month resolves, and its clean-up removes every read file
+- **The script joins, the model does not.** `review-doc.py write` loads the whole read through `lib/review_stage.load`
+  (spec 046: `lib/review_read_parts.load`, deleted in spec 047 T2.4), so a source from any month resolves, and its
+  clean-up removes every stage content file
   (docs/tomo/scripts/review-doc.md). A missing or broken part is `read-invalid`, which step 5 already shows and stops
   on.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_stage.py — the stage a /review read rests in (lib/review_stage.py; spec 047 T2.3;
 PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; SDD ADR-1, ADR-2, ADR-3, ADR-10, "Data Storage Changes").
 
@@ -16,7 +16,7 @@ Mechanisms each test falsifies:
   still over the ceiling after every cut (non-text content) is listed in manifest over_ceiling,
   [] on a normal stage; a child note over the ceiling
   is clipped at a heading boundary; context lists overflow into parts;
-- load gives back what review_read_parts.load gave for the same read (month and quarter), plus
+- load gives back the read result as written (JSON round trip; month and quarter), plus
   previous / condensed / carryover; a quarter day file is the week read's day file (F1-AC2);
   context.json holds the link differences, per-day fields (F2-AC3) and growth counts only; load
   rebuilds growth.created; every created note sits in the growth file of its creation day;
@@ -51,7 +51,6 @@ from review_period_fixtures import (  # noqa: E402
 from review_scaled_quarter import SHAPES, scaled_quarter  # noqa: E402
 from lib import review_day  # noqa: E402
 from lib import review_period  # noqa: E402
-from lib import review_read_parts as rp  # noqa: E402
 from lib import review_stage as rs  # noqa: E402
 from lib.period import ISO, Period  # noqa: E402
 
@@ -107,10 +106,9 @@ def _without(loaded: dict) -> dict:
     return out
 
 
-def _old_load(tmp_path: Path, result: dict) -> dict:
-    old = tmp_path / "old"
-    rp.write(old, rp.files_of(result, ISO))
-    return rp.load(old)
+def _round_trip(result: dict) -> dict:
+    """The result as JSON gives it back (tuples become lists): what the spec 046 loader returned (T2.4 deleted it)."""
+    return json.loads(json.dumps(result))
 
 
 # ---------------------------------------------------------------- the files
@@ -355,13 +353,13 @@ def test_context_lists_overflow_into_parts_that_join_back(tmp_path):
 # ---------------------------------------------------------------- the loader
 
 @pytest.mark.parametrize("case", ["month", "quarter"])
-def test_load_gives_back_what_the_read_parts_loader_gave(tmp_path, case):
+def test_load_gives_back_the_written_read(tmp_path, case):
     if case == "month":
         result = run(month_vault(), MARCH, month_sources())
     else:
         result = run(quarter_vault(), Q1, quarter_sources())
     result["sections"] = [DEFINITION]
-    expected = _old_load(tmp_path, result)
+    expected = _round_trip(result)
     _write(tmp_path / "new", result)
     loaded = rs.load(tmp_path / "new")
     assert _without(loaded) == expected
@@ -371,7 +369,7 @@ def test_load_gives_back_what_the_read_parts_loader_gave(tmp_path, case):
 def test_load_gives_back_the_scaled_quarter(tmp_path):
     result = scaled_quarter("children-heavy")
     _write(tmp_path / "new", result)
-    assert _without(rs.load(tmp_path / "new")) == _old_load(tmp_path, result) | {
+    assert _without(rs.load(tmp_path / "new")) == _round_trip(result) | {
         "growth": dict(result["growth"], created=[dict(c, day="2026-01-01") for c in result["growth"]["created"]])}
 
 

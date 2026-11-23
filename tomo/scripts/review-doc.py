@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.7.2
+# version: 0.8.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
-After the period was read (``read.json``; a quarter's ``read-index.json`` and
-month parts, joined by ``lib/review_read_parts.load``) and the model wrote its proposals
+After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
+through ``lib/review_stage.load``, spec 047 T2.4) and the model wrote its proposals
 (``proposals.json``), ``write`` checks the proposals against the period
 (the groups through ``lib/review_doc``, the sections through
 ``lib/review_sections``), computes the habits from the tracker values,
@@ -13,13 +13,13 @@ probes the target note, renders
 vault write of Pass 1. The Pass 1 counts and the source-link stems per Tomo
 item (``pass1_links``, nothing text-derived) go to ``meta.json`` of the
 stem, with a mapping also ``pass1_sections`` ``[{key, count, empty}]``;
-the read files (``lib/review_read_parts.stage_files``) and ``proposals.json``
-are deleted once the document is written (ADR-9). ``parse`` reads the edited document back through Kado and
+the stage content (``lib/review_stage.discard``: all but meta.json and
+payloads.json) and ``proposals.json`` are deleted once the document is written (ADR-9). ``parse`` reads the edited document back through Kado and
 prints counts and ids only; it writes no file — the document is the source
 of truth and Phase 4 reads it fresh. ``replace`` is the confirmed
 start-over: it writes a new document over Tomo's own from the files
-``write`` kept on ``review-exists``; ``--abort`` discards those files
-instead.
+``write`` kept on ``review-exists``; ``--abort`` discards the stage
+content and ``proposals.json`` instead (also the Pass 1 abort after the read).
 
 Usage (cwd = instance root):
     python3 scripts/review-doc.py write --stem <period>_review --proposals <json>
@@ -33,7 +33,7 @@ Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
            counts {group or section key: n}, rejected [{group | section, index, reason}], calls
          | status refused, problems [proposals-invalid | doc-name-taken | review-exists | read-missing |
-           read-invalid | setup-missing | setup-invalid | inbox-not-configured | sections-changed],
+           read-stale | read-invalid | setup-missing | setup-invalid | inbox-not-configured | sections-changed],
            errors? [pointers, or "<pointer>: <error>" for a section check]
          | status stopped, problems [kado-write-failed] or error {kind kado-unreachable|kado-auth, detail}
     parse: status ok, stem, doc_path, approved, nothing_to_deliver,
@@ -53,8 +53,11 @@ Rules:
     The proposals are validated before any Kado call, the section checks
     (unknown-section, duplicate-section, over-cap (<key>), double-placement,
     mark-not-allowed) included, on ``write`` and ``replace --confirm`` alike;
-    a read.json whose section keys are not the configured rows' ids is
-    refused ``sections-changed``. A part lands where its configured row
+    a read whose section keys are not the configured rows' ids is
+    refused ``sections-changed``; a stage without manifest.json (also a
+    pre-047 stage of read.json) is ``read-missing``, a stage file whose
+    read_id is not the manifest's ``read-stale``, an unreadable or
+    malformed one ``read-invalid``. A part lands where its configured row
     says; for a new note the template (or its ``_tomo`` variant) is read and
     a part whose heading it cannot take is marked routed to "Tomo Review"
     (``review_section_set.routed_keys``). The target is the first
@@ -64,11 +67,11 @@ Rules:
     overwrites: a ``<period> Review.md`` that is not Tomo's review document
     gives ``doc-name-taken``, Tomo's own review of the period gives
     ``review-exists`` with its ``doc_path``; only ``replace --confirm``
-    writes over it, from the kept files, and resets ``meta.json``. A refused
-    or failed write keeps the read files, ``proposals.json`` and ``meta.json``
-    as they were. ``replace --abort`` deletes the read files and
-    ``proposals.json`` and touches neither the document nor ``meta.json``.
-    A quarter part listed but missing or broken is ``read-invalid``.
+    writes over it, from the kept stage, and resets ``meta.json``. A refused
+    or failed write keeps the stage, ``proposals.json`` and ``meta.json``
+    as they were. ``replace --abort`` deletes the stage content and
+    ``proposals.json`` and touches neither the document, ``meta.json`` nor
+    ``payloads.json``.
     ``parse`` reads the document at ``--doc-path`` or at the ``doc_path`` of
     ``meta.json`` through ``lib/review_doc_read`` (shared with
     ``review-instructions.py``) and writes nothing; ``edited`` per Tomo item
@@ -103,9 +106,9 @@ from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_habits as rh  # noqa: E402
 from lib import review_new_note as rnn  # noqa: E402
-from lib import review_read_parts as rrp  # noqa: E402
 from lib import review_section_set as rss  # noqa: E402
 from lib import review_sections as rs  # noqa: E402
+from lib import review_stage  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import Period, render_name  # noqa: E402
@@ -206,18 +209,20 @@ def doc_state(vault: Vault, doc_path: str) -> str:
 # ---------------------------------------------------------------- write
 
 def _load_read(stage: Path) -> dict:
-    """The period read: ``read.json``, or a quarter's index joined with its month parts."""
+    """The period read as ``review_stage.load`` rebuilds it from the stage."""
     try:
-        return rrp.load(stage)
-    except rrp.ReadFilesMissing:
+        return review_stage.load(stage)
+    except review_stage.StageMissing:
         raise Refused("read-missing") from None
-    except rrp.ReadFilesInvalid:
+    except review_stage.StageStale:
+        raise Refused("read-stale") from None
+    except review_stage.StageInvalid:
         raise Refused("read-invalid") from None
 
 
 def _drop_stage_content(stage: Path, proposals_path: Path) -> None:
-    for path in rrp.stage_files(stage) + [proposals_path]:
-        path.unlink(missing_ok=True)
+    review_stage.discard(stage)
+    proposals_path.unlink(missing_ok=True)
 
 
 def _setup(args: argparse.Namespace, kind: str, today: date) -> Tuple[dict, rc.ReviewSetup]:
@@ -252,8 +257,7 @@ def _write_meta(stage: Path, inp: rd.DocInput, counts: dict, doc_path: str, text
 
 
 def _resolve(args: argparse.Namespace, read: dict) -> Tuple[dict, rc.ReviewSetup, Period, str]:
-    """``(config, setup, period, doc_path)`` of the stem's read (``read.json``, or a quarter's index and parts
-    joined by ``review_read_parts.load``), without a Kado call."""
+    """``(config, setup, period, doc_path)`` of the stem's read (loaded from the stage), without a Kado call."""
     kind = str((read.get("period") or {}).get("kind"))
     config, setup = _setup(args, kind, args.today)
     try:
@@ -404,7 +408,7 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--stem", required=True, type=_stem_arg, help="<period>_review, the tomo-tmp/review/ folder")
     choice = x.add_mutually_exclusive_group()
     choice.add_argument("--confirm", action="store_true", help="The user confirmed: replace the document")
-    choice.add_argument("--abort", action="store_true", help="The user declined: delete the read files and proposals.json")
+    choice.add_argument("--abort", action="store_true", help="The user declined: delete the stage content and proposals.json")
     x.add_argument("--proposals", help="The kept proposals.json (default: the stage copy)")
     x.add_argument("--run-id", help="Run id for the new document's tomo: block (default: a fresh one)")
     x.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)

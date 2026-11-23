@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.4.0
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -27,19 +27,24 @@ and the real lib.review_day readers:
   path mark), exit 1 with the class name only on an unexpected exception
 - a week stays <= 45 calls and a month <= 170 without retries (the SDD's
   Quality Requirement, Performance; owner decision 2026-11-12)
-- spec 046 T3.3: read.json carries `sections` (the SectionDefinition fields,
-  key = row id, analysis rows included) only with a mapping; it is written
-  compact; without a mapping its parsed content equals the T3.1 golden
-  recording (CON-2: only the encoding differs); a mapped month's read.json
+- spec 046 T3.3: the stored read carries `sections` (the SectionDefinition fields,
+  key = row id, analysis rows included) only with a mapping; without a mapping
+  the loaded month equals the T3.1 golden recording; a mapped month's read
   equals the unmapped one's once `sections` is popped; `--kind quarter --period
-  2026-Q1` reads the quarter; `--measure` writes no file and prints counts
-  and bytes only
-- spec 046 T3.4: a quarter writes read-index.json plus read-<YYYY-MM>.json
-  per month (read_path = the index, read_parts = the parts), no read.json, a
-  stale read.json in its stage folder removed; on the 2026-Q1 read scaled to
-  the measured bytes every file is <= 256,000 bytes and the loader gives back
-  what read_period returned; --measure prints the bytes of every file; a
-  week and a month still write one read.json and print no read_parts
+  2026-Q1` reads the quarter
+- spec 047 T2.4 (the stage, lib/review_stage): a new read prints continued false,
+  read_id, read_at, stage, units and the report, never read_path / read_parts;
+  the manifest is compact, a day file indent=1; days/ holds only the period's
+  days and the day after gives only its yesterday fields (F1-AC6); an unchanged
+  stored read continues with no Kado call, the stored report and the first
+  read_at (F6-AC4); --fresh, a changed mapping, an invalid manifest or a stale
+  file discard it (discarded fresh | sections-changed | stage-invalid) and a
+  pre-047 stage is discarded without the key; every stop and nothing_to_review
+  writes nothing and leaves nothing to continue, --fresh before a stop too
+  (F2-AC5); missing weekly / monthly notes are none-found with an empty level;
+  --measure prints the bytes of every stage file (growth/ included), the unit
+  bytes (day + growth files), over_ceiling and over_budget and writes no file;
+  the scaled 2026-Q1 read loads back as read_period returned it
 
 All data is synthetic.
 """
@@ -48,6 +53,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import shutil
 import sys
 from datetime import date
 from pathlib import Path
@@ -80,8 +86,9 @@ from review_period_fixtures import (  # noqa: E402
 from lib.kado_client import _MAX_RETRIES, KadoAuthError, KadoConnectionError  # noqa: E402
 from lib.review_pacer import ADVICE_RAISE_LIMIT, MAX_INTERVAL_S  # noqa: E402
 from lib.review_period import ADVICE_CHECK_ACCESS  # noqa: E402
+from lib.review_weeks import UNIT_BUDGET  # noqa: E402
 from lib.review_period import read_period as real_read_period  # noqa: E402
-from lib import review_read_parts as rp  # noqa: E402
+from lib import review_stage as rs  # noqa: E402
 from review_scaled_quarter import SHAPES, scaled_quarter  # noqa: E402
 
 TODAY = "2026-11-11"
@@ -155,8 +162,20 @@ def _month(mod, monkeypatch, capsys, fake, *extra):
     return _run(mod, monkeypatch, capsys, ["--period", "2026-03", "--kind", "month", *extra], fake)
 
 
-def _read_json(instance: Path, stem: str = W13_STEM) -> Path:
-    return instance / "tomo-tmp" / "review" / stem / "read.json"
+def _stage(instance: Path, stem: str = W13_STEM) -> Path:
+    return instance / "tomo-tmp" / "review" / stem
+
+
+def _manifest(instance: Path, stem: str = W13_STEM) -> Path:
+    return _stage(instance, stem) / "manifest.json"
+
+
+def _loaded(instance: Path, stem: str = W13_STEM) -> dict:
+    """The stored read as review-doc.py loads it, without the keys later phases fill."""
+    read = rs.load(_stage(instance, stem))
+    for key in ("previous", "condensed", "carryover"):
+        read.pop(key)
+    return read
 
 
 def day_of(out: dict, day: str) -> dict:
@@ -197,13 +216,16 @@ def test_a_week_run_prints_the_per_day_report_and_writes_read_json(mod, instance
     assert report["waited_s"] == round(fake.retry_wait_s + fake.pace_wait_s, 1)
     assert report["not_read"] == [] and report["kado_empty"] == [] and report["advice"] == []
     assert "weekly_status" not in report
-    assert out["read_path"] == f"tomo-tmp/review/{W13_STEM}/read.json"
-    assert "read_parts" not in out, "a week is one file"
-    read = json.loads(_read_json(instance).read_text(encoding="utf-8"))
+    assert out["continued"] is False and "discarded" not in out
+    assert out["stage"] == f"tomo-tmp/review/{W13_STEM}" and out["units"] == 1
+    assert "read_path" not in out and "read_parts" not in out, "spec 047 removed the read files' keys"
+    manifest = json.loads(_manifest(instance).read_text(encoding="utf-8"))
+    assert out["read_id"] == manifest["read_id"] and out["read_at"] == manifest["read_at"]
+    read = _loaded(instance)
     assert read["period"] == out["period"]
     assert len(read["days"]) == 7 and read["not_read"] == []
-    assert read["report"] == report, "read.json carries the printed report"
-    assert any(MARKER in json.dumps(e) for e in read["days"]), "the content rests in read.json"
+    assert read["report"] == report, "the manifest carries the printed report"
+    assert any(MARKER in json.dumps(e) for e in read["days"]), "the content rests in the stage"
     assert "sections" not in json.dumps(report) and "fields" not in json.dumps(report)
 
 
@@ -217,7 +239,7 @@ def test_a_month_run_reports_the_weekly_notes_and_stays_within_the_call_budget(m
     assert {w["path"] for w in report["weekly_notes"] if w["path"]} == {f"{WEEKLY}2026/2026-W09.md", f"{WEEKLY}2026-W13.md"}
     assert all(w["state"] == "read" for w in report["weekly_notes"] if w["path"])
     assert report["calls"] == fake.call_count <= 170, fake.events
-    read = json.loads(_read_json(instance, "2026-03_review").read_text(encoding="utf-8"))
+    read = _loaded(instance, "2026-03_review")
     assert [w["week"] for w in read["weekly"]] == ["2026-W09", "2026-W13"]
     # F3-AC5: the links only a weekly note carries (no daily links them; the periodic notes' own names do not
     # count) and the links of a day's block that the weekly of its week lacks, in document and day order
@@ -229,13 +251,13 @@ def test_a_month_run_reports_the_weekly_notes_and_stays_within_the_call_budget(m
 
 
 def test_a_week_run_reports_what_the_week_grew(mod, instance, monkeypatch, capsys):
-    """F3-AC7 through the script: the printed counts and read.json's lists name the notes created in the week,
+    """F3-AC7 through the script: the printed counts and the stored read's lists name the notes created in the week,
     the MOCs changed in it and the MOCs the new notes link to."""
     code, out, _ = _week(mod, monkeypatch, capsys, growth_vault())
     assert code == 0 and out["status"] == "ok"
     assert out["report"]["growth"] == {"created": 3, "mocs_changed": 2, "mocs_linked_by_new": 2,
                                        "moc_folders": 1, "kado_none": []}
-    growth = json.loads(_read_json(instance).read_text(encoding="utf-8"))["growth"]
+    growth = _loaded(instance)["growth"]
     assert [c["path"] for c in growth["created"]] == ["Notes/Edge.md", "Notes/New One.md", "Notes/New Two.md"]
     assert growth["mocs_changed"] == [f"{MOCS}Other MOC.md", f"{MOCS}Quiet MOC.md"]
     assert growth["mocs_linked_by_new"] == [f"{MOCS}Other MOC.md", f"{MOCS}Topic MOC.md"]
@@ -275,7 +297,7 @@ def test_injected_429s_give_retried_waited_and_the_advice(mod, instance, monkeyp
     assert report["retried"] == 2 and report["waited_s"] > 0
     assert report["advice"] == [ADVICE_RAISE_LIMIT]
     assert report["not_read"] == []
-    assert _read_json(instance).exists()
+    assert _manifest(instance).exists()
 
 
 def test_a_note_that_still_fails_in_the_end_pass_is_not_read_and_marked_failed(mod, instance, monkeypatch, capsys):
@@ -287,8 +309,7 @@ def test_a_note_that_still_fails_in_the_end_pass_is_not_read_and_marked_failed(m
     assert out["report"]["not_read"] == [path]
     assert day_of(out, "2026-03-23")["dailies"] == [{"path": path, "state": "failed"}]
     assert out["report"]["advice"] == [ADVICE_RAISE_LIMIT]
-    read = json.loads(_read_json(instance).read_text(encoding="utf-8"))
-    assert read["not_read"] == [path]
+    assert _loaded(instance)["not_read"] == [path]
 
 
 def test_the_daily_listing_still_not_read_after_the_end_pass_stops_the_run_and_writes_nothing(
@@ -301,7 +322,7 @@ def test_the_daily_listing_still_not_read_after_the_end_pass_stops_the_run_and_w
     assert out["status"] == "stopped" and out["problems"] == ["dailies-not-read"]
     assert out["report"]["not_read"] == [DAILY]
     assert ADVICE_RAISE_LIMIT in out["report"]["advice"]
-    assert out["read_path"] is None
+    assert "stage" not in out and "read_id" not in out
     assert not (instance / "tomo-tmp").exists()
 
 
@@ -318,14 +339,14 @@ def test_reads_after_a_listing_recovered_by_the_end_pass_are_sent_at_the_widest_
     assert len(after) >= 7, "the period's dailies are read after the end pass"
     assert all(s["interval"] == MAX_INTERVAL_S for s in after), [s["interval"] for s in after]
     assert fake.min_interval == 0.0, "restored once the run is over"
-    assert _read_json(instance).exists()
+    assert _manifest(instance).exists()
 
 
 # ---------------------------------------------------------------- nothing to review
 
 def test_no_daily_with_content_is_nothing_to_review_without_the_access_hint_and_no_file(
         mod, instance, monkeypatch, capsys):
-    # RED when the nothing_to_review check is removed: read.json would be written for an empty week.
+    # RED when the nothing_to_review check is removed: a stage would be written for an empty week.
     # RED while the script appends check-key-access on nothing_to_review: Kado listed every daily (Phase 6 live walk)
     files = dict(daily(date(2026, 3, 23 + i), "") for i in range(7))
     fake = ReviewFakeVault({**files, TASK_NOTE: "- [ ] open\n"}, folders=[DAILY, WEEKLY, MOCS])
@@ -335,7 +356,7 @@ def test_no_daily_with_content_is_nothing_to_review_without_the_access_hint_and_
     assert out["report"]["advice"] == []
     assert out["report"]["kado_empty"] == []
     assert all(d["dailies"] == [{"path": f"{DAILY}{d['date']}.md", "state": "empty"}] for d in out["report"]["days"])
-    assert out["read_path"] is None
+    assert "stage" not in out and "read_id" not in out
     assert not (instance / "tomo-tmp").exists()
 
 
@@ -349,7 +370,7 @@ def test_a_week_without_dailies_in_a_folder_that_holds_other_dates_gets_no_acces
     assert code == 0 and out["status"] == "ok" and out["nothing_to_review"] is True
     assert all(d["dailies"] == [] for d in out["report"]["days"]) and len(out["report"]["days"]) == 7
     assert out["report"]["kado_empty"] == [] and out["report"]["advice"] == []
-    assert out["read_path"] is None and not (instance / "tomo-tmp").exists()
+    assert "stage" not in out and not (instance / "tomo-tmp").exists()
 
 
 def test_an_empty_daily_listing_is_nothing_to_review_and_kado_empty(mod, instance, monkeypatch, capsys):
@@ -358,7 +379,7 @@ def test_an_empty_daily_listing_is_nothing_to_review_and_kado_empty(mod, instanc
     assert code == 0 and out["status"] == "ok" and out["nothing_to_review"] is True
     assert out["report"]["kado_empty"] == ["dailies"]
     assert out["report"]["advice"] == [ADVICE_CHECK_ACCESS]
-    assert out["read_path"] is None and not (instance / "tomo-tmp").exists()
+    assert "stage" not in out and not (instance / "tomo-tmp").exists()
 
 
 # ---------------------------------------------------------------- Kado stops
@@ -456,8 +477,8 @@ def test_the_period_is_resolved_under_the_configured_week_rule(mod, instance, mo
 def test_a_given_stem_names_the_stage_folder(mod, instance, monkeypatch, capsys):
     code, out, _ = _week(mod, monkeypatch, capsys, week_vault(), "--stem", "custom_review")
     assert code == 0 and out["stem"] == "custom_review"
-    assert out["read_path"] == "tomo-tmp/review/custom_review/read.json"
-    assert _read_json(instance, "custom_review").exists()
+    assert out["stage"] == "tomo-tmp/review/custom_review"
+    assert _manifest(instance, "custom_review").exists()
 
 
 @pytest.mark.parametrize("argv", [
@@ -526,13 +547,13 @@ def _compact(data) -> str:
 
 
 def test_a_mapped_week_carries_the_section_definitions_keyed_by_row_id(mod, instance, monkeypatch, capsys):
-    """F1-AC1: the definitions reach the model in read.json; key = the row id, the SectionDefinition fields only,
+    """F1-AC1: the definitions reach the model in the stage (context.json); key = the row id, the SectionDefinition fields only,
     defaults filled, the analysis row (placement review) included and alone marked analysis (046 T4.4), the
     rows' order kept."""
     _map_week(instance)
     code, out, _ = _week(mod, monkeypatch, capsys, week_vault())
     assert code == 0 and out["status"] == "ok"
-    read = json.loads(_read_json(instance).read_text(encoding="utf-8"))
+    read = _loaded(instance)
     assert read["sections"] == [
         {"key": "s1", "heading": "Wins", "level": 2, "parent": None, "description": "What went well this week",
          "keywords": ["win"], "groups": ["done"], "cap": 5},
@@ -546,12 +567,13 @@ def test_a_mapped_week_carries_the_section_definitions_keyed_by_row_id(mod, inst
     lambda instance: None,                                                     # no template configured
     lambda instance: _edit_config(instance, lambda c: c.update(templates={"mapping": {"weekly": TEMPLATE}})),
 ])
-def test_without_a_mapping_read_json_has_no_sections_key(mod, instance, monkeypatch, capsys, arrange):
+def test_without_a_mapping_the_stage_has_no_sections_key(mod, instance, monkeypatch, capsys, arrange):
     # RED when the key is always written: an empty list would change the spec 045 shape (CON-2)
     arrange(instance)
     code, out, _ = _week(mod, monkeypatch, capsys, week_vault())
     assert code == 0 and out["status"] == "ok"
-    assert "sections" not in json.loads(_read_json(instance).read_text(encoding="utf-8"))
+    assert "sections" not in _loaded(instance)
+    assert "sections" not in json.loads((_stage(instance) / "context.json").read_text(encoding="utf-8"))
 
 
 def _map_month(instance: Path) -> None:
@@ -564,13 +586,13 @@ def _map_month(instance: Path) -> None:
 def _month_read(mod, instance, monkeypatch, capsys) -> dict:
     code, out, _ = _month(mod, monkeypatch, capsys, month_vault())
     assert code == 0 and out["status"] == "ok"
-    return json.loads(_read_json(instance, "2026-03_review").read_text(encoding="utf-8"))
+    return _loaded(instance, "2026-03_review")
 
 
 def test_a_mapped_month_reads_the_same_notes_days_and_weekly_entries_as_an_unmapped_one(mod, instance, monkeypatch,
                                                                                        capsys):
     """F1-AC1 / CON-2: the mapping only adds the definitions; the same vault read with and without it gives the
-    same read.json once `sections` is taken out — no day, note or weekly entry is dropped or added."""
+    same stored read once `sections` is taken out — no day, note or weekly entry is dropped or added."""
     unmapped = _month_read(mod, instance, monkeypatch, capsys)
     _map_month(instance)
     mapped = _month_read(mod, instance, monkeypatch, capsys)
@@ -580,12 +602,14 @@ def test_a_mapped_month_reads_the_same_notes_days_and_weekly_entries_as_an_unmap
     assert mapped == unmapped
 
 
-def test_read_json_is_written_compact(mod, instance, monkeypatch, capsys):
+def test_the_manifest_is_compact_and_the_agent_files_line_broken(mod, instance, monkeypatch, capsys):
+    """ADR-2: manifest.json is script-only and compact; a day file is indent=1 UTF-8 for the agents."""
     _map_week(instance)
     _week(mod, monkeypatch, capsys, week_vault())
-    text = _read_json(instance).read_text(encoding="utf-8")
+    text = _manifest(instance).read_text(encoding="utf-8")
     assert text == _compact(json.loads(text)), "separators (',', ':'), ASCII-escaped, one trailing newline"
-    assert text.count("\n") == 1, "no indentation lines"
+    day = (_stage(instance) / "days" / "2026-03-23.json").read_text(encoding="utf-8")
+    assert day == json.dumps(json.loads(day), indent=1, ensure_ascii=False) + "\n"
 
 
 def _golden_read(golden_sources):
@@ -594,22 +618,23 @@ def _golden_read(golden_sources):
     return read
 
 
-def test_without_a_mapping_the_month_read_equals_the_golden_apart_from_the_encoding(mod, instance, monkeypatch,
-                                                                                   capsys):
-    """CON-2 difference pinned: the T3.1 recording of the unmapped month, read through the script, is the parsed
-    read.json (plus the pacing counters the script always merged into the report); only the bytes changed —
-    compact instead of indent=2."""
+def _without_growth_day(read: dict) -> dict:
+    """The stored read with the creation day the stage keeps per created note (spec 047 T1.5) taken out."""
+    read["growth"]["created"] = [{k: v for k, v in c.items() if k != "day"} for c in read["growth"]["created"]]
+    return read
+
+
+def test_without_a_mapping_the_month_read_equals_the_golden(mod, instance, monkeypatch, capsys):
+    """CON-2 difference pinned: the T3.1 recording of the unmapped month, read through the script and loaded back
+    from the stage, is the golden (plus the pacing counters the script always merged into the report)."""
     monkeypatch.setattr(mod, "read_period", _golden_read(month_sources()))
     code, out, _ = _month(mod, monkeypatch, capsys, month_vault())
     assert code == 0 and out["status"] == "ok"
-    text = _read_json(instance, "2026-03_review").read_text(encoding="utf-8")
-    read = json.loads(text)
+    read = _without_growth_day(_loaded(instance, "2026-03_review"))
     for key in PACER_COUNTERS:
         assert read["report"].pop(key) == out["report"][key]
     golden = json.loads((GOLDEN_DIR / "month.json").read_text(encoding="utf-8"))
     assert read == golden
-    assert text == _compact(json.loads(text))
-    assert text != json.dumps(json.loads(text), ensure_ascii=True, indent=2) + "\n", "the spec 045 encoding is gone"
 
 
 def _quarter_setup(instance: Path) -> None:
@@ -633,94 +658,88 @@ def test_a_quarter_run_reads_the_quarter_and_marks_against_the_monthly_notes(mod
     assert len(report["days"]) == 90
     assert report["monthly_status"] == "found"
     assert [m["path"] for m in report["monthly_notes"] if m["path"]] == [f"{MONTHLY}2026-02.md"]
-    read = rp.load(_read_json(instance, "2026-Q1_review").parent)
+    read = _loaded(instance, "2026-Q1_review")
     assert {"monthly", "only_in_monthly_links", "dailies_not_in_monthly", "weekly"} <= set(read)
     assert "Only-Monthly" in read["only_in_monthly_links"]
 
 
-def test_measure_writes_no_file_and_prints_counts_and_bytes_only(mod, instance, monkeypatch, capsys):
-    """ADR-7, CON-3: --measure is the same read without the model's file; the printed bytes are what read.json
-    would hold; the privacy assertion of _run covers stdout and stderr."""
-    _map_week(instance)
-    _week(mod, monkeypatch, capsys, _week_with_links())
-    written = _read_json(instance).read_bytes()
-    _read_json(instance).unlink()
-    _read_json(instance).parent.rmdir()
-    fake = _week_with_links()
-    code, out, err = _week(mod, monkeypatch, capsys, fake, "--measure")
-    assert code == 0 and err == ""
-    assert not _read_json(instance).parent.exists(), "no file for the model"
-    assert set(out) == {"status", "stem", "period", "nothing_to_review", "measure"}
-    measure = out["measure"]
-    assert set(measure) == {"calls", "retried", "waited_s", "not_read", "bytes", "day_bytes"}
-    assert measure["calls"] == fake.call_count and measure["retried"] == 0 and measure["not_read"] == 0
-    assert measure["bytes"] == {"read.json": len(written)}
-    assert measure["day_bytes"] == _expected_day_bytes(json.loads(written)) and set(measure["day_bytes"]) == {
-        "2026-03"}
-    assert all(isinstance(v, (int, float)) for v in (measure["calls"], measure["retried"], measure["waited_s"]))
+# ---------------------------------------------------------------- spec 047 T2.4: --measure on the stage
+
+MEASURE_KEYS = {"calls", "retried", "waited_s", "not_read", "bytes", "units", "over_ceiling", "over_budget"}
 
 
-def _expected_day_bytes(read: dict) -> dict:
-    """Per month of ``date``, the compact size of each days entry as it stands in read*.json (no newline)."""
-    sums: dict = {}
-    for day in read["days"]:
-        size = len(json.dumps(day, ensure_ascii=True, separators=(",", ":")))
-        sums[day["date"][:7]] = sums.get(day["date"][:7], 0) + size
-    return sums
+def _stage_bytes(stage: Path) -> dict:
+    return {str(p.relative_to(stage)): p.stat().st_size for p in sorted(stage.rglob("*")) if p.is_file()}
 
 
 def _written_then_measured(mod, instance, monkeypatch, capsys, argv, vault, stem):
-    """The files of a normal run (bytes per name) and their loaded read, then the --measure run of the same
-    read (the files removed in between)."""
+    """The bytes of every stage file of a normal run and its weeks.json, then the --measure run of the same read
+    (the stage removed in between)."""
     code, _, _ = _run(mod, monkeypatch, capsys, argv, vault())
     assert code == 0
-    stage = _read_json(instance, stem).parent
-    written = {p.name: p.read_bytes() for p in stage.iterdir()}
-    read = rp.load(stage)
-    for name in written:
-        (stage / name).unlink()
-    stage.rmdir()
-    code, out, _ = _run(mod, monkeypatch, capsys, [*argv, "--measure"], vault())
-    assert code == 0 and out["status"] == "ok"
-    assert not stage.exists()
-    return written, read, out["measure"]
+    stage = _stage(instance, stem)
+    written = _stage_bytes(stage)
+    weeks = json.loads((stage / "weeks.json").read_text(encoding="utf-8"))
+    shutil.rmtree(stage)
+    code, out, err = _run(mod, monkeypatch, capsys, [*argv, "--measure"], vault())
+    assert code == 0 and err == "" and out["status"] == "ok"
+    assert not stage.exists(), "--measure writes no file"
+    return written, weeks, out
 
 
-def test_measure_of_a_quarter_counts_each_month_of_its_days(mod, instance, monkeypatch, capsys):
-    # RED when a day's size counts encode's trailing newline: every month sum is off by its day count
+def test_measure_writes_no_file_and_prints_the_bytes_of_every_stage_file(mod, instance, monkeypatch, capsys):
+    """ADR-2, CON-3: --measure is the same read without a stage; the printed bytes are what each stage file would
+    hold (read_id and read_at keep their length); the privacy assertion of _run covers stdout and stderr."""
+    _map_week(instance)
+    written, weeks, out = _written_then_measured(mod, instance, monkeypatch, capsys,
+                                                 ["--period", "2026-W13", "--kind", "week"], growth_vault, W13_STEM)
+    assert set(out) == {"status", "stem", "period", "nothing_to_review", "measure"}
+    measure = out["measure"]
+    assert set(measure) == MEASURE_KEYS
+    assert measure["retried"] == 0 and measure["not_read"] == 0
+    assert measure["bytes"] == written
+    assert any(name.startswith("growth/") for name in measure["bytes"]), "growth files are measured"
+    assert measure["units"] == [{"unit": u["unit"], "bytes": u["bytes"]} for u in weeks["units"]]
+    assert measure["over_ceiling"] == [] and measure["over_budget"] == []
+
+
+def test_measure_of_a_week_unit_counts_its_day_and_growth_files(mod, instance, monkeypatch, capsys):
+    # RED when a unit's bytes leave out the growth files: the week weighs its day files alone
+    written, _, out = _written_then_measured(mod, instance, monkeypatch, capsys,
+                                             ["--period", "2026-W13", "--kind", "week"], growth_vault, W13_STEM)
+    expected = sum(n for name, n in written.items() if name.startswith(("days/", "growth/")))
+    assert out["measure"]["units"] == [{"unit": "2026-W13", "bytes": expected}]
+
+
+def test_measure_of_a_quarter_names_its_units(mod, instance, monkeypatch, capsys):
     _quarter_setup(instance)
-    written, read, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
-                                                    ["--period", "2026-Q1", "--kind", "quarter"], quarter_vault,
-                                                    "2026-Q1_review")
-    assert sorted(measure["day_bytes"]) == ["2026-01", "2026-02", "2026-03"]
-    assert measure["day_bytes"] == _expected_day_bytes(read)
-    # T3.4: the bytes of every file the run writes, the index first
-    assert list(measure["bytes"]) == ["read-index.json", "read-2026-01.json", "read-2026-02.json",
-                                      "read-2026-03.json"]
-    assert measure["bytes"] == {name: len(data) for name, data in written.items()}
+    written, weeks, out = _written_then_measured(mod, instance, monkeypatch, capsys,
+                                                 ["--period", "2026-Q1", "--kind", "quarter"], quarter_vault,
+                                                 "2026-Q1_review")
+    measure = out["measure"]
+    assert measure["bytes"] == written
+    assert [u["unit"] for u in measure["units"]] == [u["unit"] for u in weeks["units"]]
+    assert measure["units"][0]["unit"] == "2026-W01" and len(measure["units"]) == 14
 
 
-def _w14_vault() -> ReviewFakeVault:
-    """W14 runs 2026-03-30 .. 2026-04-05: dailies on both sides of the month boundary."""
-    return week_vault(**dict([daily(date(2026, 3, 31), "Tuesday end of March"),
-                              daily(date(2026, 4, 1), "Wednesday April [[Alpha]]"),
-                              daily(date(2026, 4, 5), "Sunday April\nSleep:: 8")]))
+def test_measure_names_a_file_over_the_ceiling_and_a_unit_over_the_budget(mod, instance, monkeypatch, capsys):
+    """A day whose links alone (non-text content, never cut) outweigh the ceiling and the unit budget."""
+    heavy = copy.deepcopy(scaled_quarter(SHAPES[0]))
+    heavy["days"][10]["links"] = [f"Link {i:05d} " + "z" * 40 for i in range(2_000)]
+    _quarter_setup(instance)
+    monkeypatch.setattr(mod, "read_period", _scaled_read(heavy))
+    code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault(), "--measure")
+    assert code == 0 and out["status"] == "ok"
+    assert out["measure"]["over_ceiling"] == [f"days/{heavy['days'][10]['date']}.json"]
+    heavy_units = [u["unit"] for u in out["measure"]["units"] if u["bytes"] > UNIT_BUDGET]
+    assert out["measure"]["over_budget"] == heavy_units and heavy_units[0].startswith("2026-W02")
+    assert len(heavy_units) == 1, "the heavy day is a unit alone, the rest of its week in another"
+    assert not (instance / "tomo-tmp").exists()
 
 
-def test_measure_of_a_week_across_a_month_boundary_splits_its_days_by_month(mod, instance, monkeypatch, capsys):
-    written, read, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
-                                                    ["--period", "2026-W14", "--kind", "week"], _w14_vault,
-                                                    "2026-W14_review")
-    assert set(measure["day_bytes"]) == {"2026-03", "2026-04"}
-    assert measure["day_bytes"] == _expected_day_bytes(read)
-    assert measure["bytes"] == {"read.json": len(written["read.json"])} and list(written) == ["read.json"]
-
-
-# ---------------------------------------------------------------- spec 046 T3.4: the quarter split per month
+# ---------------------------------------------------------------- spec 047 T2.4: the stage of a quarter
 
 Q1_STEM = "2026-Q1_review"
-Q1_PARTS = ["read-2026-01.json", "read-2026-02.json", "read-2026-03.json"]
-PART_LIMIT = 256_000
 
 
 def _quarter(mod, monkeypatch, capsys, fake, *extra):
@@ -733,46 +752,189 @@ def _scaled_read(result):
     return read
 
 
-def test_a_quarter_writes_the_index_and_one_part_per_month_and_no_read_json(mod, instance, monkeypatch, capsys):
-    # RED while a quarter writes one read.json
+def test_a_quarter_writes_a_day_file_per_day_and_its_child_notes(mod, instance, monkeypatch, capsys):
     _quarter_setup(instance)
     code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault())
-    assert code == 0 and out["status"] == "ok"
-    stage = instance / "tomo-tmp" / "review" / Q1_STEM
-    assert out["read_path"] == f"tomo-tmp/review/{Q1_STEM}/read-index.json"
-    assert out["read_parts"] == [f"tomo-tmp/review/{Q1_STEM}/{name}" for name in Q1_PARTS]
-    assert sorted(p.name for p in stage.iterdir()) == sorted(["read-index.json", *Q1_PARTS])
-    index = json.loads((stage / "read-index.json").read_text(encoding="utf-8"))
-    assert index["parts"] == Q1_PARTS and index["report"] == out["report"] and index["period"] == out["period"]
-    assert "days" not in index and "weekly" not in index and "monthly" not in index
+    assert code == 0 and out["status"] == "ok" and out["units"] == 14
+    stage = _stage(instance, Q1_STEM)
+    assert len(list((stage / "days").iterdir())) == 90
+    assert "monthly-2026-02.json" in {p.name for p in (stage / "children").iterdir()}
+    assert not list(stage.glob("read*.json"))
 
 
-def test_a_stale_read_json_in_the_quarters_stage_folder_is_removed(mod, instance, monkeypatch, capsys):
+def test_a_pre_047_stage_is_discarded_and_read_anew(mod, instance, monkeypatch, capsys):
+    # RED while a stage without a manifest is kept: an unsplit read.json would be a second, older read
     _quarter_setup(instance)
-    stage = instance / "tomo-tmp" / "review" / Q1_STEM
+    stage = _stage(instance, Q1_STEM)
     stage.mkdir(parents=True)
-    (stage / "read.json").write_text('{"period":{"kind":"quarter"},"days":[]}\n', encoding="utf-8")
+    for name in ("read.json", "read-index.json", "read-2026-01.json"):
+        (stage / name).write_text('{"period":{"kind":"quarter"},"days":[]}\n', encoding="utf-8")
+    (stage / "meta.json").write_text("{}\n", encoding="utf-8")
     code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault())
-    assert code == 0 and out["status"] == "ok"
-    assert not (stage / "read.json").exists(), "an unsplit read.json would be a second, older read"
-    assert len(rp.load(stage)["days"]) == 90
+    assert code == 0 and out["status"] == "ok" and out["continued"] is False
+    assert "discarded" not in out, "no stored read of this layout was discarded"
+    assert not list(stage.glob("read*.json")) and (stage / "meta.json").exists()
+    assert len(_loaded(instance, Q1_STEM)["days"]) == 90
 
 
 @pytest.mark.parametrize("shape", SHAPES)
-def test_on_the_measured_shape_every_written_file_fits_and_loads_back(mod, instance, monkeypatch, capsys, shape):
-    """SDD Quality Requirements: no read*.json part above 256 KB, on 2026-Q1 scaled to the measured bytes;
-    the loader gives back what read_period returned (plus the pacing counters the script merges)."""
+def test_on_the_measured_shape_the_stage_loads_back_what_read_period_returned(mod, instance, monkeypatch, capsys,
+                                                                               shape):
+    """SDD Quality Requirements: on 2026-Q1 scaled to the measured bytes the loader gives back what read_period
+    returned (plus the pacing counters the script merges and the creation day of each created note)."""
     _quarter_setup(instance)
     scaled = scaled_quarter(shape)
     monkeypatch.setattr(mod, "read_period", _scaled_read(scaled))
     code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault())
     assert code == 0 and out["status"] == "ok"
-    stage = instance / "tomo-tmp" / "review" / Q1_STEM
-    sizes = {p.name: p.stat().st_size for p in sorted(stage.iterdir())}
-    print(shape, sizes)
-    assert set(sizes) == {"read-index.json", *Q1_PARTS}
-    assert all(size <= PART_LIMIT for size in sizes.values()), sizes
-    read = rp.load(stage)
+    read = _without_growth_day(_loaded(instance, Q1_STEM))
     for key in PACER_COUNTERS:
         assert read["report"].pop(key) == out["report"][key]
     assert read == scaled
+
+
+# ---------------------------------------------------------------- spec 047 T2.4: continue, start over, discard
+
+def test_continued_read_makes_no_kado_call(mod, instance, monkeypatch, capsys):
+    """F6-AC4: an interrupted Pass 1 continues on the stored read — no Kado call, the stored report, the
+    read_at of the first read."""
+    _, first, _ = _week(mod, monkeypatch, capsys, _week_with_links())
+    fake = _week_with_links()
+    code, out, _ = _week(mod, monkeypatch, capsys, fake)
+    assert code == 0 and out["status"] == "ok"
+    assert fake.call_count == 0, fake.events
+    assert out["continued"] is True and out["nothing_to_review"] is False
+    assert out["read_id"] == first["read_id"] and out["read_at"] == first["read_at"]
+    assert out["report"] == first["report"] and out["stage"] == first["stage"] and out["units"] == first["units"]
+    assert "discarded" not in out
+
+
+def _reread(mod, instance, monkeypatch, capsys, between, *extra):
+    _, first, _ = _week(mod, monkeypatch, capsys, week_vault())
+    between(instance)
+    fake = week_vault()
+    code, out, _ = _week(mod, monkeypatch, capsys, fake, *extra)
+    assert code == 0 and out["status"] == "ok", out
+    assert out["continued"] is False and fake.call_count > 0
+    assert out["read_id"] != first["read_id"]
+    return out
+
+
+def _break_manifest(instance: Path) -> None:
+    _manifest(instance).write_text("{broken", encoding="utf-8")
+
+
+def _stale_day_file(instance: Path) -> None:
+    path = _stage(instance) / "days" / "2026-03-24.json"
+    path.write_text(json.dumps(dict(json.loads(path.read_text(encoding="utf-8")), read_id="other")),
+                    encoding="utf-8")
+
+
+@pytest.mark.parametrize("between, extra, discarded", [
+    (lambda instance: None, ("--fresh",), "fresh"),
+    (_map_week, (), "sections-changed"),
+    (_break_manifest, (), "stage-invalid"),
+    (_stale_day_file, (), "stage-invalid"),
+])
+def test_a_stored_read_that_cannot_continue_is_discarded_and_read_anew(mod, instance, monkeypatch, capsys,
+                                                                       between, extra, discarded):
+    # RED while every run reads anew without saying so, or a changed mapping continues on the old definitions
+    out = _reread(mod, instance, monkeypatch, capsys, between, *extra)
+    assert out["discarded"] == discarded
+    manifest = json.loads(_manifest(instance).read_text(encoding="utf-8"))
+    assert manifest["read_id"] == out["read_id"]
+
+
+def test_a_new_read_leaves_no_material_of_the_old_one(mod, instance, monkeypatch, capsys):
+    _week(mod, monkeypatch, capsys, growth_vault())
+    stray = _stage(instance) / "growth" / "2026-03-23.json"
+    assert stray.exists()
+    (_stage(instance) / "proposals.json").write_text("{}", encoding="utf-8")
+    _week(mod, monkeypatch, capsys, week_vault(), "--fresh")
+    assert not stray.exists() and not (_stage(instance) / "proposals.json").exists()
+
+
+def test_fresh_and_a_stop_leave_nothing_to_continue(mod, instance, monkeypatch, capsys):
+    """Error Handling: with --fresh the stored read is discarded first, so a stop leaves nothing to continue."""
+    _week(mod, monkeypatch, capsys, week_vault())
+    down = week_vault()
+    down.connection_error = KadoConnectionError("down")
+    _, out, _ = _week(mod, monkeypatch, capsys, down, "--fresh")
+    assert out["status"] == "stopped"
+    assert not _manifest(instance).exists()
+    _, out, _ = _week(mod, monkeypatch, capsys, week_vault())
+    assert out["continued"] is False
+
+
+def _stop_kado_auth(fake: ReviewFakeVault) -> None:
+    fake.auth_error = KadoAuthError("401")
+
+
+def _nothing(fake: ReviewFakeVault) -> None:
+    for path in [p for p in fake.files if p.startswith(DAILY)]:
+        fake.files[path] = ""
+
+
+@pytest.mark.parametrize("arrange, config", [
+    (_stop_kado_unreachable, None), (_stop_kado_auth, None), (_stop_dailies_not_read, None), (_nothing, None),
+    (lambda fake: None, {"review": {"language": "en"}}),
+    (lambda fake: None, {"review": {"language": "en", "weekly": {"heading": "Tomo Review"}}}),
+    (lambda fake: None, {"daily_path": None}),
+])
+def test_a_stop_or_nothing_to_review_writes_nothing_and_leaves_nothing_to_continue(mod, instance, monkeypatch,
+                                                                                    capsys, arrange, config):
+    """F2-AC5: kado-unreachable, kado-auth, dailies-not-read, nothing_to_review, setup-missing, setup-invalid and
+    daily-not-configured write nothing; the next good run is a new read."""
+    if config is not None:
+        _config(instance, **config)
+    fake = week_vault()
+    arrange(fake)
+    _, out, _ = _week(mod, monkeypatch, capsys, fake)
+    assert out["status"] == "stopped" or out["nothing_to_review"] is True, out
+    assert not (instance / "tomo-tmp").exists()
+    _config(instance)
+    _, out, _ = _week(mod, monkeypatch, capsys, week_vault())
+    assert out["status"] == "ok" and out["continued"] is False
+
+
+# ---------------------------------------------------------------- spec 047 T2.4: what the stage holds
+
+def test_the_stage_holds_only_the_periods_days_and_the_day_after_gives_its_yesterday_fields(
+        mod, instance, monkeypatch, capsys):
+    """F1-AC6: days/ holds the seven days of the week, no file of the day after; from the day after only the
+    fields that name the day before reach the stage (on the period's last day)."""
+    def edit(cfg):
+        cfg["trackers"] = {"daily_note_trackers": {"yesterday_fields": [{"name": "Sleep", "type": "number"}]}}
+    _edit_config(instance, edit)
+    after_path, after_text = daily(date(2026, 3, 30), f"Monday after {MARKER}-after\nSleep:: 6\nZest:: 9")
+    code, out, _ = _week(mod, monkeypatch, capsys, week_vault(**{after_path: after_text}))
+    assert code == 0 and out["status"] == "ok"
+    stage = _stage(instance)
+    assert sorted(p.name for p in (stage / "days").iterdir()) == [f"2026-03-{d}.json" for d in range(23, 30)]
+    stored = "\n".join(p.read_text(encoding="utf-8") for p in stage.rglob("*.json"))
+    assert f"{MARKER}-after" not in stored and "Zest" not in stored
+    last = _loaded(instance)["days"][-1]
+    assert last["date"] == "2026-03-29" and last["fields"].get("Sleep") == "6"
+
+
+def test_a_month_without_weekly_notes_reports_none_found_and_stores_none(mod, instance, monkeypatch, capsys):
+    """F2-AC5: a missing weekly note is reported as spec 045 defines (weekly_status none-found) and the stored read
+    gives back an empty weekly level, not a missing one."""
+    files = {p: t for p, t in month_vault().files.items() if not p.startswith(WEEKLY)}
+    files[f"{WEEKLY}2025-W40.md"] = "# another year's week\n"             # the folder answers, with no week of March
+    code, out, _ = _month(mod, monkeypatch, capsys, ReviewFakeVault(files, folders=[DAILY, WEEKLY, MOCS]))
+    assert code == 0 and out["status"] == "ok"
+    assert out["report"]["weekly_status"] == "none-found"
+    assert _loaded(instance, "2026-03_review")["weekly"] == []
+
+
+def test_a_quarter_without_monthly_notes_reports_none_found_and_stores_none(mod, instance, monkeypatch, capsys):
+    """F2-AC5: a quarter's missing monthly notes are reported as spec 046 defines (monthly_status none-found)."""
+    _quarter_setup(instance)
+    vault = quarter_vault()
+    files = {p: t for p, t in vault.files.items() if not p.startswith(MONTHLY)}
+    files[f"{MONTHLY}2025-07.md"] = "# another year's month\n"
+    code, out, _ = _quarter(mod, monkeypatch, capsys, ReviewFakeVault(files, folders=sorted(vault.folders)))
+    assert code == 0 and out["status"] == "ok"
+    assert out["report"]["monthly_status"] == "none-found"
+    assert _loaded(instance, Q1_STEM)["monthly"] == []

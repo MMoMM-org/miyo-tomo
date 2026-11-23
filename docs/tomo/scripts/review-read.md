@@ -4,8 +4,9 @@
 > The script is the deterministic reading step of `/review` (spec 045, T3.4;
 > PRD F3-AC8–F3-AC13; SDD Internal API Changes, Runtime View step 4, Error
 > Handling rows for `review-read`): it reads one finished period through
-> `lib/review_period.py` under `lib/review_pacer.py`, writes `read.json` for
-> the model and prints the per-day report with the pacing summary.
+> `lib/review_period.py` under `lib/review_pacer.py`, writes the stage
+> (`lib/review_stage.py`, spec 047 T2.4) for the agents and the scripts after
+> it, and prints the per-day report with the pacing summary.
 
 ## WHY a Script Reads the Period, Not the Model
 
@@ -13,10 +14,9 @@ WHY: ADR-1 and ADR-12. Which dailies exist, which linked notes could be read,
 how many calls were retried and what is still missing are facts the model
 must not have to establish by reading the vault itself — done that way they
 differ between runs and the report cannot be tested. The script does every
-Kado read, writes what it read to `read.json`, and prints only counts, paths,
-dates and states. The model's one creative step comes after: it reads
-`read.json` and writes `proposals.json` (`review-doc.py write` takes it from
-there). The reading itself lives in `lib/review_period.py` (WHY:
+Kado read, writes what it read to the stage, and prints only counts, paths,
+dates and states. The model's steps come after: they read the stage files
+and write `proposals.json` (`review-doc.py write` takes it from there). The reading itself lives in `lib/review_period.py` (WHY:
 `docs/tomo/scripts/lib/review_period.md`) and `lib/review_day.py`; the script
 owns the wiring: config and profile, the period from the argument, the
 client, the pacer, the stop rules, the file and the stdout shape.
@@ -85,7 +85,7 @@ because Kado never answered. A review built from that would be a document
 about nothing that looks like a quiet period. The script therefore stops
 (`status: stopped`, `problems: [dailies-not-read]`), keeps `advice:
 raise-kado-limit` in the printed report so the skill says why, and writes no
-`read.json`: a review without its dailies is never built. A weekly folder
+stage file: a review without its dailies is never built. A weekly folder
 that stays in `not_read` does not stop the run — the month is still built
 from the dailies and `weekly_status: not-read` says what is missing (F3-AC6,
 F3-AC13).
@@ -94,13 +94,13 @@ F3-AC13).
 
 WHY: F3-AC9 and PRD Rule 6. `nothing_to_review` is true when no day of the
 period has content beyond the template skeleton (`has_content` from
-`review_day`): no `read.json` is written, so on a fresh stem the document
-step finds nothing to build (`review-doc.py write` → `read-missing`). Only a run that writes
-read files clears the stage's earlier `read*.json` first
-(`lib/review_read_parts.write`); this run writes none, so a file an earlier
-run left under a reused `--stem` stays — the skill stops on
-`nothing_to_review` and never calls `review-doc.py`, so it is not read. The status stays `ok`:
-Kado was reached and answered; it is the period that holds nothing.
+`review_day`): no stage file is written, so the document step finds
+nothing to build (`review-doc.py write` → `read-missing`). A new read
+discards the stage's earlier content before it calls Kado (see "WHY a New
+Read Discards First"), so an empty period also leaves nothing an earlier run
+stored — there is nothing to continue, and the next run reads anew (F2-AC5).
+The status stays `ok`: Kado was reached and answered; it is the period that
+holds nothing.
 
 The first version appended `check-key-access` to the advice whenever nothing
 was to review, "because the script cannot tell a quiet period from a denied
@@ -135,15 +135,15 @@ key (the Kado stops never had it: they stop inside `_read`, before `out`
 grows). The rule is one the skill can rely on: `nothing_to_review` present
 means the period was read; `stopped` means it was not.
 
-## WHY the Section Definitions Ride in `read.json`, and Only With a Mapping
+## WHY the Section Definitions Ride in `context.json`, and Only With a Mapping
 
 WHY: spec 046 ADR-1, PRD F1-AC1. With a confirmed mapping the model must know,
 for each mapped section of the period kind's template, what to look for in
 the notes it reads. Those definitions go into the file it already reads —
-key `sections` of `read.json` for a week or a month, of `read-index.json`
-for a quarter (see "WHY a Quarter Writes `read-index.json` and One Part per
-Month") — so no file is read for the definitions alone and no extra path has
-to be named in the skill. Each entry is the SDD's
+key `sections` of the read result, which `lib/review_stage.write` stores in
+`context.json` (spec 047; before it, `read.json` / `read-index.json`) — so no
+file is read for the definitions alone and no extra path has to be named in
+the skill. Each entry is the SDD's
 `SectionDefinition`: `key`, `heading`, `level`, `parent`, `description`,
 `keywords`, `groups`, `cap`, taken from `ReviewSetup.sections` (the rows
 stored for the configured template, defaults filled by
@@ -172,60 +172,90 @@ other rows keeps their definitions as T3.3 wrote them.
 
 Without a mapping (no template configured, or no rows stored for it) there
 is no `sections` key at all, not an empty list: CON-2 keeps the unmapped
-`read.json` as spec 045 wrote it, and the skill branches on the key being
-present.
+read as spec 045 wrote it, and the skill branches on the key being present.
+The same definitions give the manifest's `sections_digest` (see "WHY a
+Stored Read Continues"), so a changed mapping is a new read.
 
-## WHY `read.json` Is Written Compact
+## WHY the Read Is Written as a Stage (Spec 047 T2.4, ADR-1)
 
-WHY: spec 046 ADR-7 and CON-2. The measured March `read.json` was 274.7 KB,
-over what the model's Read tool takes in one call; `indent=2` spent a large
-share of that on indentation and newlines that carry nothing. Every
-`read*.json` is therefore written with `separators=(",", ":")`, ASCII-escaped
-as before (the encoder is `lib/review_read_parts.encode`, shared by the
-write and `--measure`). This is one of the five intended differences CON-2 lets reach the
-unmapped path: without a mapping the parsed content is unchanged — the
-script test pins that the parsed file equals the T3.1 golden recording of
-`read_period` (plus the pacing counters this script always merged into the
-report) and that the bytes are the compact dump of it. The consumers parse
-the file with `json.loads`/`json.load` (`review-doc.py`), so the encoding is
-invisible to them.
+WHY: spec 047 ADR-1/ADR-2. A quarter as one file was ≈ 710 KB and as three
+month parts still ≈ 243 KB each — more than an agent reads in one call, and
+the spec 046 walk showed the model falling back to grep on it. The read is
+therefore written through `lib/review_stage.write`: one day file per day of
+the period, the created notes per creation day under `growth/`, one file per
+child note, `context.json`, `weeks.json` (the units the condense step
+dispatches) and `manifest.json` last, every file stamped with one `read_id`.
+How files are cut, encoded and loaded back is the lib's (WHY:
+`docs/tomo/scripts/lib/review_stage.md`, which also carries the history of
+`read.json`, the quarter's `read-index.json` split and its module
+`review_read_parts`). stdout names the stage folder (`stage`), the
+`read_id`, `read_at` and the number of `units`, and no longer `read_path` /
+`read_parts`: no consumer reads one file any more, and a key naming a file
+that does not exist would invite the skill to read it. `review-doc.py` loads
+the same stage through `review_stage.load`, so the document is built from
+exactly what was read. The read `report` is printed as before and stored
+only in `manifest.json`, where the scripts render the not-read and top lines
+from it; no agent file carries it.
 
-## WHY a Quarter Writes `read-index.json` and One Part per Month
+## WHY a Stored Read Continues (F6-AC4, F6-AC5, ADR-3)
 
-WHY: spec 046 ADR-7, T3.4. 2026-Q1 measured 710,106 bytes as one compact
-`read.json`, almost three times what the model's Read tool takes. A quarter
-run therefore writes `read-index.json` (period, report, sections, the part
-list and the small lists) and `read-<YYYY-MM>.json` per month (that month's
-days, weekly notes and monthly note); a week and a month still write one
-`read.json`. Which entry goes to which file, the write order and the loader
-that joins the parts back are `lib/review_read_parts.py`'s (WHY:
-`docs/tomo/scripts/lib/review_read_parts.md`), so `review-doc.py` (T4.5)
-loads through the same module that wrote. stdout says where they are:
-`read_path` is the index for a quarter (the file the model reads first) and
-`read_parts` lists the month parts in order, so the skill never composes a
-path; a week or a month has no `read_parts` key, so its stdout is unchanged.
-The week rule is handed to the split because a weekly note's month is
-computed from its week's days under that rule.
+WHY: owner decision (PRD Rule 9). An interrupted Pass 1 — the session ended
+while the agents condensed — must not cost a second read of ≈ 460 Kado calls
+for a quarter. Without `--fresh`, when `manifest.json` names layout 1, the
+same period and kind and the same `sections_digest` as the current setup
+(`review_stage.can_continue`), the run loads the stage through
+`review_stage.load` (every file checked against the manifest's `read_id`)
+and prints `continued: true` with the stored `read_id`, `read_at` and
+report, with no Kado call; the client is never built. `read_at` is the first
+read's, so the skill can say how old the material is: a continued read does
+not see vault edits made since, and Start over (`--fresh`) reads anew.
+
+Anything else reads anew, and says why in `discarded` when a stored read
+was thrown away: `fresh` (`--fresh`, the skill's Start over and its answer
+to `read-stale`), `sections-changed` (the mapping changed since the read —
+its proposals would be checked against definitions the stage does not hold),
+`stage-invalid` (a manifest that cannot be read, of another layout or
+period, or a stage file `load` refuses as invalid or stale). A pre-047 stage
+(`read.json`, no manifest) is not a stored read of this layout: it is
+discarded without a `discarded` key. Only the mapping invalidates a stored
+read among the setup values — PRD names the mapping only; other setup edits
+(daily sections, `max_chars_per_day`) apply to the next new read.
+
+## WHY a New Read Discards First (F2-AC5, F6-AC4, ADR-10)
+
+WHY: a new read calls `review_stage.discard` before its first Kado call,
+not after a successful read. The manifest is written last, so a read that
+stops (Kado unreachable, key refused, dailies not read) or finds nothing to
+review leaves no manifest: nothing can continue on material of an earlier
+read mixed with nothing of this one, and with `--fresh` the stored read the
+user chose to drop is gone even when the new read stops. `discard` keeps
+`meta.json` and `payloads.json` (Pass 2's records of a written document)
+and removes everything that may hold note content, legacy `read*.json` and
+temp leftovers included. The stops before the read (setup missing or
+invalid, no daily folder) leave the stage untouched: they cannot tell
+whether the stored read still fits, and they write nothing either.
 
 ## WHY `--measure` Writes No File and Prints Only Counts
 
-WHY: spec 046 ADR-7. Before the quarter's read was split per month (T3.4),
-the owner measured 2026-Q1 on the test vault without a model run: how many
-Kado calls, how long the pacer waited, how many bytes the file would hold.
-`--measure` runs the same read through the same client and pacer and the
-same stop rules, then prints `measure` — `calls`, `retried`, `waited_s`,
-`not_read` (a count), `bytes` per file the run would write (`read.json`, or
-`read-index.json` and each `read-<YYYY-MM>.json` for a quarter — the text
-`lib/review_read_parts.files_of` builds for the write, so the measured bytes
-are the written bytes) and `day_bytes` per month (the compact bytes of the
-month's `days` entries; kept after the split because it shows how much of a
-part is days and how much is the month's other entries) — next to
-`status`, `stem`, `period` and `nothing_to_review`. It writes no file, so a
+WHY: spec 046 ADR-7, spec 047 ADR-2. The owner measures a period on the test
+vault without a model run: how many Kado calls, how long the pacer waited,
+how many bytes each stage file would hold. `--measure` runs the same read
+through the same client and pacer and the same stop rules, then prints
+`measure` — `calls`, `retried`, `waited_s`, `not_read` (a count), `bytes`
+per stage file the run would write (stage-relative names, `growth/` files
+and context parts included; the texts come from `review_stage.render`, the
+function `write` writes, so the measured bytes are the written bytes),
+`units` (`{unit, bytes}`, a unit's bytes being its day files plus its
+growth files — the weight the unit budget is applied to), `over_ceiling`
+(files still over 32,768 B after every cut) and `over_budget` (units over
+81,920 B) — next to `status`, `stem`, `period` and `nothing_to_review`. It
+neither continues nor discards a stored read and writes no file, so a
 measurement never leaves content in `tomo-tmp` for a later session to pick
-up, and the per-day report is left out because the measurement is about
-size and pacing, not about which notes exist. CON-3: a byte count is the
-only trace of the content; no note text reaches stdout or stderr (the
-privacy assertion of the script tests runs over the measured output too).
+up and never destroys an interrupted review; the per-day report is left out
+because the measurement is about size and pacing, not about which notes
+exist. CON-3: a byte count is the only trace of the content; no note text
+reaches stdout or stderr (the privacy assertion of the script tests runs
+over the measured output too).
 
 ## WHY Reads After a Recovered Listing Run at 2 s
 
@@ -237,22 +267,22 @@ at the widest spacing, which is why `finish()` no longer restores the saved
 interval; the script leaves the `with ReviewPacer(...)` block only after
 `read_period` returned, so the restore happens once the last read is done.
 
-## WHY `read.json` Lives Under `tomo-tmp/review/<stem>/` and stdout Holds No Text
+## WHY the Stage Lives Under `tomo-tmp/review/<stem>/` and stdout Holds No Text
 
-WHY: ADR-9. `read.json` holds daily text, tracker values, task lines and
-linked-note text — content. It rests where the SDD puts the stage files of a
+WHY: ADR-9 (spec 045), ADR-10 (spec 047). The stage holds daily text,
+tracker values, task lines and linked-note text — content. It rests where the SDD puts the stage files of a
 review (`tomo-tmp/review/<stem>/`, `<stem>` = `<period-name>_review`, the
 same stem `review_state` derives and `review-doc.py --stem` takes), is
-written atomically, and is deleted by `review-doc.py write` once the document
-exists. stdout prints the report: paths, dates, states, counts, the advice —
-and `read_path`, so the skill never composes the path. stderr carries the
+written atomically file by file, and its content is discarded by
+`review-doc.py write` once the document exists. stdout prints the report: paths, dates, states, counts, the advice —
+and `stage`, so the skill never composes the path. stderr carries the
 exception class name on an unexpected error and nothing else; the privacy
 test over the script asserts that a marker from a daily's text reaches neither
 stream. `--stem` is accepted (the SDD's `[--stem S]`) and refused when it
 contains `/`, `\` or `..`, as `review-doc.py` refuses it. It is also refused
 when it is empty, whitespace or exactly `.`: those pass the
 marker check but do not name a folder *under* `--tmp` — `Path(tmp) / "."` is
-`tomo-tmp/review` itself, so `read.json` would land beside every other
+`tomo-tmp/review` itself, so the stage would land beside every other
 review's stage folder and `review-doc.py write --stem .` would delete it
 from there. A stem is a plain folder name or it is a usage error (exit 2).
 The check is `lib/review_state.safe_stem`, shared with `review-doc.py` and

@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-# version: 0.1.1
-"""test_046_t4_5_quarter_read.py — review-doc.py on a quarter's split read (spec 046 T4.5; ADR-7; PRD F6-AC6).
+# version: 0.2.0
+"""test_046_t4_5_quarter_read.py — review-doc.py on a quarter's stage (spec 046 T4.5; spec 047 T2.4; PRD F6-AC6,
+047 F2-AC4).
 
-A quarter's read is ``read-index.json`` plus one ``read-<YYYY-MM>.json`` per month (T3.4). On
-tests/review_fake_vault with a quarter staged through ``lib/review_read_parts.write``:
-- ``write`` loads all parts through ``review_read_parts.load``: the source rule resolves dailies and
-  monthly notes from any part, the quarter groups and marks render, the section checks and
-  ``sections-changed`` run on the index's ``sections``; ``replace`` (needs-confirm) loads it too
-- a listed part missing or broken is ``read-invalid``, no read file ``read-missing``, before any Kado call
-- clean-up: success and ``replace --abort`` remove every read file of the stage (index, parts, a stale
-  part of another quarter) and ``proposals.json``; a failed write keeps them all
-- the T3.4 review nits: a part named twice and a part name that only ``re.match`` admits are refused
+A quarter's read was ``read-index.json`` plus one month part each (046 T3.4); since spec 047 T2.4 it is the
+stage of ``lib/review_stage`` (a day file per day, child files, context.json, the manifest). On
+tests/review_fake_vault with a quarter staged through ``review_stage.write``:
+- ``write`` loads the stage through ``review_stage.load``: the source rule resolves dailies and monthly notes of
+  every month, the quarter groups and marks render, the section checks and ``sections-changed`` run on the
+  stored ``sections``; ``replace`` (needs-confirm) loads it too
+- a day file missing or broken is ``read-invalid``, no manifest ``read-missing``, before any Kado call
+- clean-up: success and ``replace --abort`` remove every content file of the stage (a stale legacy part too)
+  and ``proposals.json``; a failed write keeps them all
+- the habits count and average every day of the quarter that carries a value (047 F2-AC4)
 
-RED before T4.5: ``review-doc.py`` read ``read.json`` only (a quarter stage is ``read-missing``), and
-``_part_names`` accepted a duplicate and a trailing newline. All data is synthetic.
+RED before 047 T2.4: ``review-doc.py`` loaded ``read*.json`` through ``review_read_parts``, so a stage was
+``read-missing``. All data is synthetic.
 """
 from __future__ import annotations
 
@@ -31,7 +33,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
 from review_fake_vault import ReviewFakeVault, split_frontmatter  # noqa: E402
-from lib import review_read_parts as rp  # noqa: E402
+from lib import review_stage  # noqa: E402
 from lib.kado_client import KadoToolError  # noqa: E402
 from lib.period import ISO  # noqa: E402
 from test_review_doc import MONTHLY, WEEKLY, _config, _daily, _day, item, proposals, week_read  # noqa: E402
@@ -97,7 +99,8 @@ def stage_dir(inst: Path) -> Path:
 
 def stage_quarter(inst: Path, read: dict, props) -> Path:
     folder = stage_dir(inst)
-    rp.write(folder, rp.files_of(read, ISO))
+    review_stage.write(folder, read, stem=STEM, rule=ISO,
+                       sections_digest=review_stage.sections_digest(read.get("sections")))
     path = folder / "proposals.json"
     path.write_text(json.dumps(props), encoding="utf-8")
     return path
@@ -127,7 +130,7 @@ def names(inst: Path) -> list:
     return sorted(p.name for p in stage_dir(inst).iterdir())
 
 
-READ_FILES = ["read-2026-01.json", "read-2026-02.json", "read-2026-03.json", "read-index.json"]
+STAGE_FILES = ["children", "context.json", "days", "manifest.json", "weeks.json"]
 PROPS = proposals(done=[item(MARKER + " done", "2026-01-05", _daily("2026-03-25"), "2025-12-31")],
                   open=[item("outside only", "2025-12-31")],
                   monthly_only=[item("only there", f"{MONTHLY}2026-02.md")])
@@ -135,16 +138,16 @@ PROPS = proposals(done=[item(MARKER + " done", "2026-01-05", _daily("2026-03-25"
 
 # ---------------------------------------------------------------- the loader feeds every check
 
-def test_the_stage_is_the_split_layout():
-    """Guard: the fixture is a real quarter split, so a test below that passes reads parts, not one file."""
-    files = rp.files_of(quarter_read(), ISO)
-    assert sorted(files) == READ_FILES
-    index = json.loads(files["read-index.json"])
-    assert "days" not in index and "monthly" not in index
-    assert json.loads(files["read-2026-02.json"])["monthly"][0]["month"] == "2026-02"
+def test_the_stage_holds_every_month(inst):
+    """Guard: the fixture is a real quarter stage, so a test below that passes reads day files of three months."""
+    stage_quarter(inst, quarter_read(), PROPS)
+    days = sorted(p.name for p in (stage_dir(inst) / "days").iterdir())
+    assert days == [f"{d}.json" for d in DAYS] and {d[:7] for d in DAYS} == {"2026-01", "2026-02", "2026-03"}
+    assert sorted(p.name for p in (stage_dir(inst) / "children").iterdir()) == ["monthly-2026-02.json",
+                                                                             "weekly-2026-W07.json"]
 
 
-def test_a_quarter_write_resolves_sources_across_all_month_parts(script, inst, monkeypatch, capsys):
+def test_a_quarter_write_resolves_sources_across_all_months(script, inst, monkeypatch, capsys):
     out, fake = write(script, monkeypatch, capsys, inst, PROPS)
     assert out["status"] == "written", out
     assert out["doc_path"] == DOC_PATH
@@ -185,7 +188,7 @@ def test_a_quarter_whose_index_sections_differ_from_the_rows_is_sections_changed
     fake = ReviewFakeVault({})
     out, _ = write(script, monkeypatch, capsys, inst, proposals(), fake, read=quarter_read(sections=defs))
     assert out["status"] == "refused" and out["problems"] == ["sections-changed"]
-    assert fake.call_count == 0 and names(inst) == sorted(READ_FILES + ["proposals.json"])
+    assert fake.call_count == 0 and names(inst) == sorted(STAGE_FILES + ["proposals.json"])
 
 
 def test_replace_needs_confirm_reads_the_quarter_through_the_loader(script, inst, monkeypatch, capsys):
@@ -194,7 +197,7 @@ def test_replace_needs_confirm_reads_the_quarter_through_the_loader(script, inst
     assert out == {"status": "needs-confirm", "stem": STEM, "doc_path": DOC_PATH}
 
 
-# ---------------------------------------------------------------- a missing or broken part
+# ---------------------------------------------------------------- a missing or broken file
 
 def _refused_before_kado(script, monkeypatch, capsys, inst) -> dict:
     fake = ReviewFakeVault({})
@@ -204,45 +207,48 @@ def _refused_before_kado(script, monkeypatch, capsys, inst) -> dict:
     return out
 
 
-def test_a_missing_month_part_is_read_invalid_and_keeps_the_files(script, inst, monkeypatch, capsys):
+def test_a_missing_day_file_is_read_invalid_and_keeps_the_files(script, inst, monkeypatch, capsys):
     stage_quarter(inst, quarter_read(), PROPS)
-    (stage_dir(inst) / "read-2026-02.json").unlink()
+    (stage_dir(inst) / "days" / "2026-02-15.json").unlink()
     assert _refused_before_kado(script, monkeypatch, capsys, inst)["problems"] == ["read-invalid"]
-    assert names(inst) == ["proposals.json", "read-2026-01.json", "read-2026-03.json", "read-index.json"]
+    assert names(inst) == sorted(STAGE_FILES + ["proposals.json"])
 
 
-def test_a_part_that_is_not_json_is_read_invalid(script, inst, monkeypatch, capsys):
+def test_a_day_file_that_is_not_json_is_read_invalid(script, inst, monkeypatch, capsys):
     stage_quarter(inst, quarter_read(), PROPS)
-    (stage_dir(inst) / "read-2026-03.json").write_text("{broken", encoding="utf-8")
+    (stage_dir(inst) / "days" / "2026-03-25.json").write_text("{broken", encoding="utf-8")
     assert _refused_before_kado(script, monkeypatch, capsys, inst)["problems"] == ["read-invalid"]
 
 
-def test_parts_without_their_index_are_read_missing(script, inst, monkeypatch, capsys):
+def test_a_stage_without_its_manifest_is_read_missing(script, inst, monkeypatch, capsys):
     stage_quarter(inst, quarter_read(), PROPS)
-    (stage_dir(inst) / "read-index.json").unlink()
+    (stage_dir(inst) / "manifest.json").unlink()
     assert _refused_before_kado(script, monkeypatch, capsys, inst)["problems"] == ["read-missing"]
 
 
 # ---------------------------------------------------------------- clean-up
 
-def test_a_written_quarter_removes_every_read_file_and_the_proposals(script, inst, monkeypatch, capsys):
+def test_a_written_quarter_removes_every_content_file_and_the_proposals(script, inst, monkeypatch, capsys):
     stale = stage_dir(inst) / "read-2025-12.json"
     stage_dir(inst).mkdir(parents=True)
-    stale.write_text(rp.encode({"month": "2025-12", "days": []}), encoding="utf-8")
-    out, _ = write(script, monkeypatch, capsys, inst, PROPS)
+    stale.write_text('{"month":"2025-12","days":[]}\n', encoding="utf-8")
+    path = stage_quarter(inst, quarter_read(), PROPS)
+    stale.write_text('{"month":"2025-12","days":[]}\n', encoding="utf-8")         # left after the stage write
+    out = run(script, monkeypatch, capsys, ["write", "--stem", STEM, "--proposals", str(path), "--run-id", "r"],
+              ReviewFakeVault({}))
     assert out["status"] == "written"
     assert names(inst) == ["meta.json"]
 
 
-def test_a_failed_quarter_write_keeps_every_read_file(script, inst, monkeypatch, capsys):
+def test_a_failed_quarter_write_keeps_every_stage_file(script, inst, monkeypatch, capsys):
     fake = ReviewFakeVault({})
     fake.fail[("write_note", DOC_PATH)] = KadoToolError("kado-write returned an error: denied")
     out, _ = write(script, monkeypatch, capsys, inst, PROPS, fake)
     assert out["status"] == "stopped" and out["problems"] == ["kado-write-failed"]
-    assert names(inst) == sorted(READ_FILES + ["proposals.json"])
+    assert names(inst) == sorted(STAGE_FILES + ["proposals.json"])
 
 
-def test_replace_abort_removes_every_read_file_of_a_quarter_and_keeps_meta(script, inst, monkeypatch, capsys):
+def test_replace_abort_removes_every_content_file_of_a_quarter_and_keeps_meta(script, inst, monkeypatch, capsys):
     stage_quarter(inst, quarter_read(), PROPS)
     (stage_dir(inst) / "meta.json").write_text('{"stem": "2026-Q1_review"}\n', encoding="utf-8")
     out = run(script, monkeypatch, capsys, ["replace", "--stem", STEM, "--abort"], ReviewFakeVault({}))
@@ -250,7 +256,7 @@ def test_replace_abort_removes_every_read_file_of_a_quarter_and_keeps_meta(scrip
     assert names(inst) == ["meta.json"]
 
 
-def test_a_week_abort_still_removes_only_read_json_and_the_proposals(script, inst, monkeypatch, capsys):
+def test_an_abort_keeps_files_that_are_not_stage_content(script, inst, monkeypatch, capsys):
     folder = inst / "tomo-tmp" / "review" / "2026-W13_review"
     folder.mkdir(parents=True)
     for name in ("read.json", "proposals.json", "meta.json", "notes.txt"):
@@ -260,33 +266,35 @@ def test_a_week_abort_still_removes_only_read_json_and_the_proposals(script, ins
     assert sorted(p.name for p in folder.iterdir()) == ["meta.json", "notes.txt"]
 
 
-# ---------------------------------------------------------------- the T3.4 review nits
+# ---------------------------------------------------------------- 047 F2-AC4: habits over every day
 
-def _index_with(tmp_path: Path, part_list: list) -> Path:
-    stage = tmp_path / "stage"
-    rp.write(stage, rp.files_of(quarter_read(), ISO))
-    index = json.loads((stage / "read-index.json").read_text(encoding="utf-8"))
-    index["parts"] = part_list
-    (stage / "read-index.json").write_text(rp.encode(index), encoding="utf-8")
-    return stage
+def _habit_lines(fake) -> list:
+    body = body_of(fake)
+    lines = body[body.index("## Gewohnheiten") + 1:]
+    return lines[:next((i for i, ln in enumerate(lines) if ln.startswith("## ")), len(lines))]
 
 
-def test_a_part_named_twice_is_refused(tmp_path):
-    stage = _index_with(tmp_path, ["read-2026-01.json", "read-2026-01.json", "read-2026-02.json",
-                                   "read-2026-03.json"])
-    with pytest.raises(rp.ReadFilesInvalid, match="twice"):
-        rp.load(stage)
+def test_the_habits_count_and_average_every_day_of_the_quarter_that_carries_a_value(script, inst, monkeypatch,
+                                                                                      capsys):
+    """F2-AC4: a boolean tracker counts and a number tracker averages over every valued day of all three months,
+    loaded from the day files of the stage."""
+    _config(inst, trackers=True, fields=[{"name": "Sport", "type": "boolean"}, {"name": "Sleep", "type": "integer"}])
+    _quarter_config_keep(inst)
+    read = quarter_read()
+    read["days"] = [_day(d, Sport="ja", Sleep=str(6 + i % 3)) for i, d in enumerate(DAYS)]
+    out, fake = write(script, monkeypatch, capsys, inst, PROPS, read=read)
+    assert out["status"] == "written", out
+    lines = _habit_lines(fake)
+    assert any(ln.startswith("- [x] Sport") and f" {len(DAYS)} " in ln for ln in lines), lines
+    assert any(ln.startswith("- [x] Sleep: Durchschnitt 7,0") and f" {len(DAYS)} " in ln for ln in lines), lines
 
 
-def test_a_part_name_with_a_trailing_newline_is_refused_as_a_name(tmp_path):
-    stage = _index_with(tmp_path, ["read-2026-01.json\n", "read-2026-02.json", "read-2026-03.json"])
-    with pytest.raises(rp.ReadFilesInvalid, match="names a part that is not"):
-        rp.load(stage)
-
-
-def test_stage_files_lists_only_exact_part_names(tmp_path):
-    stage = tmp_path / "stage"
-    stage.mkdir()
-    for name in ("read-2026-01.json", "read-2026-01.json\n", "read-2026-01.json.bak"):
-        (stage / name).write_text("{}", encoding="utf-8")
-    assert [p.name for p in rp.stage_files(stage)] == ["read-2026-01.json"]
+def _quarter_config_keep(instance: Path) -> None:
+    """The quarter setup on top of the config ``_config`` just wrote (trackers kept)."""
+    path = instance / "config" / "vault-config.yaml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+    cfg["concepts"]["calendar"]["granularities"]["quarterly"] = {"enabled": True, "path": "Calendar/304 Quarterly/"}
+    cfg["naming"]["calendar_patterns"]["quarterly"] = "YYYY-[Q]Q"
+    cfg["review"]["quarterly"] = {"heading": "Tomo Review", "place": {"anchor": "Reflections", "placement": "inside"},
+                                  "own_sections": ["Reflections"]}
+    path.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")

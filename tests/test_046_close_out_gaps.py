@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_close_out_gaps.py — criterion parts of spec 046 that no test could fail (T6.4 close-out).
 
 Each test names the PRD criterion part and the mechanism it falsifies; each was proven RED by that mutation
@@ -38,7 +38,7 @@ sys.path.insert(0, str(TESTS_DIR))
 from e2e_046_sections_walk import KINDS  # noqa: E402
 from e2e_046_sections_walk import proposals as walk_proposals  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
-from lib import review_read_parts as rp  # noqa: E402
+from lib import review_stage  # noqa: E402
 from review_e2e_walk import INBOX  # noqa: E402
 from review_period_fixtures import quarter_vault  # noqa: E402
 from test_046_t4_2_doc_sections import WEEK_PROPS, mapped_week  # noqa: E402
@@ -68,7 +68,7 @@ FIXTURES = (inst, script, instance, mod, section_inst, section_script, session_i
 def _quarter_read_dict(mod, instance, monkeypatch, capsys) -> dict:
     code, out, _ = _run(mod, monkeypatch, capsys, ["--period", "2026-Q1", "--kind", "quarter"], quarter_vault())
     assert code == 0 and out["status"] == "ok"
-    return rp.load(instance / "tomo-tmp" / "review" / "2026-Q1_review")
+    return review_stage.load(instance / "tomo-tmp" / "review" / "2026-Q1_review")
 
 
 def test_a_mapped_quarter_reads_the_same_days_weekly_and_monthly_notes_as_an_unmapped_one(mod, instance,

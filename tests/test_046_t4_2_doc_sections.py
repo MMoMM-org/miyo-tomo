@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_046_t4_2_doc_sections.py — the review document by section and its write path (spec 046 T4.2).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files and a vault config that
@@ -367,7 +367,7 @@ def test_write_and_replace_refuse_a_section_error_before_any_kado_call(script, i
     assert code == 0 and out["status"] == "refused" and out["problems"] == ["proposals-invalid"]
     assert out["errors"] == ["/sections/3/key: duplicate-section", "/sections/4/key: unknown-section"]
     assert fake.call_count == 0 and fake.writes == []
-    assert (inst / "tomo-tmp" / "review" / "2026-W13_review" / "read.json").exists()
+    assert (inst / "tomo-tmp" / "review" / "2026-W13_review" / "manifest.json").exists()
 
 
 def test_an_over_cap_section_is_refused_naming_its_key(script, inst, monkeypatch, capsys):

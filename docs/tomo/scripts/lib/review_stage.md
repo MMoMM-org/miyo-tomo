@@ -172,6 +172,25 @@ carry a wrong type. The callers (`review-digest.py`, `review-doc.py`) handle
 `TypeError`, `ValueError` or `AttributeError` from a malformed file would end
 them with a traceback. `load` re-raises those as `StageInvalid`.
 
+The original exception stays chained (`raise ... from exc`): the class name
+`StageInvalid` reports carries no content, and the chained cause keeps the
+traceback a maintainer needs when a stage file is malformed in a way no test
+foresaw (T2.3 review leftover, fixed in T2.4).
+
+## WHY `render` Is Split From `write`, and `manifest` Is Public
+
+WHY: spec 047 T2.4. `review-read.py --measure` must report the bytes every
+stage file would hold without writing one (ADR-2, CON-3: no content left in
+`tomo-tmp` by a measurement). `render` returns the file texts and the
+manifest exactly as `write` writes them — `write` is `discard`, then
+`render`, then each file and the manifest last — so a measured byte is a
+written byte and there is no second encoder to drift. `manifest(stage)` is
+the manifest read with the same checks `load` applies (`StageMissing`,
+`StageInvalid`); `review-read.py` needs its `read_id`, `read_at`, report,
+layout and `sections_digest` to continue a stored read and to say why one
+was discarded (`sections-changed` vs `stage-invalid`), which `can_continue`'s
+bool cannot tell.
+
 ## WHY `sections_digest` and the Continue Check
 
 WHY: ADR-3. A stored read is continued only when nothing it depends on

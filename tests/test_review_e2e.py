@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_review_e2e.py — the 2-pass /review flow end to end on the fake vault, without an AI in the loop
 (spec 045 T6.1; PRD Secondary User Journeys 1, 2, 5, 6, 7; PRD Edge Cases; KPI Quality; F1-AC10; SDD Runtime View).
 
@@ -87,7 +87,7 @@ def test_week_from_first_start_through_hashi_apply(walk: Walk):
     assert out["status"] == "written" and out["doc_path"] == WEEK_DOC and out["target"] == WEEK_TARGET, out
     assert out["target_exists"] is True and out["counts"]["done"] == 1 and out["counts"]["habits"] >= 1
     assert walk.vault.recorded == [WEEK_DOC], "Pass 1 writes the document and nothing else"
-    assert not (walk.stage(WEEK_STEM) / "read.json").exists() and walk.meta(WEEK_STEM)["mode"] == "insert"
+    assert not (walk.stage(WEEK_STEM) / "manifest.json").exists() and walk.meta(WEEK_STEM)["mode"] == "insert"
     assert walk.listing() == [(WEEK_STEM, "open")]
     # 6 before approval: parse says not approved, nothing is delivered
     out = walk.parse(WEEK_STEM)
@@ -295,7 +295,7 @@ def test_empty_period_reports_and_writes_nothing(ready: Walk):
     out = walk.read("2026-W15", WEEK)
     assert out["status"] == "ok" and out["nothing_to_review"] is True, out
     assert out["report"]["kado_empty"] == [] and out["report"]["advice"] == [], "Kado listed the daily folder"
-    assert out["read_path"] is None and not walk.stage("2026-W15_review").exists()
+    assert "stage" not in out and not walk.stage("2026-W15_review").exists()
     assert walk.vault.recorded == []
 
 

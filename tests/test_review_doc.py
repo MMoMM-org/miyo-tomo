@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-# version: 0.3.5
+# version: 0.4.0
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
-On tests/review_fake_vault with synthetic read.json / proposals.json files:
+On tests/review_fake_vault with synthetic reads staged through lib/review_stage.write (spec 047
+T2.4; the stage replaced read.json) and proposals.json files:
 - review-proposals.schema.json: a habits group, an unknown group (an own
   section), an item without sources or text are refused; a valid file passes
 - an item without a source inside the period is rejected and listed with
@@ -18,7 +19,7 @@ On tests/review_fake_vault with synthetic read.json / proposals.json files:
   quote, fence, thematic break) is escaped with a backslash, on the first
   line and on continuation lines, so the document keeps exactly one Approved
   line and only the group headings
-- habits come from the tracker values of read.json (T3.5), never from the
+- habits come from the tracker values of the read (T3.5), never from the
   proposals; an item with value None renders from its text
 - groups in the SDD order; weekly_only / not_in_weekly only for a month with
   weekly notes; an empty group shows one "nothing found" bullet (growth with
@@ -32,16 +33,21 @@ On tests/review_fake_vault with synthetic read.json / proposals.json files:
   the top-level review_* keys; the path comes from review_config.inbox_path
 - an existing non-Tomo "<name> Review.md" gives doc-name-taken and nothing
   is written; Tomo's own review document gives review-exists with its
-  doc_path, nothing is written, read.json and proposals.json stay and
+  doc_path, nothing is written, the stage and proposals.json stay and
   meta.json is unchanged (write never overwrites; only replace --confirm does)
 - a failed Kado write gives status stopped, kado-write-failed, no doc_path,
-  and keeps read.json and proposals.json; an invalid proposals file gives
+  and keeps the stage and proposals.json; an invalid proposals file gives
   proposals-invalid and writes nothing
 - Pass 1 counts go to meta.json, which carries no proposal or daily text;
-  read.json and proposals.json are deleted after the write and nothing
+  the stage content and proposals.json are deleted after the write and nothing
   else is left in the stage folder; a week write stays within five Kado calls
 - exit 2 for a bad invocation, exit 1 with the class name only on an
   unexpected exception; stdout and stderr never carry proposal text
+- spec 047 T2.4: write and replace --confirm load through review_stage.load: a pre-047 stage
+  (read.json, no manifest) is read-missing, a stage file of another read read-stale; after write
+  only meta.json remains (growth/ gone), after replace --abort meta.json and payloads.json;
+  review-exists keeps the stage and replace --confirm builds from it, the not-read line from the
+  manifest's not_read
 
 All data is synthetic.
 """
@@ -65,6 +71,7 @@ sys.path.insert(0, str(TESTS_DIR))
 
 from review_fake_vault import ReviewFakeVault, split_frontmatter  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
+from lib import review_stage  # noqa: E402
 from lib.kado_client import KadoToolError  # noqa: E402
 from lib.period import ISO  # noqa: E402
 
@@ -74,6 +81,7 @@ MONTHLY = "Calendar/303 Monthly/"
 DAILY = "Calendar/301 Daily/"
 MARKER = "MARKER-7f3a private proposal text"
 WEEK_DAYS = [f"2026-03-{d}" for d in range(23, 30)]          # 2026-W13
+MANIFEST = "manifest.json"
 DOC_SCHEMA = json.loads((SCRIPTS_DIR.parent / "schemas" / "doc-frontmatter.schema.json").read_text())
 
 
@@ -161,8 +169,8 @@ def instance(tmp_path, monkeypatch):
 def stage(instance: Path, read: dict, props, stem: str | None = None) -> tuple[str, Path]:
     stem = stem or f"{read['period']['name']}_review"
     folder = instance / "tomo-tmp" / "review" / stem
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "read.json").write_text(json.dumps(read), encoding="utf-8")
+    review_stage.write(folder, read, stem=stem, rule=ISO,
+                       sections_digest=review_stage.sections_digest(read.get("sections")))
     path = folder / "proposals.json"
     path.write_text(props if isinstance(props, str) else json.dumps(props), encoding="utf-8")
     return stem, path
@@ -534,7 +542,7 @@ def test_existing_non_tomo_document_is_doc_name_taken(mod, instance, monkeypatch
                                  "problems": ["doc-name-taken"]}
     assert fake.writes == [] and fake.text(f"{INBOX}2026-W13 Review.md").endswith("# My own review\n")
     stage_dir = instance / "tomo-tmp" / "review" / "2026-W13_review"
-    assert (stage_dir / "read.json").exists() and (stage_dir / "proposals.json").exists()
+    assert (stage_dir / MANIFEST).exists() and (stage_dir / "proposals.json").exists()
 
 
 def test_existing_tomo_review_is_review_exists_and_never_overwritten(mod, instance, monkeypatch, capsys):
@@ -551,7 +559,7 @@ def test_existing_tomo_review_is_review_exists_and_never_overwritten(mod, instan
                                  "target": f"{WEEKLY}2026-W13.md", "target_exists": True,
                                  "problems": ["review-exists"]}
     assert fake.writes == [] and fake.text(doc_path) == old_text
-    assert (stage_dir / "read.json").exists() and (stage_dir / "proposals.json").exists()
+    assert (stage_dir / MANIFEST).exists() and (stage_dir / "proposals.json").exists()
     assert (stage_dir / "meta.json").read_text(encoding="utf-8") == old_meta
 
 
@@ -562,7 +570,7 @@ def test_failed_kado_write_is_stopped_and_keeps_the_content_files(mod, instance,
     assert code == 0 and out["status"] == "stopped" and out["problems"] == ["kado-write-failed"]
     assert "doc_path" not in out and fake.writes == []
     stage_dir = instance / "tomo-tmp" / "review" / "2026-W13_review"
-    assert (stage_dir / "read.json").exists() and (stage_dir / "proposals.json").exists()
+    assert (stage_dir / MANIFEST).exists() and (stage_dir / "proposals.json").exists()
     assert not (stage_dir / "meta.json").exists()
 
 
@@ -586,7 +594,7 @@ def test_pass1_counts_in_meta_and_content_files_deleted(mod, instance, monkeypat
     assert meta["stem"] == "2026-W13_review" and meta["period"] == "2026-W13" and meta["kind"] == "week"
     assert meta["doc_path"] == out["doc_path"] and meta["target"] == out["target"] and meta["mode"] == "insert"
     assert meta["run_id"] == "r-test" and meta["generated"] and meta["steps_done"] == [] and not meta["failed_step"]
-    assert not (stage_dir / "read.json").exists() and not (stage_dir / "proposals.json").exists()
+    assert not (stage_dir / MANIFEST).exists() and not (stage_dir / "proposals.json").exists()
     left = sorted(p.name for p in stage_dir.iterdir())
     assert left == ["meta.json"]
     for path in stage_dir.iterdir():
@@ -673,3 +681,81 @@ def test_exit_codes(mod, instance, monkeypatch, capsys):
     code = mod.main(["write", "--stem", stem, "--proposals", str(path)])
     out, err = capsys.readouterr()
     assert code == 1 and out == "" and err == "RuntimeError\n"
+
+
+# ---------------------------------------------------------------- spec 047 T2.4: the stage is the read
+
+def _growing_week() -> dict:
+    """The week read with notes created on two days: the stage holds growth/ files too."""
+    return week_read(growth={"created": [{"path": "Notes/A.md", "links": ["T MOC"], "day": "2026-03-23"},
+                                         {"path": "Notes/B.md", "links": [], "day": "2026-03-25"}],
+                             "mocs_changed": [], "mocs_linked_by_new": []})
+
+
+def test_a_pre_047_stage_is_read_missing_before_any_kado_call(mod, instance, monkeypatch, capsys):
+    # RED while review-doc.py loads read.json: the legacy file would be rendered into a document
+    folder = instance / "tomo-tmp" / "review" / "2026-W13_review"
+    folder.mkdir(parents=True)
+    (folder / "read.json").write_text(json.dumps(week_read()), encoding="utf-8")
+    path = folder / "proposals.json"
+    path.write_text(json.dumps(GOOD), encoding="utf-8")
+    fake = ReviewFakeVault({})
+    for argv in (["write", "--stem", "2026-W13_review", "--proposals", str(path)],
+                 ["replace", "--stem", "2026-W13_review", "--confirm"]):
+        code, out, _ = _run(mod, monkeypatch, capsys, argv, fake)
+        assert code == 0 and out["status"] == "refused" and out["problems"] == ["read-missing"], out
+    assert fake.call_count == 0 and (folder / "read.json").exists()
+
+
+def test_a_stage_file_of_another_read_is_read_stale(mod, instance, monkeypatch, capsys):
+    # RED while the loader is not review_stage.load: no read_id is compared
+    stem, path = stage(instance, week_read(), GOOD)
+    day = instance / "tomo-tmp" / "review" / stem / "days" / "2026-03-24.json"
+    doc = json.loads(day.read_text(encoding="utf-8"))
+    day.write_text(json.dumps(dict(doc, read_id="another-read")), encoding="utf-8")
+    fake = ReviewFakeVault({})
+    for argv in (["write", "--stem", stem, "--proposals", str(path)], ["replace", "--stem", stem, "--confirm"]):
+        code, out, _ = _run(mod, monkeypatch, capsys, argv, fake)
+        assert code == 0 and out["status"] == "refused" and out["problems"] == ["read-stale"], out
+    assert fake.call_count == 0
+
+
+def test_after_write_only_meta_is_left_and_growth_is_gone(mod, instance, monkeypatch, capsys):
+    # RED while the write drops only read*.json: days/, growth/, context.json, weeks.json and the manifest stay
+    stem, path = stage(instance, _growing_week(), GOOD)
+    folder = instance / "tomo-tmp" / "review" / stem
+    assert (folder / "growth").is_dir() and (folder / "days").is_dir()
+    code, out, _ = _run(mod, monkeypatch, capsys, ["write", "--stem", stem, "--proposals", str(path),
+                                                   "--run-id", "r-test"], ReviewFakeVault({}))
+    assert code == 0 and out["status"] == "written", out
+    assert sorted(p.name for p in folder.iterdir()) == ["meta.json"]
+
+
+def test_replace_abort_keeps_only_meta_and_payloads(mod, instance, monkeypatch, capsys):
+    stem, _ = stage(instance, _growing_week(), GOOD)
+    folder = instance / "tomo-tmp" / "review" / stem
+    for name in ("meta.json", "payloads.json"):
+        (folder / name).write_text("{}\n", encoding="utf-8")
+    (folder / "days" / "2026-03-23.json.tmp").write_text("{}", encoding="utf-8")
+    code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", stem, "--abort"], ReviewFakeVault({}))
+    assert code == 0 and out == {"status": "aborted", "stem": stem}
+    assert sorted(p.name for p in folder.iterdir()) == ["meta.json", "payloads.json"]
+
+
+def test_review_exists_keeps_the_stage_and_replace_confirm_builds_from_it(mod, instance, monkeypatch, capsys):
+    doc_path = f"{INBOX}2026-W13 Review.md"
+    own = ReviewFakeVault({doc_path: "---\ntomo:\n  doc_type: review\n  run_id: old\n---\n# old\n",
+                           f"{WEEKLY}2026-W13.md": "# W13\n"})
+    read = _growing_week()
+    read["not_read"] = [_daily("2026-03-27")]
+    code, out, _ = write(mod, monkeypatch, capsys, instance, read, GOOD, own)
+    assert out["problems"] == ["review-exists"]
+    folder = instance / "tomo-tmp" / "review" / "2026-W13_review"
+    kept = sorted(str(p.relative_to(folder)) for p in folder.rglob("*"))
+    assert "manifest.json" in kept and "growth/2026-03-23.json" in kept
+    code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", "2026-W13_review", "--confirm",
+                                                   "--run-id", "r-2"], own)
+    assert code == 0 and out["status"] == "replaced", out
+    text = own.text(doc_path)
+    assert "2026-03-27" in text.split("## ")[0], "the not-read line comes from manifest.json's not_read"
+    assert sorted(p.name for p in folder.iterdir()) == ["meta.json"]

@@ -4,7 +4,8 @@
 > The script owns the review document of `/review` in the inbox (spec 045,
 > T3.6 `write`, T3.7 `parse` and `replace`): it turns the read period and
 > the model's `proposals.json` into `<period> Review.md`, writes it through
-> Kado, records the Pass 1 counts and removes the content files; later it
+> Kado, records the Pass 1 counts and removes the content files (the
+> stage of spec 047, loaded through `lib/review_stage.load`); later it
 > reads the edited document back for Pass 2 and, on a confirmed start-over,
 > writes a new document over its own.
 
@@ -81,11 +82,11 @@ the map: `edited` False everywhere, `deleted` from the `pass1_counts` sum.
 
 F6-AC1: starting over names the document that will be replaced and asks
 again. `replace --stem S` alone answers `needs-confirm` with the
-`doc_path`, computed the way `write` computes it (the kept `read.json`'s
+`doc_path`, computed the way `write` computes it (the kept stage's
 period under the setup's inbox) — no Kado call, nothing written, the skill
 asks the question. `replace --confirm` is `render_and_write` with
 `allow_overwrite_review=True`: the same check, render and write as `write`,
-from the `read.json` and `proposals.json` that `write` kept on
+from the stage and `proposals.json` that `write` kept on
 `review-exists` (the default `--proposals` is the stage copy), so no
 second read and no second model pass. A success is reported as `replaced`;
 `meta.json` is rewritten by the same path (`steps_done` empty, fresh
@@ -93,11 +94,13 @@ counts and link stems — the reset); the stage content files go away as
 after `write`; a non-Tomo file at the path is still `doc-name-taken`,
 because the overwrite flag covers Tomo's own document and nothing else.
 
-`replace --abort` is the user declining to start over: the run that
-produced the kept `read.json` and `proposals.json` is over, and ADR-9 says
-content does not linger for a run that is not going anywhere. Both files
-(for a quarter every read file, see below) are deleted; the document and `meta.json` stay untouched, because the
-existing review goes on exactly as it was. `--confirm` and `--abort` are
+`replace --abort` is the user declining to start over, or (spec 047 ADR-10)
+aborting Pass 1 after the read: the run that produced the kept stage and
+`proposals.json` is over, and ADR-9 says content does not linger for a run
+that is not going anywhere. `review_stage.discard` removes the whole stage
+content (see below) and `proposals.json`; the document, `meta.json` and
+`payloads.json` stay untouched, because the existing review goes on exactly
+as it was. `--confirm` and `--abort` are
 mutually exclusive on the parser so a mixed call is exit 2, not a guess.
 
 ## WHY the Script Does the Kado Calls and the Lib Does Not
@@ -131,7 +134,7 @@ Only the first is written. A non-Tomo file is the user's and gives
 cannot tell a confirmed start-over from a second `/review` on the same
 period; the skill asks before a start-over (F6-AC1), and only
 `replace --confirm` (T3.7) writes over Tomo's document, from the kept
-`read.json` and `proposals.json`. That is why a refused `write` keeps both
+stage and `proposals.json`. That is why a refused `write` keeps both
 files and leaves `meta.json` as it was: the confirmed second attempt needs
 no second read and no second model pass.
 
@@ -145,51 +148,63 @@ tests can read.
 
 A refused or failed Kado write leaves the vault unchanged; the script says
 `status: stopped`, `kado-write-failed`, names no `doc_path` and keeps
-`read.json`, `proposals.json` and the previous `meta.json` so the skill can
+the stage, `proposals.json` and the previous `meta.json` so the skill can
 retry without a second read. Only after Kado accepted the write are the
 content files removed and the counts recorded.
 
-## WHY `read.json` and `proposals.json` Are Deleted Here (ADR-9)
+## WHY the Stage Content and `proposals.json` Are Deleted Here (ADR-9, Spec 047 ADR-10)
 
 Both hold journal content. The document in the inbox is the only copy the
 user needs after Pass 1; the counts Pass 2 reports against (`pass1_counts`)
 go to the content-free `meta.json`. Deleting after the write, not before,
 means a failed write never loses the model's work.
 
-A quarter's read is not one file (ADR-7): the success path and
-`replace --abort` delete every read file of the stage through
-`lib/review_read_parts.stage_files` — `read.json`, `read-index.json` and
-every `read-YYYY-MM.json` — and `proposals.json`. The folder listing, not
-the index's part list, decides what goes: a part the index does not list
-(an earlier quarter's under a reused stem) is journal content too, and an
-index that no longer parses would otherwise keep its parts forever. A
-refused or failed write deletes none of them, for the reason above. For a
-week or a month `stage_files` is `read.json` alone, so nothing changes there.
+The read is a stage of many files (spec 047 ADR-1): the success path and
+`replace --abort` call `review_stage.discard`, which keeps only `meta.json`
+and `payloads.json` and removes `days/`, `growth/`, `children/`,
+`previous/`, `digests/`, `context*.json`, `weeks.json`, `condensed.json`,
+`carryover.json`, the manifest, any legacy `read*.json` and temp leftovers;
+`proposals.json` goes with it (also when `--proposals` named a file
+elsewhere). The lib, not a list here, decides what is content, so a file a
+later phase adds to the stage is discarded without a change to this
+script. A refused or failed write deletes none of them, for the reason
+above.
 
-## WHY the Read Comes Through `review_read_parts.load` (Spec 046 T4.5, ADR-7)
+History: spec 046 T4.5 deleted the read files through
+`lib/review_read_parts.stage_files` (`read.json`, or a quarter's
+`read-index.json` and month parts by folder listing); spec 047 T2.4 deleted
+that module.
 
-A quarter's read is `read-index.json` plus one `read-<YYYY-MM>.json` per
-month, so that the model can read each file within its Read tool's limit.
-The script has no such limit, and its checks are about the period, not
-about a file: `write`, `replace --confirm` and `replace`'s `needs-confirm`
-take the read through `review_read_parts.load`, which gives `read.json` as
-it is or the index joined with its parts in the index's order — the one
-result `read_period` returned. Every consumer of the read (`period_of`, the
-source rule through `review_doc.Sources`, `review_sections.check` and
-`definitions`, `sections-changed`, the habits over all days, `not_read`,
-`partly_read`) therefore sees the whole quarter and none of them knows that
-parts exist. A source resolves against the joined lists, never per part:
-an item may name a January daily and a March daily, and a `monthly_only`
-item a monthly note from any part.
+## WHY the Read Comes Through `review_stage.load` (Spec 047 T2.4, ADR-1, ADR-3)
 
-`ReadFilesMissing` (no read file) is `read-missing`; `ReadFilesInvalid` is
-`read-invalid` — a listed part missing, unreadable or holding another
-month, a duplicated or unsafe part name, or both layouts at once. A quarter
-with one part gone is not reviewed from the others: the document would
-name the quarter while each item resting on the missing month would be
-rejected "outside the period" one by one, which reads like the model's
-fault. The skill shows the problem and stops; reading the period again
-writes a whole set.
+The stage splits the read into files an agent reads within its Read
+limit. The script has no such limit, and its checks are about the period,
+not about a file: `write`, `replace --confirm` and `replace`'s
+`needs-confirm` take the read through `review_stage.load`, which rebuilds
+the one merged result `read_period` returned (plus `previous`, `condensed`,
+`carryover`). Every consumer of the read (`period_of`, the source rule
+through `review_doc.Sources`, `review_sections.check` and `definitions`,
+`sections-changed`, the habits over all days, `not_read`, `partly_read`)
+therefore sees the whole period and none of them knows that files exist —
+the consumers stay untouched, so the baseline e2e compares like with like
+(ADR-1, option A). The not-read and top lines render from the manifest's
+`report` and `not_read`, which `load` gives back as `report` / `not_read`.
+
+`StageMissing` (no `manifest.json`, also a pre-047 stage that holds only
+`read.json`) is `read-missing`: the manifest is written last, so a read
+that died half-way looks like no read, and an old `read.json` is never
+rendered — the next `review-read.py` run discards it. `StageStale` (a file
+whose `read_id` is not the manifest's) is `read-stale`: material of two
+reads is never mixed; the skill reads again with `--fresh`. `StageInvalid`
+(an unreadable or malformed file, an unsafe name) keeps spec 046's
+`read-invalid`. A period with one file gone is not reviewed from the others:
+the document would name the period while each item resting on the missing
+day would be rejected "outside the period" one by one, which reads like the
+model's fault. Every refusal comes before any Kado call.
+
+History: spec 046 T4.5 loaded `read.json` or a quarter's index joined with
+its month parts through `lib/review_read_parts.load` (`ReadFilesMissing` →
+`read-missing`, `ReadFilesInvalid` → `read-invalid`).
 
 ## WHY the Exit Codes and the Bare Class Name on stderr
 
@@ -219,7 +234,7 @@ as a whole and come back as `proposals-invalid` with `errors`
 rewrite-once loop handles both the same way. Both subcommands share
 `render_and_write`, so `replace --confirm` runs every check `write` runs.
 The checks run before the target probe: a refused file costs no Kado call
-and leaves `read.json`, `proposals.json` and `meta.json` as they were.
+and leaves the stage, `proposals.json` and `meta.json` as they were.
 Section items without a source are rejected one by one (`{section, index,
 reason}`) and join `rejected` beside the group rejections.
 

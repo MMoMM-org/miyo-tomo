@@ -1,5 +1,5 @@
 # review_stage_codec.py — the bytes of a /review stage file: line-broken encoding, the ceiling, cutting and parts.
-# version: 0.2.1
+# version: 0.2.2
 """Encoding and size rules of the agent-read stage files (spec 047 T2.3; ADR-2), split out of ``review_stage``.
 
 ``encode(data)`` is the one written form: ``indent=1``, UTF-8 (``ensure_ascii``
@@ -256,7 +256,7 @@ def child_entry(doc: dict) -> dict:
 def previous_doc(read_id: str, entry: dict) -> dict:
     doc = {"read_id": read_id, **entry}
     if isinstance(entry.get("sections"), dict):
-        doc["sections"] = {h: lines_of(t) for h, t in entry["sections"].items()}
+        doc["sections"] = {h: lines_of(join_text(t)) for h, t in entry["sections"].items()}
     return doc
 
 

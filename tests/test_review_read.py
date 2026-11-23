@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -44,7 +44,8 @@ and the real lib.review_day readers:
   (F2-AC5); missing weekly / monthly notes are none-found with an empty level;
   --measure prints the bytes of every stage file (growth/ included), the unit
   bytes (day + growth files), over_ceiling and over_budget and writes no file;
-  the scaled 2026-Q1 read loads back as read_period returned it
+  the scaled 2026-Q1 read loads back as read_period returned it; a stamped
+  weeks.json without its units is a stage-invalid discard, not exit 1
 
 All data is synthetic.
 """
@@ -633,6 +634,8 @@ def test_without_a_mapping_the_month_read_equals_the_golden(mod, instance, monke
     read = _without_growth_day(_loaded(instance, "2026-03_review"))
     for key in PACER_COUNTERS:
         assert read["report"].pop(key) == out["report"][key]
+    # spec 047 T3.2: the report's previous rows postdate the golden (month_sources() sets up no previous kind)
+    assert [r["state"] for r in read["report"].pop("previous")] == ["not-set-up", "not-set-up"]
     golden = json.loads((GOLDEN_DIR / "month.json").read_text(encoding="utf-8"))
     assert read == golden
 
@@ -824,6 +827,14 @@ def _break_manifest(instance: Path) -> None:
     _manifest(instance).write_text("{broken", encoding="utf-8")
 
 
+def _weeks_without_units(instance: Path) -> None:
+    """A weeks.json of this read (its read_id stamped) that lacks its units: loads, but has nothing to count."""
+    path = _stage(instance) / "weeks.json"
+    weeks = json.loads(path.read_text(encoding="utf-8"))
+    weeks.pop("units")
+    path.write_text(json.dumps(weeks), encoding="utf-8")
+
+
 def _stale_day_file(instance: Path) -> None:
     path = _stage(instance) / "days" / "2026-03-24.json"
     path.write_text(json.dumps(dict(json.loads(path.read_text(encoding="utf-8")), read_id="other")),
@@ -835,6 +846,7 @@ def _stale_day_file(instance: Path) -> None:
     (_map_week, (), "sections-changed"),
     (_break_manifest, (), "stage-invalid"),
     (_stale_day_file, (), "stage-invalid"),
+    (_weeks_without_units, (), "stage-invalid"),     # RED while the unit count is read outside the stored check
 ])
 def test_a_stored_read_that_cannot_continue_is_discarded_and_read_anew(mod, instance, monkeypatch, capsys,
                                                                        between, extra, discarded):

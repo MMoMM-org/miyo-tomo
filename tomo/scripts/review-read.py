@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: the stage for the agents, the report on stdout.
-# version: 0.4.0
+# version: 0.5.0
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13; spec 046 T3.3; spec 047 T2.4).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -31,6 +31,9 @@ Output: one JSON object on stdout, ASCII-escaped.
             weekly_status? found|none-found|kado-empty|not-read|not-configured, weekly_notes? [{week, path, state}],
             monthly_status? (quarter, same values), monthly_notes? [{month, path, state}],
             growth {created, mocs_changed, mocs_linked_by_new, moc_folders, kado_none},
+            previous [{kind week|month|quarter, name, role previous-week|previous-month|previous-quarter, path,
+                       state found|empty|missing|not-set-up|not-read, cause? refused|failed|kado-none,
+                       partly_read}] (the previous review notes, read in the same paced pass; no text),
             calls, retried, waited_s, not_read [paths], kado_empty [sources],
             advice [raise-kado-limit | check-key-access]}
     continued: status ok, stem, period, continued true, read_id, read_at (of the stored read), stage, units,
@@ -214,23 +217,25 @@ def _period_dict(period: Period) -> dict:
 
 
 def _stored(stage: Path, period: Period, digest: str, fresh: bool):
-    """``(manifest of the read to continue, None)``, or ``(None, why a stored read is discarded, or None)``."""
+    """``(manifest, unit count)`` of the read to continue and None, or ``(None, None, why it is discarded or None)``."""
     try:
         manifest = review_stage.manifest(stage)
     except review_stage.StageMissing:
-        return None, None
+        return None, None, None
     except review_stage.StageInvalid:
-        return None, DISCARD_INVALID
+        return None, None, DISCARD_INVALID
     if fresh:
-        return None, DISCARD_FRESH
+        return None, None, DISCARD_FRESH
     if not review_stage.can_continue(stage, period, digest):
         same_read = manifest.get("layout") == review_stage.LAYOUT and manifest.get("period") == _period_dict(period)
-        return None, (DISCARD_SECTIONS if same_read else DISCARD_INVALID)
+        return None, None, (DISCARD_SECTIONS if same_read else DISCARD_INVALID)
     try:
         review_stage.load(stage)
-    except (review_stage.StageMissing, review_stage.StageInvalid, review_stage.StageStale):
-        return None, DISCARD_INVALID
-    return manifest, None
+        units = _units(stage)
+    except (review_stage.StageMissing, review_stage.StageInvalid, review_stage.StageStale,
+            KeyError, TypeError, ValueError):
+        return None, None, DISCARD_INVALID
+    return manifest, units, None
 
 
 def _units(stage: Path) -> int:
@@ -251,11 +256,11 @@ def run(args: argparse.Namespace) -> dict:
     digest = review_stage.sections_digest(definitions)
     discarded = None
     if not args.measure:
-        stored, discarded = _stored(stage, period, digest, args.fresh)
+        stored, units, discarded = _stored(stage, period, digest, args.fresh)
         if stored is not None:
             return {"status": "ok", "stem": stem, "period": stored["period"], "continued": True,
                     "read_id": stored["read_id"], "read_at": stored["read_at"], "stage": str(stage),
-                    "units": _units(stage), "report": stored["report"], "nothing_to_review": False}
+                    "units": units, "report": stored["report"], "nothing_to_review": False}
         review_stage.discard(stage)
     try:
         result = _read(period, sources, day_settings(setup, config))

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_children.py — the child-review level of a period read: a
 quarter reads its dailies, the weekly notes of its weeks as sources and its
 monthly notes with marks; a month keeps marking at the weekly level (spec
@@ -91,7 +91,9 @@ def test_the_same_notes_read_as_a_month_mark_at_weekly_level():
     assert result["dailies_not_in_weekly"] == ["Only-Daily"]
     assert "monthly" not in result and "only_in_monthly_links" not in result
     assert "monthly_status" not in result["report"] and "monthly_notes" not in result["report"]
-    assert not any(p.startswith(MONTHLY) for p in vault.paths_seen)
+    # spec 047 T3.2: only the previous month's lookup touches the monthly folder (one listing, no 2026-01 note)
+    assert {p for p in vault.paths_seen if p.startswith(MONTHLY)} == {MONTHLY}
+    assert [(r["role"], r["state"]) for r in result["previous"]][0] == ("previous-month", "missing")
 
 
 def test_a_month_note_never_read_puts_its_days_in_no_mark():

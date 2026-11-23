@@ -57,9 +57,12 @@ previous note is context, never a reason to stop. `not-read` names why,
 because the user acts differently on each cause:
 
 - `refused` — Kado denied the path. Kado's per-path denial (and its tag
-  rules, Kado #81) is a tool error whose text names `FORBIDDEN`
-  (`KadoToolError`), not an HTTP status: verified in T1.4, ADR-5 v1.3. The
-  client has no error code field, so the text is matched. It is caught per
+  rules, Kado #81) is a tool error carrying the error code `FORBIDDEN`
+  (`{"code":"FORBIDDEN",...}` in the `KadoToolError` text), not an HTTP
+  status: verified in T1.4, ADR-5 v1.3. The client has no error code field,
+  so the text is matched — on the quoted code `"FORBIDDEN"`, not the bare
+  word, so an unrelated message that merely contains the word is not taken
+  for a denial (T3.2 review). It is caught per
   previous-note call, the listing and the read each, and remembered on the
   note so the read after the end pass does not ask again (Kado says a denial
   is permanent: do not retry the same path).
@@ -114,3 +117,20 @@ value cannot make the cutter keep nothing silently.
 `sections` maps a heading to its lines (text before the first heading under
 `""`); a heading that repeats gets its lines appended, so nothing is lost by
 the mapping.
+
+## WHY the Kept Lines Come From `review_md.kept_lines`
+
+WHY: one rule, one place. Dropping the lines a breaks-and-navigation mask
+marks, METADATA callouts, embed lines and navigation-only lines is the same
+filter a same-day linked note gets in `review_day`; both call
+`review_md.kept_lines` (T3.2 review: the two copies had already drifted only
+in the day arguments). A previous note passes no day: its navigation is
+judged without the day's own date.
+
+## WHY `report_rows`
+
+WHY: CON-3 and the SDD's `report.previous`. The report printed on stdout and
+stored in `manifest.json` names every previous note with kind, name, role,
+path, state, cause and `partly_read`, never its text; `report_rows` drops
+`sections` here, next to the rows' shape, so the period read does not need to
+know which keys carry text.

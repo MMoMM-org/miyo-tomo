@@ -169,6 +169,14 @@ from its title on; the owner's journal keeps the question of the day there
 and the planner its links, neither being the day's words. The same block
 is the one the trailing-block rule drops at the end of a daily.
 
+## WHY `kept_lines` Lives Here
+
+WHY: a same-day linked note (`review_day`) and a previous review note
+(`review_previous`) drop the same lines once the caller marked its breaks and
+dropped sections: those marks, METADATA callouts, embed lines and
+navigation-only lines (judged with the day and token when the caller has
+them). One helper keeps the two reads from drifting apart (spec 047 T3.2).
+
 ## WHY the Automatic Fences and the Field and Embed Patterns Live Here
 
 Spec 046 (T1.2) adds a second reader of the same line shapes:

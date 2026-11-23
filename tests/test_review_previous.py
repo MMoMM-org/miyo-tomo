@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_previous.py — finding and reading the previous review notes of a period
 (spec 047 T3.1; ADR-5; PRD F3-AC1..F3-AC5, F3-AC7..F3-AC10, F4-AC9, F6-AC7).
 
@@ -19,7 +19,11 @@ Mechanisms a mutation falsifies:
   of `Period.note_paths` is not looked up.
 - `test_forbidden_read_is_not_read_refused` /
   `test_forbidden_listing_is_not_read_refused` — RED when the `FORBIDDEN`
-  catch is removed (the error escapes).
+  catch is removed (the error escapes); the listing one also RED when the
+  `if key in note.refused` guard of `_guarded` is removed (the refused
+  folder is listed again after the end pass).
+- `test_unquoted_forbidden_in_another_message_is_not_refused` — RED when the
+  match is the bare word `FORBIDDEN` instead of Kado's quoted error code.
 - `test_skeleton_only_note_is_empty` — RED when the `has_content` check is
   dropped (every note is `found`).
 
@@ -62,7 +66,6 @@ from review_fake_vault import ReviewFakeVault  # noqa: E402
 WEEKLY = "Calendar/302 Weekly/"
 MONTHLY = "Calendar/303 Monthly/"
 QUARTERLY = "Calendar/304 Quarterly/"
-DAILY = "Calendar/301 Daily/"
 FOLDERS = {WEEK: WEEKLY, MONTH: MONTHLY, QUARTER: QUARTERLY}
 FORMATS = {WEEK: "GGGG-[W]WW", MONTH: "YYYY-MM", QUARTER: "YYYY-[Q]Q"}
 W14 = Period.week(2026, 14)
@@ -270,12 +273,23 @@ def test_forbidden_listing_is_not_read_refused():
     vault.fail[("list_dir", MONTHLY)] = FORBIDDEN
     row = _by_role(_run(vault, W14), "previous-month")
     assert (row["state"], row["cause"], row["path"]) == (NOT_READ, REFUSED, None)
+    # refused once, never listed again after the end pass
+    assert vault.events.count(("list_dir", MONTHLY)) == 1
 
 
 def test_auth_error_stops_the_read():
     vault = _w14_vault()
     vault.fail[("read_note", MONTHLY + "2026-02.md")] = KadoAuthError("Kado rejected the request (HTTP 401).")
     with pytest.raises(KadoAuthError):
+        _run(vault, W14)
+
+
+def test_unquoted_forbidden_in_another_message_is_not_refused():
+    # only Kado's error code "FORBIDDEN" (quoted, as in {"code":"FORBIDDEN"}) is a denial
+    vault = _w14_vault()
+    vault.fail[("read_note", WEEKLY + "2026-W13.md")] = KadoToolError(
+        "kado-read returned an error: FORBIDDEN word inside an unrelated message")
+    with pytest.raises(KadoToolError, match="unrelated"):
         _run(vault, W14)
 
 
@@ -305,19 +319,6 @@ def test_empty_listing_is_kado_none():
     vault = ReviewFakeVault({MONTHLY + "2026-02.md": FEB_NOTE}, folders=[WEEKLY, MONTHLY])
     row = _by_role(_run(vault, W14), "previous-week")
     assert (row["state"], row["cause"], row["path"]) == (NOT_READ, KADO_NONE, None)
-
-
-def test_period_dailies_refused_still_stop_the_read():
-    vault = _w14_vault(**{DAILY + "2026-03-30.md": "- day"})
-    vault.fail[("read_note", WEEKLY + "2026-W13.md")] = FORBIDDEN
-    vault.fail[("list_dir", DAILY)] = FORBIDDEN
-    reader, pacer = _reader(vault)
-    try:
-        prefetch(reader, set_up(W14, ISO, FOLDERS, FORMATS))
-        with pytest.raises(KadoToolError, match="FORBIDDEN"):
-            reader.folder(DAILY)
-    finally:
-        pacer.close()
 
 
 # ── the text (F3-AC10, F4-AC5, F4-AC9) ──

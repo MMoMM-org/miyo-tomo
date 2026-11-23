@@ -1,5 +1,5 @@
 # review_period.py — reads a period for /review: dailies, the day after, child-review notes, link differences, growth.
-# version: 0.5.2
+# version: 0.6.0
 """Reading a period for ``/review`` (spec 045, T3.3; PRD F3-AC5..7, F3-AC9).
 
 Owns what lies between one day and the report: finding the dailies of every
@@ -15,7 +15,9 @@ link differences per marked level (``only_in_<label>_links``,
 entry with its local creation ``day``, ``created_day``) and the MOC
 listings, and the per-source report. ``kado_empty`` and the
 ``check-key-access`` advice come from the daily and child folder listings
-only; a growth query Kado answered with nothing is named in
+only; the previous review notes (``lib/review_previous.py``, spec 047 ADR-5)
+are listed and read before the end pass and resolved after it, giving
+``result["previous"]`` and ``report["previous"]`` (no text); a growth query Kado answered with nothing is named in
 ``report.growth.kado_none``. Every level read carries a ``<label>_status``
 (``not-configured`` without its folder and format).
 Day reading is ``lib/review_day.py``'s: its functions arrive as a
@@ -41,11 +43,12 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from lib import review_children as children
+from lib import review_previous
 from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.moc_folders import moc_folder_prefixes
 from lib.period import ISO, MONTH, QUARTER, WEEK, Period, WeekRule, parse_name
 from lib.review_children import ChildNotes, Found
-from lib.review_config import GRANULARITY, configured_formats, folder_for
+from lib.review_config import DEFAULT_MAX_CHARS, GRANULARITY, configured_formats, folder_for
 from lib.review_reader import PacedReader
 from lib.review_weekly import (
     DEFAULT_DAILY_FORMAT,
@@ -81,11 +84,18 @@ class PeriodSources:
     monthly_format: Optional[str] = None
     quarterly_format: Optional[str] = None
     monthly_own_sections: Sequence[str] = ()
+    quarterly_folder: Optional[str] = None
 
     def child(self, kind: str) -> ChildNotes:
         if kind == WEEK:
             return ChildNotes(WEEK, self.weekly_folder, self.weekly_format, self.own_sections)
         return ChildNotes(MONTH, self.monthly_folder, self.monthly_format, self.monthly_own_sections)
+
+    def previous_notes(self, period: Period) -> List[review_previous.PreviousNote]:
+        """The previous review notes of ``period`` in these folders and formats; no Kado call."""
+        return review_previous.set_up(
+            period, self.rule, {WEEK: self.weekly_folder, MONTH: self.monthly_folder, QUARTER: self.quarterly_folder},
+            {WEEK: self.weekly_format, MONTH: self.monthly_format, QUARTER: self.quarterly_format})
 
 
 @dataclass(frozen=True)
@@ -129,6 +139,7 @@ def sources_from_config(config: dict, profile: dict) -> PeriodSources:
         monthly_format=formats.get(MONTH),
         quarterly_format=formats.get(QUARTER),
         monthly_own_sections=_own_sections(config, MONTH),
+        quarterly_folder=folder_for(config, profile, GRANULARITY[QUARTER]),
     )
 
 
@@ -401,9 +412,13 @@ class _PeriodRead:
                 children.prefetch(self.reader, found[child.kind])
         start_ms, end_ms = period_bounds_ms(period)
         self._growth_fetch(start_ms, end_ms)
+        previous = sources.previous_notes(period)
+        review_previous.prefetch(self.reader, previous)
 
         self.reader.finish()
         after_fields = self._after_end_pass(entries, incomplete, after_incomplete, after_fields, daily_listing, found)
+        previous_rows = review_previous.resolve(
+            self.reader, previous, max_chars=int(self.settings.get("max_chars_per_day") or DEFAULT_MAX_CHARS))
         days = self.readers.attribute_yesterday([entries[d] for d in sorted(entries)], after_fields)
         for entry in days:
             for item in entry.get("linked", []):
@@ -414,7 +429,7 @@ class _PeriodRead:
         result: Dict[str, Any] = {
             "period": {"kind": period.kind, "name": period.name,
                        "start": period.start.isoformat(), "end": period.end.isoformat()},
-            "days": days, "open_tasks": open_tasks, "growth": growth,
+            "days": days, "open_tasks": open_tasks, "growth": growth, "previous": previous_rows,
         }
         report: Dict[str, Any] = {
             "days": [self._day_report(date.fromisoformat(e["date"]), e) for e in days],
@@ -430,6 +445,7 @@ class _PeriodRead:
                             "moc_folders": len(sources.moc_folders), "kado_none": list(self.growth_kado_none)}
         report["kado_empty"] = list(self.kado_empty)
         report["advice"] = [ADVICE_CHECK_ACCESS] if self.kado_empty else []
+        report["previous"] = review_previous.report_rows(previous_rows)
         result["report"] = report
         # last, after the last read of the run: the one list the caller hands to pacer.summary
         result["not_read"] = report["not_read"] = list(self.reader.not_read)

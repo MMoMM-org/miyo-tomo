@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_period_golden.py — the whole period read of the fake month and
 the fake week, pinned against a recording of `main` before spec 046
 generalised it (spec 046 T3.1; ADR-6; CON-2).
@@ -54,6 +54,15 @@ def _as_json(result: dict) -> dict:
     return json.loads(json.dumps(result, sort_keys=True, ensure_ascii=False))
 
 
+def _without_previous(result: dict) -> dict:
+    """The result without the one key spec 047 T3.2 adds, in the result and in its report."""
+    assert "previous" in result and "previous" in result["report"], "T3.2 adds previous to both"
+    assert [r["state"] for r in result["previous"]] == ["not-set-up", "not-set-up"], "no previous kind set up"
+    result.pop("previous")
+    result["report"].pop("previous")
+    return result
+
+
 CASES = {
     "month": lambda: run(month_vault(), MARCH, month_sources()),
     "week": lambda: run(growth_vault(), W13, week_sources(moc_folders=[MOCS])),
@@ -62,8 +71,9 @@ CASES = {
 
 @pytest.mark.parametrize("name", sorted(CASES))
 def test_period_read_unchanged_by_generalisation(name):
-    result = _as_json(CASES[name]())
+    result = _without_previous(_as_json(CASES[name]()))
     golden = _golden(name)
+    assert "previous" not in golden and "previous" not in golden["report"]
     for key in sorted(set(golden) | set(result)):
         assert result.get(key) == golden.get(key), f"{name}: '{key}' differs from the main recording"
 

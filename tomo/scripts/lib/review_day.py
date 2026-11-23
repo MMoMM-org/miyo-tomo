@@ -1,5 +1,5 @@
 # review_day.py — one day of /review: the daily's kept sections, fields, tasks and same-day notes.
-# version: 0.3.3
+# version: 0.3.4
 """Reading one day for ``/review`` (spec 045, T3.2; PRD F3-AC1..4, F3-AC8).
 
 ``read_day(day, dailies, settings, read_note)`` turns the daily text(s) of
@@ -32,10 +32,10 @@ from datetime import date, timedelta
 from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 from lib.review_config import DEFAULT_MAX_CHARS, ReviewSetup
-from lib.review_md import (DONE_MARK_RE, EMBED_LINE_RE, FIELD_RE, HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE,
+from lib.review_md import (DONE_MARK_RE, FIELD_RE, HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE,
                            RULE_RE, YEAR_RE,
-                           block_text, body, cleaned, fence_state, has_token, headings, is_navigation,
-                           metadata_mask, ranges, trailing_navigation)
+                           block_text, body, cleaned, fence_state, has_token, headings, kept_lines, ranges,
+                           trailing_navigation)
 from lib.vault_config_edit import get_path
 
 DEFAULT_DATE_FORMAT = "YYYY-MM-DD"
@@ -191,10 +191,7 @@ def _linked_text(text: str, day: date, token: str) -> str:
     for start, end, _ in ranges(lines, structure, lambda h: _names_other_day(h, day), cut_at_rule=True):
         for i in range(start - 1, end):
             dropped[i] = True
-    metadata = metadata_mask(lines)
-    kept = [line for i, line in enumerate(lines) if not dropped[i] and not metadata[i]
-            and not EMBED_LINE_RE.match(line) and not is_navigation(line, day, token)]
-    return block_text(cleaned(kept))
+    return block_text(cleaned(kept_lines(lines, dropped, day, token)))
 
 
 def _kind(target: str, text: str) -> str:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_review_stage.py — the stage a /review read rests in (lib/review_stage.py; spec 047 T2.3;
 PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; SDD ADR-1, ADR-2, ADR-3, ADR-10, "Data Storage Changes").
 
@@ -362,10 +362,46 @@ def test_load_gives_back_the_written_read(tmp_path, case):
         result = run(quarter_vault(), Q1, quarter_sources())
     result["sections"] = [DEFINITION]
     expected = _round_trip(result)
+    previous = expected.pop("previous")
     _write(tmp_path / "new", result)
     loaded = rs.load(tmp_path / "new")
     assert _without(loaded) == expected
-    assert loaded["previous"] == [] and loaded["condensed"] is None and loaded["carryover"] is None
+    assert loaded["previous"] == previous and loaded["condensed"] is None and loaded["carryover"] is None
+
+
+def _previous_rows() -> list:
+    """The rows review_previous.resolve gives: a found note with line-array sections, a missing one, a refused one."""
+    return [{"kind": "month", "name": "2026-02", "role": "previous-month", "path": "Monthly/2026-02.md",
+             "state": "found", "partly_read": True,
+             "sections": {"": ["intro"], "Goals": ["- run twice a week", "", "- " + "z" * 2500]}},
+            {"kind": "quarter", "name": "2025-Q4", "role": "previous-quarter", "path": None, "state": "missing",
+             "partly_read": False},
+            {"kind": "week", "name": "2026-W12", "role": "previous-week", "path": "Weekly/2026-W12.md",
+             "state": "not-read", "cause": "refused", "partly_read": False}]
+
+
+def test_write_leaves_one_previous_file_per_previous_period(tmp_path):
+    """SDD Data Storage Changes: previous/<kind>-<name>.json, one per previous period, stamped, sections as lines
+    (found only), listed in the manifest; load joins the lines back."""
+    stage = tmp_path / "s"
+    manifest = _write(stage, _result(previous=_previous_rows()))
+    names = ["month-2026-02.json", "quarter-2025-Q4.json", "week-2026-W12.json"]
+    assert manifest["files"]["previous"] == names
+    assert sorted(p.name for p in (stage / "previous").iterdir()) == sorted(names)
+    found = _json(stage / "previous" / "month-2026-02.json")
+    assert found["read_id"] == manifest["read_id"]
+    # a line over the codec's line piece is stored as its pieces, never as one over-long line
+    assert found["sections"] == {"": ["intro"],
+                                 "Goals": ["- run twice a week", "", ["- " + "z" * 998, "z" * 1000, "z" * 502]]}
+    assert found["state"] == "found" and found["partly_read"] is True
+    missing = _json(stage / "previous" / "quarter-2025-Q4.json")
+    assert missing == {"read_id": manifest["read_id"], "kind": "quarter", "name": "2025-Q4",
+                       "role": "previous-quarter", "path": None, "state": "missing", "partly_read": False}
+    refused = _json(stage / "previous" / "week-2026-W12.json")
+    assert "sections" not in refused and refused["cause"] == "refused"
+    loaded = rs.load(stage)["previous"]
+    assert loaded[0]["sections"] == {"": "intro", "Goals": "- run twice a week\n\n- " + "z" * 2500}
+    assert [r["state"] for r in loaded] == ["found", "missing", "not-read"]
 
 
 def test_load_gives_back_the_scaled_quarter(tmp_path):

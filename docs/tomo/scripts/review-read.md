@@ -221,6 +221,21 @@ discarded without a `discarded` key. Only the mapping invalidates a stored
 read among the setup values — PRD names the mapping only; other setup edits
 (daily sections, `max_chars_per_day`) apply to the next new read.
 
+The unit count a continued read prints comes from `weeks.json` inside the
+same check: a stamped `weeks.json` without `units` (or with a malformed list)
+is `stage-invalid` and read anew, never an exit 1 (T2.4 review carry-over).
+
+## WHY the Report Names the Previous Notes (Spec 047 T3.2, ADR-5)
+
+WHY: F3-AC6 and F2-AC6. The previous review notes are read inside the one
+paced pass (`lib/review_period.py`), so the one summary (calls, retried,
+waited_s, not_read, advice) covers them with the period's notes. The report
+gains `previous`: one row per previous period with kind, name, role, path,
+state (`found` / `empty` / `missing` / `not-set-up` / `not-read`), cause
+(`refused` / `failed` / `kado-none`, only for `not-read`) and `partly_read` —
+no text (CON-3). The skill and `review-doc.py` render the top lines from it;
+the text rests in `previous/` of the stage.
+
 ## WHY a New Read Discards First (F2-AC5, F6-AC4, ADR-10)
 
 WHY: a new read calls `review_stage.discard` before its first Kado call,

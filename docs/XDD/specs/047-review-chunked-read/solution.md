@@ -503,6 +503,8 @@ tests/
 ├── test_review_stage.py                      # NEW (replaces test_review_read_parts.py)
 ├── test_review_weeks.py                      # NEW
 ├── test_review_previous.py                   # NEW
+├── test_review_period_previous.py            # NEW (spec 047 T3.2): previous notes inside the period read, one pacer
+├── test_review_read_previous.py              # NEW (spec 047 T3.2): month/quarter walkthroughs, report.previous, previous/ files
 ├── test_review_digest.py                     # NEW
 ├── test_review_carried.py                    # NEW
 ├── test_047_skill_contract.py                # NEW: pinned step 4/5 prose, allowed-tools, STRICTs, agent prompts

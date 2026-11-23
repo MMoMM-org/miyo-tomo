@@ -67,6 +67,18 @@ or a task text is a value the scripts match on, and is never that long in a
 vault (the scaled quarter's index-heavy shape pads them to 2–3 KB as filler,
 which is why the line check runs on the children-heavy shape only).
 
+## WHY One Previous File per Previous Period (Spec 047 T3.2)
+
+WHY: SDD Data Storage Changes and its walkthrough (`previous/quarter-2025-Q4.json
+= {state: missing, path: null}`): `previous/<kind>-<name>.json` is written for
+every row of `result["previous"]`, whatever its state, so `load` gives back the
+state of every previous note; only a found note carries `sections`. The rows
+arrive with `sections` as line arrays (`review_previous.resolve`); the codec's
+`previous_doc` accepts lines or a text and stores them as lines (a line over
+1,000 characters as its pieces), so a resolved row and a hand-built one write
+the same file. The non-found files hold no note text, only the metadata the
+report also has.
+
 ## WHY the Manifest Is Written Last, and Compact
 
 WHY: ADR-3. `write` first discards every earlier file of the stage (F6-AC5),

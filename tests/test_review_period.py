@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.3
+# version: 0.4.4
 """test_review_period.py — reading a period for /review: dailies flat and in
 year folders, the day after the period, duplicates, link stems resolved to
 vault paths, task notes read once, the weekly notes of a month with their
@@ -232,7 +232,9 @@ def test_week_notes_are_not_read_for_a_week_review():
     result = run(vault, W13, month_sources())
     assert "weekly" not in result
     assert "only_in_weekly_links" not in result
-    assert not any(p.startswith(WEEKLY) for p in vault.paths_seen)
+    # spec 047 T3.2: only the previous week's lookup touches the weekly folder (one listing, no 2026-W12 note)
+    assert {p for p in vault.paths_seen if p.startswith(WEEKLY)} == {WEEKLY}
+    assert [(r["role"], r["state"]) for r in result["previous"]][0] == ("previous-week", "missing")
 
 
 def test_day_blocks_keyed_by_date_end_at_their_level_and_drop_out_of_month_and_skipped_text():

@@ -319,3 +319,29 @@ config lookups `review_config` already owns the keys for (`folder_for`,
 `configured_formats`, `get_path`). Building `PeriodSources` here keeps
 `review-read.py` a CLI over the libs and keeps the key paths in one place;
 the defaults (`YYYY-MM-DD`, ISO) match `vault-example.yaml`.
+
+## WHY the Previous Notes Are Read in the Period Pass (Spec 047 T3.2, ADR-5)
+
+WHY: F2-AC6 — the period's notes and the previous review notes are read under
+one pacer in one pass with one retry/wait report. `run()` calls
+`review_previous.set_up` and `prefetch` before `reader.finish()`, through the
+same `PacedReader`, so a previous note Kado turned away in the first pass is
+retried by the one end pass like any daily; `resolve` runs after it and
+answers from the cache, before `not_read` is set, so a previous note still
+failing is in the one `not_read` list. The dailies are listed and read first:
+a refusal of the period's own dailies is not caught and still stops the read,
+while a refused previous note is only that note's `not-read` / `refused`.
+
+The result gains `previous` (one row per previous period, `sections` as line
+arrays for a found note) and the report gains `previous` with the same rows
+minus `sections` — metadata only (CON-3); `review_previous.report_rows` makes
+them. Nothing else of the result changes: a kind not set up costs no call, so
+a read without previous kinds is the spec 046 read plus the key (the T3.1
+goldens are compared with `previous` taken out).
+
+The folders and formats come from `PeriodSources` (weekly, monthly and the new
+`quarterly_folder`, config over profile through `folder_for`), not from a
+second config read: one place builds the period's sources. A previous note's
+cut limit is the day's `max_chars_per_day` (ADR-2). CON-5: this module gets
+call sites and the field only; finding, states and text are
+`lib/review_previous.py`'s.

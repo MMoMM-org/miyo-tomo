@@ -101,3 +101,12 @@ shape is ambiguous: `"7,500"` could be a German decimal 7.5. The guard
 resolves it conservatively, as days only: a missing aggregate is visible,
 a wrong one is not. The guard lives here, not in `review_habits`, because
 the habit check reads its own values and is out of this change's scope.
+
+## WHY `previous_doc` Accepts Lines or a Text
+
+WHY: `review_previous.resolve` gives a found note's sections as line arrays
+(the SDD row shape), while a hand-built result may carry texts. `previous_doc`
+joins either form (`join_text`) and stores `lines_of` that text, so a line
+over the piece length is pieced in both cases and `previous_entry` joins it
+back to the same text (T3.2: storing a list through `lines_of` wrote its
+Python repr).

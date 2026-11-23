@@ -1,5 +1,5 @@
 # review_md.py — the markdown structure a /review read works on: body, fences, sections, breaks, navigation.
-# version: 0.2.0
+# version: 0.2.1
 """Markdown structure for ``/review`` reading (spec 045, T3.2; PRD F3-AC1, F3-AC2, F3-AC4).
 
 ``DONE_MARK_RE`` is the Tasks plugin's `` ✅ YYYY-MM-DD`` done marker (the check
@@ -12,7 +12,8 @@ section its subsections (cut at a break only when asked).
 METADATA callout, a callout of links only, navigation-only lines — and nothing
 else. ``cleaned`` drops query and embed fences and inline queries, never
 executing them. ``is_navigation``, ``metadata_mask`` and ``has_token`` are the
-navigation and day-name tests. ``AUTOMATIC_FENCES``, ``FIELD_RE`` and
+navigation and day-name tests; ``kept_lines`` drops what a caller's mask
+marks plus METADATA callouts, embed lines and navigation-only lines. ``AUTOMATIC_FENCES``, ``FIELD_RE`` and
 ``EMBED_LINE_RE`` are the plugin fences, inline fields and embed lines both
 ``review_day`` and ``review_mapping`` (spec 046, T1.2) read. No setting, no
 Kado, no model, no file I/O: ``review_day`` applies these rules to one daily.
@@ -231,3 +232,11 @@ def metadata_mask(lines: Iterable[str]) -> List[bool]:
         inside = quoted and (inside or METADATA_RE.match(line.lstrip()) is not None)
         out.append(inside)
     return out
+
+
+def kept_lines(lines: List[str], dropped: List[bool], day: Optional[date] = None,
+               token: Optional[str] = None) -> List[str]:
+    """``lines`` without the ``dropped`` ones, METADATA callouts, embed lines and navigation-only lines."""
+    metadata = metadata_mask(lines)
+    return [line for i, line in enumerate(lines) if not dropped[i] and not metadata[i]
+            and not EMBED_LINE_RE.match(line) and not is_navigation(line, day, token)]

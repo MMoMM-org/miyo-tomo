@@ -1,5 +1,5 @@
 # review_previous.py — the previous review notes of a period read: which periods, found how, in which state, what text.
-# version: 0.1.0
+# version: 0.1.1
 """Finding and reading the previous review notes (spec 047, T3.1; ADR-5; PRD F3-AC1..F3-AC10, F4-AC9, F6-AC7).
 
 ``previous_periods`` names the previous periods of a review as ``(role,
@@ -14,9 +14,10 @@ reader's ``finish()``; ``resolve`` turns each note into its row after it:
 ``{kind, name, role, path, state, cause?, partly_read, sections?}`` with
 state ``found`` / ``empty`` / ``missing`` / ``not-set-up`` / ``not-read``,
 cause (only for ``not-read``) ``refused`` / ``failed`` / ``kado-none``, and
-``sections`` ``{heading: [lines]}`` (only for ``found``). A ``KadoToolError``
-whose text names ``FORBIDDEN`` is caught per call and makes the note
-``refused``; every other error propagates. Every Kado call goes through the
+``sections`` ``{heading: [lines]}`` (only for ``found``); ``report_rows`` gives
+the same rows without ``sections`` for the report. A ``KadoToolError``
+whose text carries Kado's quoted error code ``"FORBIDDEN"`` is caught per call
+and makes the note ``refused``; every other error propagates. Every Kado call goes through the
 ``PacedReader`` the caller hands in.
 
 Design notes: docs/tomo/scripts/lib/review_previous.md
@@ -30,15 +31,14 @@ from lib.kado_client import KadoToolError
 from lib.period import KINDS, MONTH, QUARTER, WEEK, Period, WeekRule
 from lib.review_config import GRANULARITY, configured_formats, folder_for
 from lib.review_day import SECTION_UNIT, cut_at_boundary, has_content
-from lib.review_md import (
-    EMBED_LINE_RE, block_text, body, cleaned, headings, is_navigation, metadata_mask, trailing_navigation,
-)
+from lib.review_md import block_text, body, cleaned, headings, kept_lines, trailing_navigation
 from lib.vault_paths import path_key
 
 FOUND, EMPTY, MISSING, NOT_SET_UP, NOT_READ = "found", "empty", "missing", "not-set-up", "not-read"
 STATES = (FOUND, EMPTY, MISSING, NOT_SET_UP, NOT_READ)
 REFUSED, FAILED, KADO_NONE = "refused", "failed", "kado-none"
 FORBIDDEN = "FORBIDDEN"
+_FORBIDDEN_CODE = f'"{FORBIDDEN}"'    # the quoted code of {"code":"FORBIDDEN",...}
 ROLE = {WEEK: "previous-week", MONTH: "previous-month", QUARTER: "previous-quarter"}
 
 
@@ -83,13 +83,13 @@ def set_up(period: Period, rule: WeekRule, folders: Mapping[str, Optional[str]],
 
 
 def _guarded(note: PreviousNote, key: str, call: Callable[[], object]) -> object:
-    """``call()``; a ``FORBIDDEN`` tool error marks ``key`` refused and answers None, also when asked again."""
+    """``call()``; a ``"FORBIDDEN"`` tool error marks ``key`` refused and answers None, also when asked again."""
     if key in note.refused:
         return None
     try:
         return call()
     except KadoToolError as exc:
-        if FORBIDDEN not in str(exc):
+        if _FORBIDDEN_CODE not in str(exc):
             raise
         note.refused.add(key)
         return None
@@ -122,16 +122,14 @@ def prefetch(reader, notes: List[PreviousNote]) -> None:
 def _kept_lines(text: str) -> List[str]:
     """The body without navigation, METADATA callouts, embed lines and breaks with their trailing navigation."""
     _, lines = body(text)
-    dropped = trailing_navigation(lines, headings(lines))
-    metadata = metadata_mask(lines)
-    return [line for i, line in enumerate(lines) if not dropped[i] and not metadata[i]
-            and not EMBED_LINE_RE.match(line) and not is_navigation(line)]
+    return kept_lines(lines, trailing_navigation(lines, headings(lines)))
 
 
 def _blocks(lines: List[str]) -> List[Tuple[str, List[str]]]:
     """``(heading, cleaned lines)`` per heading block in order; the text before the first heading under ``""``."""
-    starts = [i for i, _, _ in headings(lines)[0]]
-    names = {i: text for i, _, text in headings(lines)[0]}
+    found = headings(lines)[0]
+    starts = [i for i, _, _ in found]
+    names = {i: text for i, _, text in found}
     bounds = ([0] if not starts or starts[0] != 0 else []) + starts + [len(lines)]
     out = []
     for start, end in zip(bounds, bounds[1:]):
@@ -192,3 +190,8 @@ def _resolve_one(reader, note: PreviousNote, max_chars: int) -> dict:
 def resolve(reader, notes: List[PreviousNote], *, max_chars: int) -> List[dict]:
     """One row per previous note, after the reader's ``finish()``; answers from the reader's cache."""
     return [_resolve_one(reader, note, max_chars) for note in notes]
+
+
+def report_rows(rows: List[dict]) -> List[dict]:
+    """The rows of ``resolve`` without their text: the report's ``previous``."""
+    return [{k: v for k, v in row.items() if k != "sections"} for row in rows]

@@ -510,6 +510,7 @@ tests/
 ├── test_review_digest.py                     # NEW
 ├── test_review_digest_schemas.py             # NEW (spec 047 T4.1): W14 digest/carryover validate; caps, patterns, enums refused
 ├── test_review_carried.py                    # NEW
+├── test_review_proposals_carried_schema.py   # NEW (spec 047 T5.1): carried + carried_ids validate on group and section items; the pair, enum, id pattern refused; 045/046 fixtures still valid
 ├── test_047_skill_contract.py                # NEW: pinned step 4/5 prose, allowed-tools, STRICTs, agent prompts
 ├── test_047_agents.py                        # NEW: frontmatter (model, tools Read/Write, no mcp), version header
 ├── test_review_read_parts.py                 # DELETE

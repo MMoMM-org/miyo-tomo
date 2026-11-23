@@ -294,3 +294,32 @@ WHY `replace --confirm` keeps `condensed.json` and `carryover.json`: a
 discard), so the confirmed start-over renders from the same condensed read
 the refused `write` had; the stage content — these two files included — is
 discarded only after a document was written.
+
+## WHY the Proposals Schema Gains `carried` and `carried_ids` (Spec 047 T5.1, ADR-6)
+
+WHY a separate field and not new values of `mark`: a section item may carry
+both a child mark (`not_in_weekly`, …) and a carried mark (F5-AC2), and
+group items have no `mark` at all (spec 046 CON-2). So group items
+(`$defs/items`) and section items (`$defs/sectionItem`) both gain the same
+two optional fields: `carried` (`done` | `still_open` | `not_mentioned`,
+`$defs/carried`) and `carried_ids` (≥ 1 carryover id `^c[0-9]{1,3}$`,
+`$defs/carriedIds`, the id pattern of `review-carryover.schema.json`).
+
+WHY `dependentRequired` both ways: a mark without ids cannot say what it
+carries (no coverage), and ids without a mark cannot say what became of
+them. Either half alone is a malformed item, so the schema refuses it before
+any document check runs; the file stays closed (`additionalProperties:
+false`), so a misspelt field is refused too.
+
+WHY the schema checks only the shape: whether an id exists in
+`carryover.json`, is used exactly once, fits the group, or whether the
+item's previous-note sources lie within its ids' sources needs the stage,
+so `lib/review_carried.py` checks the document (ADR-6), each failure an
+`errors` entry of `proposals-invalid`. The change is additive: every
+proposals file of specs 045/046 still validates, and `schema_version` of
+the wire is untouched (ADR-9).
+
+Known limit: the id pattern is evaluated with Python `re.search`, where `$`
+also matches before a trailing `\n`, so `"c1\n"` passes the schema. Such an
+id matches no carryover id and is refused as `carried-unknown` by
+`lib/review_carried.py`.

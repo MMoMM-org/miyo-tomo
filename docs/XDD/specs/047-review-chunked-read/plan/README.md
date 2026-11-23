@@ -1,7 +1,7 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: ready
-version: "1.0"
+version: "1.2"
 ---
 
 # Implementation Plan
@@ -109,7 +109,7 @@ When implementation requires changes from the specification:
 **Specification**:
 
 - `docs/XDD/specs/047-review-chunked-read/requirements.md` — PRD v1.1 (56 criteria F1-AC1 … F8-AC2; amendments to specs 045/046; Notes for the SDD)
-- `docs/XDD/specs/047-review-chunked-read/solution.md` — SDD v1.1 (12 confirmed ADRs; Building Block View with the responsibility matrix, lines 374-427; Directory Map 429-505; interfaces 535-677; examples 697-870; walkthroughs (a)–(d) 966-1049; gotchas 1298-1309). Large: read in parts with offset/limit.
+- `docs/XDD/specs/047-review-chunked-read/solution.md` — SDD v1.2 (12 confirmed ADRs, ADR-1/2/4/6/10 amended 2026-11-23; line numbers below are v1.1's and run 2–35 lines low in v1.2 (more toward the end) — the section names govern; Building Block View with the responsibility matrix, lines 374-427; Directory Map 429-505; interfaces 535-677; examples 697-870; walkthroughs (a)–(d) 966-1049; gotchas 1298-1309). Large: read in parts with offset/limit.
 - `docs/XDD/specs/047-review-chunked-read/README.md` — Decisions Log (tier Incremental, model tier hard, labels, deletion at write, continue on the stored read)
 - `docs/XDD/specs/047-review-chunked-read/research.md` — measured sizes, ~1.85 chars/token, consumer list C1–C10
 - `docs/XDD/specs/046-review-template-sections/solution.md` and `close-out.md`; `docs/XDD/specs/045-weekly-monthly-review/solution.md` — the base designs
@@ -118,9 +118,9 @@ When implementation requires changes from the specification:
 
 **Key Design Decisions**:
 
-- **ADR-1 / ADR-3**: `review-read.py` writes a stage (`days/`, `children/`, `previous/`, `context*.json`, `weeks.json`, `manifest.json` last, a `read_id` on every file) through `lib/review_stage.py`; `review_stage.load` returns today's merged dict so `review-doc.py`'s consumers stay untouched; a stored read is continued without Kado unless `--fresh`, the mapping changed or the manifest is invalid. `lib/review_read_parts.py` is deleted.
-- **ADR-2**: every agent-read file ≤ 40,960 bytes in its line-broken (`indent=1`, text as line arrays, UTF-8) form; a unit ≤ 81,920 bytes of day files; digest cap `min(8192, 114688 // units)`; carryover cap 12,288; one cutter `review_day.cut_at_boundary`.
-- **ADR-4 / ADR-8**: `review-digest.py plan | check` drives one batch (rounds of ≤ `MAX_PARALLEL` 16) of haiku digesters and the sonnet carryover, one retry, then the opus proposer; "not condensed" is named, never a partial read. The skill dispatches every agent from the main session with STRICT rules (one message, `subagent_type`, `run_in_background: false`, no stage reads in the main session).
+- **ADR-1 / ADR-3**: `review-read.py` writes a stage (`days/`, `growth/` per creation day, `children/`, `previous/`, `context*.json`, `weeks.json`, `manifest.json` last, a `read_id` on every file) through `lib/review_stage.py`; `review_stage.load` returns today's merged dict so `review-doc.py`'s consumers stay untouched; a stored read is continued without Kado unless `--fresh`, the mapping changed or the manifest is invalid. `lib/review_read_parts.py` is deleted. `context.json` holds growth counts and MOC lists only; the read `report` lives only in `manifest.json` and is never proposer input.
+- **ADR-2**: every agent-read file ≤ 32,768 bytes (was 40,960; owner after T1.4) in its line-broken (`indent=1`, text as line arrays, UTF-8) form; a unit ≤ 81,920 bytes of day files plus growth files; digest cap `min(8192, 114688 // units)`; carryover cap 12,288; one cutter `review_day.cut_at_boundary`.
+- **ADR-4 / ADR-8**: `review-digest.py plan | check` drives one batch (rounds of ≤ `MAX_PARALLEL` 16) of haiku digesters and the sonnet carryover, one retry, then the opus proposer; each digest carries its unit's growth candidates (source = creation day); "not condensed" is named, never a partial read. The skill dispatches every agent from the main session with STRICT rules (one message, `subagent_type`, `run_in_background: false`, no stage reads in the main session).
 - **ADR-5 / ADR-6 / ADR-12**: previous notes through the same `PacedReader`, five states; proposals gain `carried` + `carried_ids`, checked in `lib/review_carried.py` (failures always in `errors`), a full section resolved by `overflow`; labels and top lines in `_LABELS`.
 - **ADR-9 / ADR-10 / ADR-11**: Pass 2 and wire v4 unchanged; `review_stage.discard` at write, Pass 1 abort, new read; a behaviour baseline e2e (week, month, quarter fingerprints) is written and GREEN on the old flow before any production change.
 
@@ -177,6 +177,12 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 **Between Phase 2 and Phase 6** the runtime skill still describes the old step 5; the test instance is not synced before T9.1, so no live run sees the half-built flow. The baseline e2e (T1.3) stays GREEN through Phases 2–7 because the walk drives the scripts, not the skill.
 
+### Deviation 2026-11-23 (owner, after the T1.5 measurement)
+
+T1.5 measured 2026-Q1: days max 8,303 B, ISO-week sums max 46,747 B (indent=1) — the ADR-2 day, week and digest limits hold. But `growth.created` (746 created notes with their links) was ≈ 157.7 KB indented, 4× the 40,960-byte ceiling, and `report` ≈ 39.5 KB. Decided: (1) vault growth goes per creation day to `growth/<date>.json`, counts in its unit's 81,920-byte budget (a week pushed over splits by the same rule), and reaches the proposer only as the digests' growth candidates, whose sources are the creation days (today's growth group rule, `review_doc.py:274-275`); (2) `context.json` keeps only `created_count`, `mocs_changed`, `mocs_linked_by_new`; (3) the read `report` stays in `manifest.json` only, scripts render from it as before, no agent reads it. SDD v1.2 amends ADR-1, ADR-2, ADR-4, ADR-6, ADR-10. Tasks changed (ids stable): T2.2, T2.3 (adds the `review_period._growth` `day` key), T2.4, T2.5, T4.1, T4.2, T4.3, T4.4, T6.2, T6.4, T7.2, T8.1. No PRD criterion or owning task moves.
+
+Second pass, same day (owner, after T1.4; SDD v1.3): `FILE_CEILING` 32,768 bytes (Read cut a 40,965-byte poorly tokenizing file at its 25k-token cap); a Kado per-path denial is a `FORBIDDEN` `KadoToolError`, caught per previous-note call as `refused`, while `KadoAuthError` still stops the read. Tasks changed: T2.2, T2.3 (ceiling), T3.1, T3.3 (denial), T8.1 (fingerprint `diff()` parent-key form).
+
 ### Criteria → task map (one owning task per PRD criterion)
 
 Model-behaviour criteria (marked †) are owned by the task that writes the agent rule and its prompt pin; their evidence is completed by a recorded live-walk row in T9.2 and traced in T9.4.
@@ -189,7 +195,7 @@ Model-behaviour criteria (marked †) are owned by the task that writes the agen
 | F1-AC4 † | T6.2 | T9.2 |
 | F1-AC5 † | T6.2 | T5.4 (`double-placement`), T9.2 |
 | F1-AC6 | T2.4 | T4.3 (only period days dispatched) |
-| F1-AC7 | T2.1 | T2.3 (40 KB re-cut) |
+| F1-AC7 | T2.1 | T2.3 (32 KB re-cut) |
 | F2-AC1 | T8.1 | T1.3 (old-flow fingerprint) |
 | F2-AC2 | T8.1 | T1.3 (old-flow instruction sets) |
 | F2-AC3 | T2.3 | T6.2 (proposer marks over the whole period) |
@@ -263,7 +269,7 @@ Count: F1 7, F2 6, F3 11, F4 11, F5 6, F6 8, F7 5, F8 2 = 56; each criterion has
 | `tomo/scripts/lib/review_digest.py` | NEW | T4.2 |
 | `tomo/scripts/lib/review_carried.py` | NEW | T5.3 |
 | `tomo/scripts/lib/review_read_parts.py` | DELETE | T2.4 |
-| `tomo/scripts/lib/review_period.py` | MODIFY → 0.6.0 | T3.2 |
+| `tomo/scripts/lib/review_period.py` | MODIFY → 0.6.0 | T2.3 (`growth.created` entries keep `day`), T3.2 |
 | `tomo/scripts/lib/review_doc.py` | MODIFY → 0.6.0 | T4.4 (`Sources` leaves out failed units), T5.2, T5.4 |
 | `tomo/scripts/lib/review_sections.py` | MODIFY → 0.3.0 | T5.4 |
 | `tomo/scripts/lib/review_day.py` | MODIFY → 0.3.3 | T2.1 |
@@ -295,16 +301,16 @@ Count: F1 7, F2 6, F3 11, F4 11, F5 6, F6 8, F7 5, F8 2 = 56; each criterion has
 
 | ADR | Tasks |
 |---|---|
-| ADR-1 Stage layout and the loader | T2.3, T2.4 |
-| ADR-2 Size limits | T1.4 (40 KB Read smoke), T1.5, T2.1, T2.2, T2.3, T2.5 |
+| ADR-1 Stage layout and the loader | T2.3, T2.4 (amended: `growth/`, report in manifest only) |
+| ADR-2 Size limits | T1.4 (Read smoke → 32 KB ceiling), T1.5, T2.1, T2.2, T2.3, T2.5 (amended: budget includes growth) |
 | ADR-3 Read id, manifest, continuing | T2.3, T2.4 |
-| ADR-4 Digest/carryover contracts, `review-digest.py` | T4.1, T4.2, T4.3, T4.4 |
-| ADR-5 Previous notes | T1.4 (Kado denial shape), T3.1, T3.2 |
-| ADR-6 Carried field, checks, labels | T5.1, T5.2, T5.3, T5.4 |
+| ADR-4 Digest/carryover contracts, `review-digest.py` | T4.1, T4.2, T4.3, T4.4, T6.2 (amended: growth candidates) |
+| ADR-5 Previous notes | T1.4 (Kado denial shape: `FORBIDDEN` tool error), T3.1, T3.2 |
+| ADR-6 Carried field, checks, labels | T5.1, T5.2, T5.3, T5.4, T6.2 (amended: growth group input) |
 | ADR-7 Three agents | T1.4 (nested write smoke), T6.1, T6.2 |
 | ADR-8 Dispatch, rounds, STRICT | T4.3 (rounds), T6.3, T6.4, T9.2 |
 | ADR-9 Pass 2 and wire unchanged | T5.5, T8.1, T8.2 |
-| ADR-10 Privacy and deletion | T2.3, T2.4, T7.1, T7.2 |
+| ADR-10 Privacy and deletion | T2.3, T2.4, T7.1, T7.2 (amended: `growth/`) |
 | ADR-11 Behaviour baseline first | T1.1, T1.2, T1.3, T8.1 |
 | ADR-12 Top lines | T5.2 |
 

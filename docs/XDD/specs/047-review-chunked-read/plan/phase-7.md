@@ -1,7 +1,7 @@
 ---
 title: "Phase 7: Privacy, deletion, measurement and documentation"
 status: pending
-version: "1.0"
+version: "1.1"
 phase: 7
 ---
 
@@ -43,7 +43,7 @@ Makes the privacy contract and the user documentation match the new flow, and gi
 - [ ] **T7.2 Leak guard and cleanup over the new steps** `[activity: testing]` `[parallel: true]`
 
   1. Prime: `tests/test_review_privacy.py` (leak guard, tmp allowlist ~212), `tests/test_review_e2e_cleanup.py`, `tests/review_privacy_fixture.py` (sentinel texts) `[ref: SDD/CON-3; ADR-10]` `[ref: SDD/Quality Requirements/Security; lines: 1237]`
-  2. Test: the leak guard runs every review script incl. `review-digest.py` (`plan`, `check`, each refusal and stop) and `review-read.py --measure` and finds no sentinel text in stdout, stderr, `manifest.json`, `condensed.json`, `meta.json` or a cost record (F7-AC4); the allowlist lists `days/`, `children/`, `previous/`, `context*.json`, `weeks.json`, `digests/`, `carryover.json`, `proposals.json` and nothing else; `test_review_e2e_cleanup.py` shows 0 content files after write, after Pass 1 abort and after drop, for week, month and quarter (F7-AC1 end to end); an agent prompt built from `plan` holds no sentinel text.
+  2. Test: the leak guard runs every review script incl. `review-digest.py` (`plan`, `check`, each refusal and stop) and `review-read.py --measure` and finds no sentinel text in stdout, stderr, `manifest.json`, `condensed.json`, `meta.json` or a cost record (F7-AC4); the allowlist lists `days/`, `growth/`, `children/`, `previous/`, `context*.json`, `weeks.json`, `digests/`, `carryover.json`, `proposals.json` and nothing else; `test_review_e2e_cleanup.py` shows 0 content files after write, after Pass 1 abort and after drop, for week, month and quarter (F7-AC1 end to end); an agent prompt built from `plan` holds no sentinel text.
   3. Implement: tests only (a production leak found here becomes a fix with its RED test first).
   4. Validate: tests green; ruff clean.
   5. Success: no note text reaches Tomo's records and no material outlives the document `[ref: PRD/F7-AC4; F7-AC1]`

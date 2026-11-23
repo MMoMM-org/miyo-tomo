@@ -1,12 +1,16 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: draft
-version: "1.1"
+version: "1.3"
 ---
 
 # Solution Design Document
 
 > v1.1 (2026-11-23): owner confirmed ADR-1 … ADR-12; script moves a carried item to its group when its section is full; agent-read stage files line-broken; validation fixes 1–13 worked in.
+>
+> v1.2 (2026-11-23): owner deviation after the T1.5 measurement (`growth.created` ≈ 157.7 KB indented, 4× the file ceiling): vault growth goes per day to `growth/<date>.json` and per unit to the digesters, the digest gains growth candidates, `context.json` keeps only growth counts and the MOC lists, the read report stays in `manifest.json` and is never proposer input. Amended: ADR-1, ADR-2, ADR-4, ADR-6, ADR-10.
+>
+> v1.3 (2026-11-23): owner, after the T1.4 smoke: the per-file ceiling drops from 40,960 to 32,768 bytes (ADR-2); a Kado per-path denial is a `FORBIDDEN` tool error (`KadoToolError`), not HTTP 403 — previous notes catch that per call, a `KadoAuthError` still stops the read (ADR-5); the growth-day gotcha is verified against Kado's source. Amended: ADR-2, ADR-5.
 
 ## Validation Checklist
 
@@ -44,7 +48,7 @@ Notes on two gates: there are no database migrations; "column names" means the k
 | specId | 047-review-chunked-read |
 | architecture | see ArchitectureSummary |
 | sections | see SectionStatus |
-| adrs | ADR-1 … ADR-12, all CONFIRMED (owner, 2026-11-23) |
+| adrs | ADR-1 … ADR-12, all CONFIRMED (owner, 2026-11-23); ADR-1, 2, 4, 6, 10 amended 2026-11-23 (owner, T1.5 measurement); ADR-2, 5 amended 2026-11-23 (owner, T1.4 smoke) |
 | validationPassed | 15 |
 | validationPending | 0 |
 | nextSteps | `/xdd` plan (Incremental tier expected: baseline e2e first, then read/stage, condense, carry, propose, docs, live walk) |
@@ -78,16 +82,16 @@ Notes on two gates: there are no database migrations; "column names" means the k
 
 | id | name | status |
 |----|------|--------|
-| ADR-1 | Stage layout and the loader | CONFIRMED |
-| ADR-2 | Size limits and what happens when one is exceeded | CONFIRMED |
+| ADR-1 | Stage layout and the loader | CONFIRMED (amended 2026-11-23) |
+| ADR-2 | Size limits and what happens when one is exceeded | CONFIRMED (amended 2026-11-23) |
 | ADR-3 | The read id, the manifest, and continuing a stored read | CONFIRMED |
-| ADR-4 | Digest and carryover contracts, `review-digest.py`, one retry | CONFIRMED |
-| ADR-5 | Finding and reading the previous notes | CONFIRMED |
-| ADR-6 | Proposals: the `carried` field, its checks and its labels | CONFIRMED |
+| ADR-4 | Digest and carryover contracts, `review-digest.py`, one retry | CONFIRMED (amended 2026-11-23) |
+| ADR-5 | Finding and reading the previous notes | CONFIRMED (amended 2026-11-23) |
+| ADR-6 | Proposals: the `carried` field, its checks and its labels | CONFIRMED (amended 2026-11-23) |
 | ADR-7 | Three review agents, their models and tools | CONFIRMED |
 | ADR-8 | Dispatch from the skill: one batch, rounds as fallback, STRICT rules | CONFIRMED |
 | ADR-9 | Pass 2 and the wire stay as they are | CONFIRMED |
-| ADR-10 | Privacy and deletion of the stage | CONFIRMED |
+| ADR-10 | Privacy and deletion of the stage | CONFIRMED (amended 2026-11-23) |
 | ADR-11 | Behaviour baseline before the rebuild | CONFIRMED |
 | ADR-12 | The document's top lines for previous notes, weeks not condensed and a failed carry | CONFIRMED |
 
@@ -97,8 +101,8 @@ Notes on two gates: there are no database migrations; "column names" means the k
 
 - CON-1 Spec 045/046 architecture stays (045 ADR-1, ADR-2, ADR-12; 046 CON-1): the `/review` skill owns the flow, scripts own state, reads, writes, checks and rendering. New in this spec: the model output is no longer one file written in the main session but three kinds of files written by three agents (`digests/<unit>.json`, `carryover.json`, `proposals.json`); each is checked by a script before anything uses it. Python 3 stdlib plus the repo's `lib/`, `jsonschema` and PyYAML as today. Runtime prose (`tomo/dot_claude/**`) holds imperatives only; every WHY goes to `docs/tomo/<mirrored-path>.md` first. Every edited managed file bumps `# version:`.
 - CON-2 Platform: a subagent cannot dispatch a subagent; the skill in the main session dispatches every agent (`Agent()` with `subagent_type`, `run_in_background: false`, as `commands/inbox.md:57-69`). One Read call returns at most about 25,000 tokens; the review material is about 1.85 characters per token (research §2); a model context holds about 200,000 tokens. The session model is `sonnet` (`tomo/dot_claude/settings.json:2`); an agent sets its own `model`.
-- CON-3 Privacy (spec 045 ADR-9 / F7, PRD F7): no note text in stdout, stderr, cost records, `meta.json`, `manifest.json`, `condensed.json` or `delivered_plan`. Stage files that hold note content (`days/`, `children/`, `previous/`, `context*.json`, `digests/`, `carryover.json`, `proposals.json`) are deleted once the document is written, on a Pass 1 abort, on drop and when a new read replaces them. Kado is the only vault access; only `review-read.py` calls Kado in Pass 1 before the document write, and `review-doc.py write` writes the inbox document.
-- CON-4 Nothing of the document or Pass 2 changes for the user (PRD F2): the merged read dict that `review-doc.py` consumes keeps its keys (`period`, `days`, `open_tasks`, `growth`, `not_read`, `report`, `weekly`, `monthly`, `only_in_*_links`, `dailies_not_in_*`, `sections`); the instruction wire stays `schema_version` "4"; no handoff to Hashi or Kado (at most a Kokoro FYI).
+- CON-3 Privacy (spec 045 ADR-9 / F7, PRD F7): no note text in stdout, stderr, cost records, `meta.json`, `manifest.json`, `condensed.json` or `delivered_plan`. Stage files that hold note content (`days/`, `growth/`, `children/`, `previous/`, `context*.json`, `digests/`, `carryover.json`, `proposals.json`) are deleted once the document is written, on a Pass 1 abort, on drop and when a new read replaces them. Kado is the only vault access; only `review-read.py` calls Kado in Pass 1 before the document write, and `review-doc.py write` writes the inbox document.
+- CON-4 Nothing of the document or Pass 2 changes for the user (PRD F2): the merged read dict that `review-doc.py` consumes keeps its keys (`period`, `days`, `open_tasks`, `growth` (its `created` list rebuilt by the loader from `growth/`), `not_read`, `report`, `weekly`, `monthly`, `only_in_*_links`, `dailies_not_in_*`, `sections`); the instruction wire stays `schema_version` "4"; no handoff to Hashi or Kado (at most a Kokoro FYI).
 - CON-5 File sizes (Constitution L2, 300–500 lines of dense logic): `lib/review_period.py` (433 lines), `lib/review_doc.py` (442), `review-doc.py` (433), `lib/review_config.py` (480) and `lib/period.py` (500) are near the guide. New logic goes into new modules (`review_stage`, `review_weeks`, `review_previous`, `review_digest`, `review_carried`); the existing files get call sites and small extensions only.
 - CON-6 Eval gate: no gated file changes (`synthesis-conductor.md`, `suggestion-conductor.md`, `suggest-handling/SKILL.md`, `commands/inbox.md`, `settings.json`). The agents' file writes work under the current `settings.json` (ADR-7), so it is not touched. If one gated file must change, the full suite runs before merge.
 - CON-7 Quality before cost (owner, README Decisions Log): the cost and time numbers of the PRD Success Metrics are guidance; the hard conditions are 0 days not read because of size and no sample or search fallback.
@@ -186,7 +190,7 @@ Notes on two gates: there are no database migrations; "column names" means the k
   why: "PacedReader: cache, pending, not_read, missing, finish (39-141)"
 - file: tomo/scripts/lib/kado_client.py
   relevance: MEDIUM
-  why: "KadoAuthError on 401/403 (51-52, 761) — today it stops the whole read"
+  why: "KadoAuthError on 401/403 (51-52, 761) = wrong token, stops the whole read; a per-path denial is KadoToolError FORBIDDEN (948-954)"
 - file: tomo/schemas/review-proposals.schema.json
   relevance: HIGH
   why: "Closed schema; group items without mark; sectionItem.mark enum"
@@ -299,7 +303,7 @@ data:
     type: files in the instance workspace
     connection: lib/note_io.atomic_write_text (scripts), Write tool (agents, one file each)
     doc: this SDD, Data Storage Changes
-    data_flow: "manifest.json, weeks.json, days/, children/, previous/, context*.json (review-read); digests/, carryover.json, proposals.json (agents); condensed.json (review-digest); meta.json (review-doc, unchanged)"
+    data_flow: "manifest.json, weeks.json, days/, growth/, children/, previous/, context*.json (review-read); digests/, carryover.json, proposals.json (agents); condensed.json (review-digest); meta.json (review-doc, unchanged)"
   - name: "Vault config"
     type: YAML (read only in Pass 1)
     connection: lib/review_config
@@ -337,7 +341,7 @@ Cost per step: python3 scripts/tomo-session-stats.py --session <jsonl>
   2. *Condense*: `review-digest.py plan` names the units (a week of the period, or part of one when it is over budget) and the carryover job; the skill dispatches all of them in one message; `review-digest.py check` validates each file and drives one retry.
   3. *Propose*: one `review-proposer` agent reads the digests, the carryover, `context.json` and the child notes the kind marks against, and writes `proposals.json` in today's shape plus the `carried` fields.
   4. *Write*: `review-doc.py write` loads the stage through `review_stage.load`, which returns today's merged dict plus `previous`, `carryover` and `condensed`; the existing checks and renderer run on it, extended for carried items and the new top lines.
-- **Justification**: the per-call Read limit is gone structurally (every file ≤ 40 KB), no model context holds the whole period (the proposer sees ≤ ~112 KB of digests), and the consumers of the read stay unchanged behind the loader (research C2: one merged dict feeds all of `review-doc.py`). Week, month and quarter run the same flow; only the number of units differs.
+- **Justification**: the per-call Read limit is gone structurally (every file ≤ 32 KB), no model context holds the whole period (the proposer sees ≤ ~112 KB of digests), and the consumers of the read stay unchanged behind the loader (research C2: one merged dict feeds all of `review-doc.py`). Week, month and quarter run the same flow; only the number of units differs.
 - **Key Decisions**: ADR-1 … ADR-12 below.
 
 ## Building Block View
@@ -375,15 +379,15 @@ graph LR
 |---|---|
 | `skills/periodic-review/SKILL.md` | The flow: step 4 read (continue or new), step 5 plan → one batch dispatch → check → one retry → proposer → write → one rewrite; saying the continued read, the not-condensed weeks, the previous-note lines and the carry failure; the Pass 1 abort |
 | `review-read.py` | The read entry point: setup, `--fresh`, continue on a stored read without Kado, one client and pacer, the stop rules, `--measure`, the report incl. `report.previous`, writing the stage |
-| `lib/review_period.py` | Reading a period (unchanged rules) + calling `review_previous` inside the pass; `PeriodSources.quarterly_folder` |
+| `lib/review_period.py` | Reading a period (unchanged rules) + calling `review_previous` inside the pass; `PeriodSources.quarterly_folder`; each created note of `growth.created` keeps its creation `day` (local date of Kado's `created`, the convention of `period_bounds_ms`, review_period.py:139-143) |
 | `lib/review_previous.py` (new) | Which previous periods a kind reads; whether a kind is set up; finding and reading each previous note through the `PacedReader`; its state (found, empty, missing, not set up, not read + cause); its text cut by `review_day.cut_at_boundary` (no cutter of its own) |
-| `lib/review_stage.py` (new; replaces `lib/review_read_parts.py`) | The stage layout: encoding the agent-read files line-broken (`indent=1`, long texts as arrays of lines) and measuring the 40 KB ceiling on that form; writing `days/`, `children/`, `previous/`, `context*.json`, `weeks.json`, `manifest.json`; asking `review_day` to re-cut an oversized day; the read id; `load` → the merged dict (lines joined back, `condensed.json` read and read-id-checked); `discard`; the continue check |
-| `lib/review_weeks.py` (new) | The units of a period: weeks under the configured rule clipped to the period, packed into units under the 80 KB budget; the digest cap per unit |
+| `lib/review_stage.py` (new; replaces `lib/review_read_parts.py`) | The stage layout: encoding the agent-read files line-broken (`indent=1`, long texts as arrays of lines) and measuring the 32 KB ceiling on that form; writing `days/`, `growth/` (the created notes per creation day), `children/`, `previous/`, `context*.json` (growth counts and MOC lists only), `weeks.json`, `manifest.json`; asking `review_day` to re-cut an oversized day; the read id; `load` → the merged dict (lines joined back, `growth.created` rebuilt from `growth/`, `report` from `manifest.json`, `condensed.json` read and read-id-checked); `discard`; the continue check |
+| `lib/review_weeks.py` (new) | The units of a period: weeks under the configured rule clipped to the period, packed into units under the 80 KB budget (a day weighs its day file plus its growth files); the digest cap per unit |
 | `review-digest.py` (new) | Condense entry points: `plan` (what to dispatch, in which rounds, which files the proposer reads), `check` (validate digests and carryover, attempts, retry list, not condensed, nothing condensed) |
 | `lib/review_digest.py` (new) | Pure validation of a digest and of the carryover file against the stage (file level: schema, read id, sources, id uniqueness, size); the `condensed.json` state model. `condensed.json` is written only by `review-digest.py` (`plan`, `check`) and read by `review_stage.load` (for `review-doc.py`) and by `review-digest.py` itself |
-| agent `review-digester` (new, haiku) | Condense one unit's day files (and its weekly note) into `digests/<unit>.json` |
+| agent `review-digester` (new, haiku) | Condense one unit's day files, its growth files (the notes created on its days, with their links) and its weekly note into `digests/<unit>.json`, growth candidates included |
 | agent `review-carryover` (new, sonnet) | Take the open items, intentions/goals and themes of the found previous notes into `carryover.json` |
-| agent `review-proposer` (new, opus) | Build `proposals.json` over the whole period from digests, carryover and context: themes over all days, open judged against later weeks, carried items matched to the days and marked, one place per finding |
+| agent `review-proposer` (new, opus) | Build `proposals.json` over the whole period from digests (growth candidates included), carryover and context (growth counts and MOC lists; never `manifest.json` or its `report`): themes over all days, open judged against later weeks, carried items matched to the days and marked, one place per finding, the "Vault growth" group from the units' growth candidates |
 | `review-doc.py` | Write/parse/replace as today; loads via `review_stage.load`; refuses `condense-incomplete` and `read-stale`; passes previous states, not-condensed units and the carry failure to the renderer; discards the stage after the write and on `replace --abort` |
 | `lib/review_doc.py` | Sources incl. previous notes; the one source resolver `resolve_sources` (used by `check_item` and `review_carried`); `check_items` with an explicit carried branch (carried failures go to `errors`, never `rejected`); `_LABELS` incl. carried marks and top-line words; the callout lines |
 | `lib/review_carried.py` (new) | Every document-level check of a carried item: previous-note sources ⊆ its ids' sources, day rule per mark, carried + child-mark interplay, group/mark combination, theme never done, every carryover id exactly once; `overflow`: moving a carried item of a full section into the group of its mark before the section checks |
@@ -404,7 +408,7 @@ Touched without a new responsibility: `lib/review_day.py` (`has_content` made pu
 | `lib/review_stage.py` | F1-AC2 [day files are built by the same `read_day` for every kind; clipping by `review_weeks`], F6-AC5, F7-AC1 |
 | agent `review-proposer` | F1-AC3 [two-day rule re-checked over all days by `review_doc.check_item`], F1-AC4, F1-AC5 [`double-placement` by `review_sections`], F4-AC2, F4-AC3 [`carried-theme-done` by `review_carried`], F4-AC4 [group/mark rule by `review_carried`], F4-AC8, F4-AC11 |
 | `lib/review_period.py` | F1-AC6, F2-AC3 (link differences over the whole period) |
-| `lib/review_day.py` | F1-AC7 [`review_stage` calls its `cut_at_boundary` for the 40 KB re-cut] |
+| `lib/review_day.py` | F1-AC7 [`review_stage` calls its `cut_at_boundary` for the 32 KB re-cut] |
 | `lib/review_doc.py` | F2-AC1 [proven by the baseline e2e, ADR-11], F3-AC6 [run report: SKILL.md], F3-AC11, F5-AC1 |
 | `review-instructions.py` | F2-AC2 (unchanged; proven by the e2e on the new flow) |
 | `lib/review_habits.py` | F2-AC4 |
@@ -545,13 +549,14 @@ manifest.json:            # review-read.py; written LAST (the commit marker of a
   stem: string
   period: {kind, name, start, end}
   sections_digest: string # "sha256:<hex>" of the canonical JSON of the section definitions, or "none"
-  files: {days: [names], children: [names], previous: [names], context: [names], weeks: "weeks.json"}
-  report: object          # the stdout report of the read (paths, states, counts; no text)
+  files: {days: [names], growth: [names], children: [names], previous: [names], context: [names], weeks: "weeks.json"}
+  report: object          # the stdout report of the read (paths, states, counts; no text); lives ONLY here — never
+                          # copied to an agent-read file, never in proposer.inputs; scripts render the not-read and top lines from it
   not_read: [paths]
 
 days/<YYYY-MM-DD>.json:   # one per day of the period (empty days too: habits, report)
   read_id, date, dailies, sections, fields, previous_day_fields, partly_read, has_content, links, problems, tasks, linked
-  # = review_day.read_day entry (review_day.py:297-309) + read_id; nothing trimmed but what the 40 KB re-cut cuts
+  # = review_day.read_day entry (review_day.py:297-309) + read_id; nothing trimmed but what the 32 KB re-cut cuts
   # on disk: every section text and linked text is an array of lines ("sections": {"Journal": ["line 1", "line 2"]}); load joins them with "\n"
 
 children/<label>-<name>[-<n>].json:   # one per child-note entry (label weekly|monthly; -<n> for a duplicate path)
@@ -563,16 +568,24 @@ previous/<kind>-<name>.json:          # one per previous period of the kind (ADR
   path: string|null, state found|empty|missing|not-set-up|not-read, cause?: refused|failed|kado-none,
   partly_read: bool, sections: {heading: [lines]}   # only for found; joined by load
 
+growth/<YYYY-MM-DD>.json (+ growth/<YYYY-MM-DD>-<n>.json parts):   # one per day of the period on which notes were created
+  read_id, date, created: [{path, links: [targets]}]   # the review_period._growth entries of that day, sorted by path
+  part?: n                # only on an overflow part; each file ≤ 32,768 B indented (entries never split)
+  # day = local date of Kado's `created` ms (period_bounds_ms convention); an entry without a usable `created` goes to the
+  # period's first day (the created query already bounds it to the period)
+
 context.json (+ context-<n>.json overflow parts named in `parts`):
-  read_id, period, sections?, open_tasks, growth {created: [paths], mocs_changed, mocs_linked_by_new},
+  read_id, period, sections?, open_tasks, growth {created_count: int, mocs_changed: [paths], mocs_linked_by_new: [paths]},
   only_in_weekly_links?, dailies_not_in_weekly?, only_in_monthly_links?, dailies_not_in_monthly?,
   fields: {date: {name: value}}   # per-day tracker values for analysis rows, over the whole period
   parts?: [names]
-  # growth.created loses its per-note `links` (used only inside review_period._growth, review_period.py:300-301)
+  # no per-note growth list here (owner 2026-11-23, T1.5: 746 created notes ≈ 157.7 KB indented); the notes and their
+  # links rest in growth/ and reach the proposer only through the digests' growth candidates
 
 weeks.json:               # lib/review_weeks.py
   read_id, rule {first_day, min_days_in_first_week}, budget_bytes 81920, digest_cap_bytes,
-  units: [{unit, week, days [dates], day_files [names], bytes, weekly_note: name|null, takes_part: bool}]
+  units: [{unit, week, days [dates], day_files [names], growth_files [names], bytes, weekly_note: name|null, takes_part: bool}]
+  # bytes = day files + growth files of the unit (indented); a day with created notes takes part
 
 condensed.json:           # written ONLY by review-digest.py (plan, check); read by review_stage.load and review-digest.py; metadata only
   read_id, units {<unit>: {state pending|retry|passed|failed, attempts}},
@@ -584,7 +597,7 @@ proposals.json            # agent review-proposer — schema review-proposals.sc
 meta.json, payloads.json  # unchanged (review-doc.py, review-instructions.py)
 ```
 
-Encoding (ADR-2): every file an agent reads (`days/`, `children/`, `previous/`, `context*.json`, `weeks.json`) is written line-broken — `json.dumps(..., indent=1, ensure_ascii=False)` with every long text (section, linked-note, child-note, previous-note text) stored as an array of its lines — so no line approaches the Read tool's line limit. Sizes are counted in UTF-8 bytes of exactly that indented form; the indentation and the per-line quotes cost about 15 % more bytes than compact JSON, which the 40,960-byte ceiling absorbs (a 7-day test-vault week ≈ 41 KB compact ≈ 47 KB indented, under the 80 KB unit budget). `manifest.json` and `condensed.json` (script-only) stay compact. stdout stays ASCII-escaped. The agents' own files (`digests/`, `carryover.json`, `proposals.json`) are whatever valid JSON the agent writes; their caps count their bytes as written.
+Encoding (ADR-2): every file an agent reads (`days/`, `growth/`, `children/`, `previous/`, `context*.json`, `weeks.json`) is written line-broken — `json.dumps(..., indent=1, ensure_ascii=False)` with every long text (section, linked-note, child-note, previous-note text) stored as an array of its lines — so no line approaches the Read tool's line limit. Sizes are counted in UTF-8 bytes of exactly that indented form; the indentation and the per-line quotes cost about 15 % more bytes than compact JSON, which the 32,768-byte ceiling absorbs (the largest measured day is 8,303 B indented; a 7-day test-vault week ≈ 41 KB compact ≈ 47 KB indented, under the 80 KB unit budget). `manifest.json` and `condensed.json` (script-only) stay compact. stdout stays ASCII-escaped. The agents' own files (`digests/`, `carryover.json`, `proposals.json`) are whatever valid JSON the agent writes; their caps count their bytes as written.
 
 #### Internal API Changes
 
@@ -602,10 +615,12 @@ review-read.py --period P --kind K [--stem S] [--fresh] [--measure] [--tmp] [--c
 
 review-digest.py plan --stem S [--tmp]
   ok:      {status ok, stem, read_id, read_at, ready: bool,
-            rounds: [[{agent: review-digester, unit, days, day_files, weekly_note, sections: bool, out: "digests/<unit>.json", cap_bytes},
+            rounds: [[{agent: review-digester, unit, days, day_files, growth_files, weekly_note, sections: bool, out: "digests/<unit>.json", cap_bytes},
                       {agent: review-carryover, previous_files, out: "carryover.json", cap_bytes: 12288}]],
             done: [units], not_condensed: [{unit, days}], carryover_state,
             proposer: {inputs: [paths, in read order], out: "proposals.json", carried: bool}}
+  # proposer.inputs = context*.json, digests/, carryover.json (when passed), the child notes the kind marks against;
+  # never manifest.json (the report), never days/ or growth/
   # the proposer is ALWAYS dispatched once the condense jobs are ready, also on a continued read that holds a
   # proposals.json: plan deletes such a file (it may be from before an interruption or a refused rewrite) and lists
   # no proposals_present state — one proposer run costs less than reasoning about a stale proposal
@@ -620,7 +635,8 @@ review-digest.py check --stem S [--tmp]
   refused: {status refused, problems [stage-missing | stage-invalid | read-stale]}
   # each call counts one attempt for every job not passed; a job failing its 2nd attempt is failed (final for this run)
   # errors: digest-missing, not-json, schema (<pointer>), read-id-mismatch, unit-mismatch, days-mismatch,
-  #         source-outside-unit, theme-day-outside-unit, unknown-section, digest-too-large,
+  #         source-outside-unit, theme-day-outside-unit, unknown-section, growth-note-outside-unit,
+  #         growth-source-not-created-day, digest-too-large,
   #         carryover-notes-mismatch, carry-source-unknown, carry-id-duplicate, carryover-too-large
 
 review-doc.py write | replace --confirm   (flags unchanged)
@@ -645,6 +661,9 @@ ENTITY: Digest (NEW, review-digest.schema.json, additionalProperties false)
   themes: [{text, days: [date] ≥ 1, sources}] ≤ 15             # a single day is allowed here
   sections: [{key ^s[0-9]{1,3}$, items: [Entry] ≤ 30}]         # keys of context.sections only
   child_notes: [Entry] ≤ 15                                    # what the unit's weekly note says; source = its stem
+  growth: [{text, sources: [day stem] ≥ 1, notes: [created-note path] 1..10}] ≤ 15   # NEW v1.2: candidates for "Vault growth"
+  #   notes ⊆ the unit's created notes (growth/ files of its days); every source a day of the unit on which ≥ 1 of its notes
+  #   was created — the same day-source rule today's growth group meets in review_doc.check_item (review_doc.py:274-275)
   Entry: {text (minLength 1), sources: [string] ≥ 1}           # day stems/paths of the unit, or the weekly note stem
 
 ENTITY: Carryover (NEW, review-carryover.schema.json, additionalProperties false)
@@ -686,7 +705,7 @@ ENTITY: DocInput (MODIFIED)
     - data_flow: "Prompt: stem, unit, read_id, file list, out path, cap, review language. Reply: one line '<out> written' or '<out> not written: <reason word>'"
 - from: agents
   to: tomo-tmp/review/<stem>/
-    - protocol: Read (≤ 40 KB files), Write (one file each)
+    - protocol: Read (≤ 32 KB files), Write (one file each)
     - data_flow: "Read stage files only; never Kado, never the vault"
 Kado:
   - integration: "Unchanged tools; previous notes add one depth-2 folder listing per previous kind (shared with the child level where it is the same folder) and one read_note per found note"
@@ -705,10 +724,15 @@ def load(stage: Path) -> dict:
     manifest = _object(stage / MANIFEST)                       # StageMissing when absent (also a pre-047 stage)
     read_id = manifest["read_id"]
     days = [_stamped(stage / DAYS / n, read_id) for n in manifest["files"]["days"]]
+    created = sorted((c for n in manifest["files"]["growth"] for c in _stamped(stage / GROWTH / n, read_id)["created"]),
+                     key=lambda c: c["path"])                     # today's growth.created, rebuilt
     context = _joined_context(stage, manifest["files"]["context"], read_id)   # context.json + parts
     children = [_stamped(stage / CHILDREN / n, read_id) for n in manifest["files"]["children"]]
     result = {k: v for k, v in context.items() if k not in ("read_id", "parts", "fields")}
+    result["growth"] = {"created": created, "mocs_changed": context["growth"]["mocs_changed"],
+                        "mocs_linked_by_new": context["growth"]["mocs_linked_by_new"]}
     result.update(period=manifest["period"], days=days, report=manifest["report"], not_read=manifest["not_read"])
+    # report: scripts only (not-read and top lines), as today; no agent reads manifest.json
     for label in ("weekly", "monthly"):
         entries = [c for c in children if c["_label"] == label]
         if entries:
@@ -724,10 +748,10 @@ def load(stage: Path) -> dict:
 
 ```python
 # lib/review_weeks.py — shape, not final code
-FILE_CEILING, UNIT_BUDGET, DIGEST_TOTAL, DIGEST_MAX = 40_960, 81_920, 114_688, 8_192
+FILE_CEILING, UNIT_BUDGET, DIGEST_TOTAL, DIGEST_MAX = 32_768, 81_920, 114_688, 8_192
 
 def units(period: Period, rule: WeekRule, day_bytes: Dict[date, int], takes_part: Set[date]) -> List[dict]:
-    # day_bytes: UTF-8 bytes of each day file in its written, indented (line-broken) form
+    # day_bytes: UTF-8 bytes of each day file plus its growth files, in their written, indented (line-broken) form
     weeks = [period] if period.kind == WEEK else period.weeks_overlapping(rule)
     out = []
     for week in weeks:
@@ -749,7 +773,7 @@ def digest_cap(n_units: int) -> int:
     return min(DIGEST_MAX, DIGEST_TOTAL // max(1, n_units))       # 14 units → 8192, 16 → 7168
 ```
 
-`takes_part(day)` = `has_content` or non-empty `tasks` or non-empty `linked`. A unit with no taking-part day gets no digester and is not "not condensed" (it has nothing to condense).
+`takes_part(day)` = `has_content` or non-empty `tasks` or non-empty `linked` or ≥ 1 created note in `growth/`. A unit with no taking-part day gets no digester and is not "not condensed" (it has nothing to condense). A single day heavier than `UNIT_BUDGET` forms a unit alone (never dropped, never split below a day) and is listed in `--measure`'s `over_budget`; its digester reads every one of its files, each ≤ 32,768 B.
 
 #### Example: Previous periods per kind (traced)
 
@@ -944,10 +968,11 @@ sequenceDiagram
 | Kado unreachable / key refused during the period read | `review-read.py` | `stopped` as today; nothing written; with `--fresh` the stored read was discarded first, so nothing is left to continue (F6-AC4) |
 | Daily folder listing not read | `review-read.py` | `stopped dailies-not-read` as today |
 | No day with content | `review-read.py` | `nothing_to_review` as today; nothing written |
-| A previous note refused (401/403 on its read), failed after the end pass, or its folder listing answered with nothing | `lib/review_previous.py` | state `not-read`, cause `refused` / `failed` / `kado-none`; the review continues (F3-AC9). A `KadoAuthError` on a previous-note call is caught per call because the period's dailies already authenticated |
-| A day file whose indented form is over 40,960 B | `lib/review_stage.py` → `lib/review_day.cut_at_boundary` | the day's units re-cut by the one cutter of `review_day` with `max_chars` scaled by ceiling/size (≤ 3 tries, then a hard cut of the last section as `read_day` does today), `partly_read` true, named partly read in the report and the callout (F1-AC7) |
-| A week's day files over 80 KB | `lib/review_weeks.py` | split into units `<week>a`, `<week>b`… in date order; never a day dropped |
-| A child note, previous note or context whose indented form is over 40,960 B | `lib/review_stage.py` (child, context), `lib/review_previous.py` (previous) — both via `review_day.cut_at_boundary` | child and previous text cut at a heading boundary (`clipped` / `partly_read` true, named in the report; a previous note's line says "read in part"); context lists moved to `context-<n>.json` parts named in `context.json.parts`, each part again ≤ 40,960 B indented; `--measure` lists every file that needed it in `over_ceiling` |
+| A previous note refused (a `FORBIDDEN` tool error on its read), failed after the end pass, or its folder listing answered with nothing | `lib/review_previous.py` | state `not-read`, cause `refused` / `failed` / `kado-none`; the review continues (F3-AC9). The `KadoToolError` with `FORBIDDEN` is caught per previous-note call; a `KadoAuthError` (wrong token, 401/403) is not caught and stops the read as today |
+| A day file whose indented form is over 32,768 B | `lib/review_stage.py` → `lib/review_day.cut_at_boundary` | the day's units re-cut by the one cutter of `review_day` with `max_chars` scaled by ceiling/size (≤ 3 tries, then a hard cut of the last section as `read_day` does today), `partly_read` true, named partly read in the report and the callout (F1-AC7) |
+| A week's day files plus growth files over 80 KB | `lib/review_weeks.py` | split into units `<week>a`, `<week>b`… in date order (a day weighs its day file + its growth files); never a day dropped; a single day over the budget is a unit alone, named in `over_budget` |
+| A day's created notes over 32,768 B indented | `lib/review_stage.py` | `growth/<date>.json` split into parts `growth/<date>-<n>.json` at entry boundaries, each ≤ 32,768 B; no entry cut or dropped; `--measure` lists them in `over_ceiling` |
+| A child note, previous note or context whose indented form is over 32,768 B | `lib/review_stage.py` (child, context), `lib/review_previous.py` (previous) — both via `review_day.cut_at_boundary` | child and previous text cut at a heading boundary (`clipped` / `partly_read` true, named in the report; a previous note's line says "read in part"); context lists moved to `context-<n>.json` parts named in `context.json.parts`, each part again ≤ 32,768 B indented; `--measure` lists every file that needed it in `over_ceiling` |
 | A section at its cap with carried items in it | `lib/review_carried.overflow` (in `review-doc.py write`) | the last carried items move to the group of their mark until the section fits; `carried-moved` notice; no rewrite, no refusal (F4-AC10). Non-carried items over the cap keep 046's `over-cap` refusal |
 | Digest missing, invalid, stale, outside its unit, over its cap | `review-digest.py check` | first time `retry` with errors → one re-dispatch; second time `failed` → `not_condensed` (F6-AC1) |
 | Every taking-part unit failed | `review-digest.py check` | `stopped nothing-condensed` with every unit; no document; the stage stays (F6-AC8, F7-AC2) |
@@ -972,19 +997,25 @@ INPUT: /review 2026-Q1; dailies 2026-01-01 … 2026-03-31; weekly notes to 2026-
 1. review-read (new read): CHILD[quarter] = month → levels weekly (sources) + monthly (marked).
    Kado: ≈ 460 calls as in spec 046 + 1 listing of Calendar/304 Quarterly/ (depth 2) → no 2025-Q4.md, no 2025/2025-Q4.md
    previous/quarter-2025-Q4.json = {state: missing, path: null}
-2. Stage: days/ 90 files, average ≈ 5.8 KB compact (Jan 179,969 B / 31) ≈ 6.7 KB indented; none over 40,960 B.
-   weeks (indented bytes): W01 (2025-12-29…01-04) clipped to 01-01…01-04 (4 days ≈ 27 KB); W02…W13 7 days ≈ 47 KB each;
-   W14 (03-30…04-05) clipped to 03-30, 03-31 (≈ 14 KB). All ≤ 80 KB → 14 units, no split.
+2. Stage: days/ 90 files, average ≈ 5.8 KB compact (Jan 179,969 B / 31) ≈ 6.7 KB indented; none over 32,768 B (measured max 8,303 B).
+   Measured T1.5 (indent=1): days mean 6,008 B, max 8,303 B; ISO-week day sums mean 38,621 B, max 46,747 B.
+   growth: 746 created notes ≈ 157.7 KB indented over the quarter → growth/<date>.json per creation day (mean
+   ≈ 1.75 KB per day, ≈ 11 KB per week; per-week maxima measured in T2.5).
+   weeks (indented bytes, day files + growth): W01 clipped to 01-01…01-04 (4 days); W02…W13 7 days ≈ 50 KB mean
+   (46.7 KB day maximum + growth); W14 clipped to 03-30, 03-31. All ≤ 80 KB expected → 14 units; a week pushed over
+   by its growth splits by the same rule.
    digest_cap = min(8192, 114688 // 14 = 8192) = 8192.
    children: weekly-2026-W01 … W13 (13), monthly-2026-01, monthly-2026-02. Monthly March absent.
-   context.json: growth.created paths, open tasks, only_in_monthly_links, dailies_not_in_monthly, fields per day,
-   sections; overflow parts if over 40 KB (measured in the first plan task).
+   context.json: growth counts (created_count 746) and MOC lists, open tasks, only_in_monthly_links,
+   dailies_not_in_monthly (1.9 KB), fields per day, sections (3.4 KB); the 30.4 KB compact / 39.5 KB indented read
+   report stays in manifest.json. Expected well under 32 KB, no parts (was: growth.created ≈ 157.7 KB, 4× the ceiling).
 3. plan: carryover_state none (no found note) → one round of 14 digesters (≤ 16). Each digester of Wnn gets its
-   day files + children/weekly-Wnn.json (W14: none).
+   day files, its growth files + children/weekly-Wnn.json (W14: none); its digest carries the unit's growth candidates.
 4. check: 14 passed → ready. proposer.inputs = context.json (+parts), digests W01…W14 (14 × ≤ 8 KB),
    children/monthly-2026-01.json, -02.json; carried: false.
 5. proposer: themes counted over all 90 days; an open item of W03 done in W09 → done (F1-AC4); monthly_only /
-   not_in_monthly from the link lists and month_text; no carried items.
+   not_in_monthly from the link lists and month_text; "Vault growth" from the 14 digests' growth candidates and the
+   context counts/MOC lists, each item's sources the candidates' creation days; no carried items.
 6. write: 0 not condensed, 0 not read for size; top: "Previous review · quarter 2025-Q4: no note found for 2025-Q4".
 OUTPUT: one document like spec 046's quarter document, built on all 90 days.
 ```
@@ -1003,7 +1034,8 @@ INPUT: /review 2026-W14 (Mon 2026-03-30 … Sun 2026-04-05); dailies only 03-30,
 2. weeks: one unit 2026-W14, days 03-30 … 04-05 (a week review is not clipped; 04-01 … 04-05 empty), takes_part.
 3. plan: one round = [digester 2026-W14, carryover]. One message, two Agent() calls.
    digests/2026-W14.json: {"read_id":"R","unit":"2026-W14","days":["2026-03-30","2026-03-31"],
-     "done":[{"text":"5 km run","sources":["2026-03-31"]}], "open":[], "themes":[], "sections":[], "child_notes":[], "notable":[]}
+     "done":[{"text":"5 km run","sources":["2026-03-31"]}], "open":[], "themes":[], "sections":[], "child_notes":[], "notable":[],
+     "growth":[]}
    carryover.json: {"read_id":"R","notes":[{"path":"Calendar/302 Weekly/2026-W13.md","kind":"week","name":"2026-W13","items":2},
        {"path":"Calendar/303 Monthly/2026-02.md","kind":"month","name":"2026-02","items":1}],
      "items":[{"id":"c1","type":"intention","text":"Start running again","sources":["2026-W13","2026-02"]},
@@ -1146,7 +1178,7 @@ stateDiagram-v2
 ### System-Wide Patterns
 - **Security**: agents get `tools: Read, Write` only — no Bash, no MCP (F7-AC5); prompts carry paths and ids only; Kado access stays in `review-read.py` and `review-doc.py`.
 - **Error Handling**: every script prints one JSON object, exit 0 for usable output (045 contract); agent failures surface only through `check`.
-- **Performance**: ≤ 40 KB per file so every Read is one call; one batch for all condense jobs; the proposer reads ≤ ~112 KB of digests.
+- **Performance**: ≤ 32 KB per file so every Read is one call; one batch for all condense jobs; the proposer reads ≤ ~112 KB of digests.
 - **i18n/L10n**: carried marks and top-line words EN/DE in `_LABELS`, English fallback (F5-AC1); item text in the review language (F4-AC11).
 - **Logging/Auditing**: stdout carries paths, dates, counts, states and error codes only; `manifest.json` and `condensed.json` are metadata only; F8 cost per step from the transcripts via `scripts/tomo-session-stats.py`.
 
@@ -1158,18 +1190,21 @@ stateDiagram-v2
 
 ## Architecture Decisions
 
-- [x] ADR-1 Stage layout and the loader: `review-read.py` writes `days/<date>.json`, `children/`, `previous/`, `context.json` (+ overflow parts), `weeks.json` and `manifest.json` through a new `lib/review_stage.py`; `review_stage.load` rebuilds the merged dict `review-doc.py` consumes today, plus `previous`, `carryover`, `condensed`. `lib/review_read_parts.py` is deleted.
+- [x] ADR-1 Stage layout and the loader: `review-read.py` writes `days/<date>.json`, `growth/<date>.json`, `children/`, `previous/`, `context.json` (+ overflow parts), `weeks.json` and `manifest.json` through a new `lib/review_stage.py`; `review_stage.load` rebuilds the merged dict `review-doc.py` consumes today, plus `previous`, `carryover`, `condensed`. `lib/review_read_parts.py` is deleted.
   - Status: Accepted
   - Options: (A) new files + a loader returning today's dict (research C2); (B) rewrite `review_doc`, `review_sections`, `review_habits` to read the files directly; (C) keep `read.json` for scripts beside the new files for agents.
   - Choice: A. Rationale: the consumers (`check_items`, `rs.check`, `rs.definitions`, `rh.habits`, `period_of`, the callout) stay untouched, so the baseline e2e compares like with like; B rewrites tested code for no user gain; C keeps the 717 KB file the owner wants gone and doubles what rests on disk.
-  - Additions: `context.json` gains `fields` (per-day tracker values) so the proposer can word analysis rows over the whole period without day files; `growth.created` keeps paths only (its `links` are used inside `review_period` only).
+  - Additions: `context.json` gains `fields` (per-day tracker values) so the proposer can word analysis rows over the whole period without day files.
+  - Amended 2026-11-23 (owner, T1.5 measurement): vault growth is staged per creation day in `growth/<YYYY-MM-DD>.json` (the created notes with their links; `review_period._growth` keeps each entry's `day`), next to `days/` so a unit's growth follows its days with no second packing; `context.json` keeps only `growth.created_count`, `mocs_changed` and `mocs_linked_by_new`; `load` rebuilds today's `growth.created` from `growth/`. The read `report` lives only in `manifest.json`: scripts render the not-read and top lines from it as before, no agent reads it. Why: T1.5 measured `growth.created` (746 notes) at ≈ 157.7 KB indented, 4× the file ceiling, and `report` at 39.5 KB; per-day files beside the units were simpler than a per-unit file that would be rewritten whenever a week splits.
   - Trade-offs: a second representation of the read on disk (files) and in memory (dict) — the loader is the single translation; ~30 test files move with the layout (by design).
   - User confirmed: owner, 2026-11-23
 
-- [x] ADR-2 Size limits: per-file ceiling 40,960 bytes (≈ 21k tokens at 1.85 chars/token, under the 25k Read limit) for every file an agent reads; per-unit budget 81,920 bytes of day files, a week over it is split into `<week>a`, `<week>b`… in date order; digest cap `min(8,192, 114,688 // units)` bytes (14 units 8 KB, 16 units 7 KB), so the proposer's digests stay ≤ 112 KB; carryover cap 12,288 bytes; previous notes and days keep the per-day reading limit `max_chars_per_day` (default 12,000 chars), cut at a section/heading boundary. A day file over the ceiling (possible when the user raised `max_chars_per_day`) is re-cut by re-running `read_day` on the cached texts with a smaller limit and named partly read; a child note over it is cut at a heading boundary (`clipped`); context lists overflow into parts — every cut goes through the one cutter `review_day.cut_at_boundary` (review_day.py:261-275 made public). Owner 2026-11-23: every file an agent reads is written line-broken — `indent=1`, UTF-8 (`ensure_ascii=False`), every long text an array of its lines — and the 40,960-byte ceiling and the 81,920-byte unit budget are measured on that indented form (about 15 % more bytes than compact; a 7-day test-vault week ≈ 47 KB indented); `manifest.json` and `condensed.json` stay compact; stdout stays ASCII. A test writes a stage from the scaled 2026-Q1 fixture and asserts every agent-read file's indented bytes ≤ 40,960 and no line longer than 2,000 characters. `--measure` reports every stage file's bytes, the unit bytes and what is over a limit, with no file written.
+- [x] ADR-2 Size limits: per-file ceiling 32,768 bytes (≈ 17.7k tokens at 1.85 chars/token; ≈ 20k even at the ≈ 1.64 bytes/token of the poorly tokenizing T1.4 file — under the 25k Read limit) for every file an agent reads; per-unit budget 81,920 bytes of day files, a week over it is split into `<week>a`, `<week>b`… in date order; digest cap `min(8,192, 114,688 // units)` bytes (14 units 8 KB, 16 units 7 KB), so the proposer's digests stay ≤ 112 KB; carryover cap 12,288 bytes; previous notes and days keep the per-day reading limit `max_chars_per_day` (default 12,000 chars), cut at a section/heading boundary. A day file over the ceiling (possible when the user raised `max_chars_per_day`) is re-cut by re-running `read_day` on the cached texts with a smaller limit and named partly read; a child note over it is cut at a heading boundary (`clipped`); context lists overflow into parts — every cut goes through the one cutter `review_day.cut_at_boundary` (review_day.py:261-275 made public). Owner 2026-11-23: every file an agent reads is written line-broken — `indent=1`, UTF-8 (`ensure_ascii=False`), every long text an array of its lines — and the 32,768-byte ceiling and the 81,920-byte unit budget are measured on that indented form (about 15 % more bytes than compact; a 7-day test-vault week ≈ 47 KB indented); `manifest.json` and `condensed.json` stay compact; stdout stays ASCII. A test writes a stage from the scaled 2026-Q1 fixture and asserts every agent-read file's indented bytes ≤ 32,768 and no line longer than 2,000 characters. `--measure` reports every stage file's bytes, the unit bytes and what is over a limit, with no file written.
   - Status: Accepted
   - Options for the week budget: drop days (rejected: hard condition), one digester per day (90 agents for a quarter), split by budget (chosen). For the encoding: ASCII-escaped as spec 046 ADR-7 (an umlaut costs 6 bytes and more tokens) or UTF-8 (chosen); compact one-line JSON (risks the Read tool cutting long lines) or line-broken with text as line arrays (chosen by the owner).
   - Rationale: research §2 numbers; a 7-day week of the test vault is ≈ 41 KB, so splits are rare and only on heavy weeks; the digest cap keeps the opus input bounded for 16 units.
+  - Amended 2026-11-23 (owner, T1.4 smoke): `FILE_CEILING` 40,960 → 32,768 bytes. The Read tool returned word-like `indent=1` files of 24,108 / 32,627 / 40,573 bytes whole in one call, but cut a 40,965-byte file of poorly tokenizing text (long character runs) at line 294 of 477, at its 25,000-token cap; 32 KB leaves margin for link- or hash-heavy text, and real files are far below it (days ≤ 8.3 KB, digests ≤ 8 KB). The other limits stay: the 81,920-byte unit budget spans several files (each ≤ the ceiling); the digest cap (≤ 8,192) and the carryover cap (12,288) are single files under the ceiling; the 114,688-byte digest total spans up to 16 files the proposer reads one by one.
+  - Amended 2026-11-23 (owner, T1.5 measurement): T1.5 measured days max 8,303 B and ISO-week sums max 46,747 B (indent=1) — the day, week and digest limits hold unchanged. The 81,920-byte unit budget now counts a unit's day files plus its `growth/` files; a week pushed over it by growth splits by the same greedy date-order rule (a day weighs its day file + its growth files; a single day over the budget is a unit alone, named in `over_budget`, never dropped). A day's growth file over the ceiling splits into parts at entry boundaries. With growth and the report out of it, `context.json` meets the ceiling easily (sections 3.4 KB, `dailies_not_in_monthly` 1.9 KB, counts and MOC lists).
   - Trade-offs: the numbers are set before the live measurement — the first plan task runs `--measure` on 2026-Q1 (owner go) and may lower them; UTF-8 makes byte counts of German text smaller than the old ASCII numbers in the spec 046 measurement; the line-broken form costs about 15 % of the byte budget.
   - User confirmed: owner, 2026-11-23
 
@@ -1182,19 +1217,22 @@ stateDiagram-v2
 
 - [x] ADR-4 Digest and carryover contracts and `review-digest.py`: the shapes of Application Data Models under `tomo/schemas/review-digest.schema.json` and `review-carryover.schema.json`. `plan` lists the jobs not passed (validating files already present without counting an attempt), in rounds of ≤ `MAX_PARALLEL`, and the proposer's inputs. `check` validates: schema; `read_id`; `unit` = file name; `days` = the unit's taking-part days (every read day covered); every source inside the unit (days, or the unit's weekly-note stem for `child_notes`); theme days inside the unit; section keys known; size ≤ cap; carryover `notes` = the found previous notes, sources among them, ids unique, size ≤ 12 KB. Each `check` call is one attempt per job not passed: 1st failure `retry` (the skill re-dispatches once with the errors verbatim), 2nd `failed`. A failed unit is "not condensed": its days are named at the top and in the report and cannot be sources (`Sources` leaves them out). All taking-part units failed → `stopped nothing-condensed`. Carryover: a whole-file failure → `carry_failed`; one note's invalid items after the retry → the script removes that note's items from `carryover.json` and marks the note failed. A unit failed in an earlier session is offered again on a continued read (one attempt + one retry). The proposer is always dispatched once the jobs are ready; `plan` deletes a `proposals.json` left from an earlier attempt (no `proposals_present` state). Ownership: `condensed.json` is written only by `review-digest.py`; `review_stage.load` reads it (read-id-checked) for `review-doc.py`; file-level carryover checks are `review_digest`'s, document-level coverage is `review_carried`'s.
   - Status: Accepted
+  - Amended 2026-11-23 (owner, T1.5 measurement): the digest gains `growth` — ≤ 15 candidates `{text, sources: [day stem] ≥ 1, notes: [created-note path] 1..10}` for the "Vault growth" group. `check` adds `growth-note-outside-unit` (a `notes` path not among the created notes of the unit's `growth/` files) and `growth-source-not-created-day` (a source that is not a unit day on which one of its `notes` was created). Source rule: a growth candidate's source is the day the note was created, because today's growth group is checked like every non-child group — `check_item` requires ≥ 1 daily of the period (`review_doc.py:274-275`, `NO_SOURCE`), and `Sources` resolves only dailies, weeklies and monthlies (`review_doc.py:195-221`), so a created-note path in `sources` is skipped (`review_doc.py:270-271`) and never linked; the created notes travel in `notes` instead. The digest cap stays `min(8,192, 114,688 // units)`: the candidates replace the ≈ 157.7 KB raw list the proposer would have read, the cap keeps the opus input bounded, and a digest over it is retried as today. The digester's plan job names its `growth_files`; `proposer.inputs` never names `manifest.json`, `days/` or `growth/`.
   - Rationale: everything a script can check about an agent's file is checked before the opus step; "not condensed" is never a partial read of the unit (Rule 7).
   - Trade-offs: the check cannot prove a digest is faithful to its days, only that it is well-formed and stays inside them; fidelity rests on the digester prompt and the owner's quality comparison (KPI).
   - User confirmed: owner, 2026-11-23
 
-- [x] ADR-5 Previous notes: new `lib/review_previous.py`, called by `review_period._PeriodRead.run` before `reader.finish()` and resolved after it, through the same `PacedReader`. Periods per kind by `Period.previous` / `Period.containing` (table above). Set up = folder (`folder_for`, config over profile) and format (`configured_formats`); `PeriodSources` gains `quarterly_folder`. Found by the folder listing (depth 2) and `note_paths` (flat, year subfolder) only — no search (F3-AC4). States: `found` (any text beyond the template skeleton by `review_day.has_content`, Tomo blocks included), `empty`, `missing` (listing answered, no candidate), `not-set-up` (no question, F3-AC8), `not-read` with cause `refused` (a `KadoAuthError` on that call, caught per call), `failed` (still pending after the end pass) or `kado-none` (listing answered with nothing; the key hint, 045 Rule 6). Text: the whole body cleaned by `review_md` (queries, embeds, navigation dropped), off-limits headings included as source text (F4-AC5), cut at a heading boundary at `max_chars_per_day` (`partly_read`, F3-AC10). The target note of the period is never a previous note (different period by construction, Rule 6, F6-AC7); previous notes are read as they are now (F4-AC9).
+- [x] ADR-5 Previous notes: new `lib/review_previous.py`, called by `review_period._PeriodRead.run` before `reader.finish()` and resolved after it, through the same `PacedReader`. Periods per kind by `Period.previous` / `Period.containing` (table above). Set up = folder (`folder_for`, config over profile) and format (`configured_formats`); `PeriodSources` gains `quarterly_folder`. Found by the folder listing (depth 2) and `note_paths` (flat, year subfolder) only — no search (F3-AC4). States: `found` (any text beyond the template skeleton by `review_day.has_content`, Tomo blocks included), `empty`, `missing` (listing answered, no candidate), `not-set-up` (no question, F3-AC8), `not-read` with cause `refused` (a `KadoToolError` whose text names `FORBIDDEN` on that call, caught per call; a `KadoAuthError` still stops the read), `failed` (still pending after the end pass) or `kado-none` (listing answered with nothing; the key hint, 045 Rule 6). Text: the whole body cleaned by `review_md` (queries, embeds, navigation dropped), off-limits headings included as source text (F4-AC5), cut at a heading boundary at `max_chars_per_day` (`partly_read`, F3-AC10). The target note of the period is never a previous note (different period by construction, Rule 6, F6-AC7); previous notes are read as they are now (F4-AC9).
   - Status: Accepted
   - Rationale: the same discovery the child notes use (one listing, no search), inside the single-pass rule (review_period.py:23-30), 2–4 extra calls.
-  - Trade-offs: a note under another name is `missing` (accepted in the PRD); catching `KadoAuthError` per previous-note call relies on the dailies having authenticated first — verify Kado's per-path denial shape before T-impl (Implementation Gotchas).
+  - Amended 2026-11-23 (owner, T1.4 smoke): a per-path denial (path ACL or tag rules) is an MCP tool error `FORBIDDEN`, raised by the client as `KadoToolError` (kado_client.py:948-954; `_inbox/from-kado/2026-11-11_kado-to-tomo_tag-access-rules.md`), never retried; HTTP 401/403 → `KadoAuthError` (kado_client.py:51-52, 761) means a wrong token. So `review_previous` catches `KadoToolError` with `FORBIDDEN` in its text per previous-note call → `not-read`, cause `refused`; any other `KadoToolError` is not swallowed; a `KadoAuthError` stops the whole read as today (`stopped kado-auth`). `KadoToolError` carries only the message text, so the match is on that text. Kado answers the same `FORBIDDEN` text for a missing, untagged or denied note, so `refused` never claims which.
+  - Trade-offs: a note under another name is `missing` (accepted in the PRD).
   - User confirmed: owner, 2026-11-23
 
 - [x] ADR-6 Proposals and carried marks: the proposer writes `proposals.json` in today's shape; group and section items gain optional `carried` (`done` | `still_open` | `not_mentioned`) with required `carried_ids` (carryover ids). A separate field, not new values in the `mark` enum, because a section item may carry both a child mark and a carried mark (F5-AC2) and group items have no `mark` (046 CON-2). Checks in new `lib/review_carried.py`, called by an explicit carried branch at the call sites (`review_doc.check_items` for groups with `in_section=False`, `review_sections.check` for sections with `in_section=True` and the item's `mark`), both resolving sources through the one `review_doc.resolve_sources`: a previous-note source (`Sources.previous`), and the item's previous-note sources ⊆ the sources of its `carried_ids` (both representations kept: ids are identity and coverage, sources are the links); `done`/`still_open` need ≥ 1 day of the period, `not_mentioned` none (PRD amendment Rule 4); the two-day theme rule does not apply; with a child mark only `not_in_weekly` / `not_in_monthly` and only with `done` / `still_open` (`*_only` means no day holds it, `not_mentioned` forbids the day `not_in_*` needs: `carried-mark-conflict`); groups: `done` only `done`, `open` and `themes` only `still_open`/`not_mentioned`, other groups none; any value in a section. `coverage`: every carryover id exactly once over the document (F4-AC1, F4-AC6, F4-AC7: one item may list several ids), a `theme` id never `done` (F4-AC3), no `carried` without a passed carryover. Every carried failure is an `errors` entry (`proposals-invalid`), never a `rejected` row, so a carried item is never dropped. Owner 2026-11-23: a full section is resolved by the script, not by a rewrite — `review_carried.overflow` runs before the section checks and moves the last carried items of an over-cap section into the group of their mark (done → done; still_open / not_mentioned → open, or themes when the ids are theme items; a child mark is dropped with the move), reported as the `carried-moved` notice (F4-AC10); non-carried items keep spec 046's `over-cap` refusal. Labels in `_LABELS` (owner wording): EN `carried_done` "done (previous review)", `carried_still_open` "still open (previous review)", `carried_not_mentioned` "not mentioned again (previous review)"; DE "erledigt (letzter Rückblick)", "noch offen (letzter Rückblick)", "nicht mehr erwähnt (letzter Rückblick)". Suffix order: carried, then child mark.
   - Status: Accepted
   - Options for who writes proposals: the skill in the main session (sonnet, would have to read every digest itself) or the opus agent (chosen, owner model decision); for the mark: extend the `mark` enum (brainstorm §4.2; cannot express two marks on one item, cannot reach group items without making groups take child marks) or a separate field (chosen).
+  - Amended 2026-11-23 (owner, T1.5 measurement): the proposer builds the "Vault growth" group from the digests' growth candidates and `context.json`'s growth counts and MOC lists (no per-note list); a growth item's sources are its candidates' creation days, so `check_item` (`review_doc.py:252-278`) checks it unchanged. A carried item is never in `growth` (unchanged: "other groups none").
   - Rationale: Rule 5 (exactly one carried mark, once) becomes script-checkable through ids.
   - Trade-offs: a schema change on group items that spec 046 deliberately avoided (additive and optional, so every existing fixture stays valid); the proposer must copy ids correctly — a slip costs one rewrite; `overflow` moves items the proposer placed, so the document can differ from `proposals.json` in where a carried item stands (named in the notice).
   - User confirmed: owner, 2026-11-23
@@ -1215,8 +1253,9 @@ stateDiagram-v2
   - Trade-offs: the user can edit the mark away (intended, F5-AC4); no machine-readable trace of carried items survives delivery (counts for the "Review delivered" event come from `parse`'s link stems and the stored Pass 1 counts in `meta.json`).
   - User confirmed: owner, 2026-11-23
 
-- [x] ADR-10 Privacy and deletion: `review_stage.discard(stage)` deletes every stage file that may hold note content (`days/`, `children/`, `previous/`, `digests/`, `context*.json`, `weeks.json`, `carryover.json`, `proposals.json`, `condensed.json`, `manifest.json`, and any legacy `read*.json`) and keeps `meta.json` and `payloads.json`. Called by `review-doc.py write` after the document is written (as `_drop_stage_content` today), by `review-doc.py replace --abort`, by `review-read.py` before a new read; `review-instructions.py drop` keeps removing the whole stage (unchanged). Pass 1 abort: an Abort answered after step 4 wrote a stage and before step 5 wrote the document runs `review-doc.py replace --stem <stem> --abort` and nothing else (exception to the skill's "on Abort run no further script"). A `write` refused with `review-exists` keeps the stage for `replace --confirm` (unchanged). `PRIVACY.md` names the new places, that an interrupted run's material rests until the document is written, a drop, a start over or that period's next new read, the previous notes as a read source, the three models and their own transcripts; `docs/setup.md` names the models; `test_review_privacy.py`'s allowlist lists the content files; `manifest.json` and `condensed.json` stay under the leak guard.
+- [x] ADR-10 Privacy and deletion: `review_stage.discard(stage)` deletes every stage file that may hold note content (`days/`, `growth/`, `children/`, `previous/`, `digests/`, `context*.json`, `weeks.json`, `carryover.json`, `proposals.json`, `condensed.json`, `manifest.json`, and any legacy `read*.json`) and keeps `meta.json` and `payloads.json`. Called by `review-doc.py write` after the document is written (as `_drop_stage_content` today), by `review-doc.py replace --abort`, by `review-read.py` before a new read; `review-instructions.py drop` keeps removing the whole stage (unchanged). Pass 1 abort: an Abort answered after step 4 wrote a stage and before step 5 wrote the document runs `review-doc.py replace --stem <stem> --abort` and nothing else (exception to the skill's "on Abort run no further script"). A `write` refused with `review-exists` keeps the stage for `replace --confirm` (unchanged). `PRIVACY.md` names the new places, that an interrupted run's material rests until the document is written, a drop, a start over or that period's next new read, the previous notes as a read source, the three models and their own transcripts; `docs/setup.md` names the models; `test_review_privacy.py`'s allowlist lists the content files; `manifest.json` and `condensed.json` stay under the leak guard.
   - Status: Accepted
+  - Amended 2026-11-23 (owner, T1.5 measurement): `growth/` (created-note paths and their links) joins the discarded content files and the privacy allowlist.
   - Trade-offs: an interrupted quarter leaves ≈ 0.7 MB of note content on disk until the next run of that period (accepted by the owner, F7-AC2); deletion at deliver stays out of scope (045 ADR-9, owner 2026-11-22).
   - User confirmed: owner, 2026-11-23
 
@@ -1232,11 +1271,11 @@ stateDiagram-v2
 
 ## Quality Requirements
 
-- **Performance (hard)**: 0 days named not read because of size on 2026-W13, 2026-03, 2026-Q1 (check: `review-read.py --measure` `over_budget` empty + live-walk report, recorded in the close-out); 0 Read calls in the main session on stage files (check: plugin eval case `review-no-stage-read` + transcript count by `scripts/tomo-session-stats.py`); every agent-read stage file ≤ 40,960 bytes indented and no line > 2,000 chars (test: `tests/test_review_stage.py::test_indented_files_stay_under_the_ceiling` on the scaled 2026-Q1 fixture); proposer digests ≤ 114,688 bytes total (test: `tests/test_review_weeks.py::test_digest_cap_bounds_the_total`).
+- **Performance (hard)**: 0 days named not read because of size on 2026-W13, 2026-03, 2026-Q1 (check: `review-read.py --measure` `over_budget` empty + live-walk report, recorded in the close-out); 0 Read calls in the main session on stage files (check: plugin eval case `review-no-stage-read` + transcript count by `scripts/tomo-session-stats.py`); every agent-read stage file ≤ 32,768 bytes indented and no line > 2,000 chars (test: `tests/test_review_stage.py::test_indented_files_stay_under_the_ceiling` on the scaled 2026-Q1 fixture); proposer digests ≤ 114,688 bytes total (test: `tests/test_review_weeks.py::test_digest_cap_bounds_the_total`).
 - **Performance (guidance, F8)**: week Pass 1 ≤ $0.80, month ≤ $2.00 and 7 min, quarter ≤ $5.00 and 20 min, Pass 2 ≤ $0.85 (check: `scripts/tomo-session-stats.py --session` per step in the live walk; the close-out reports cost at `tomo-token-usage.py`'s rates — opus $15/$75 — and, in a separate column, at current list prices if they differ). Cost estimate at the rates `scripts/tomo-token-usage.py` uses (opus $15/$75, sonnet $3/$15, haiku $0.80/$4 per M): the proposer costs about 3× research §2's $5/$25 figure — week ≈ $1.05, quarter ≈ $2.40–3.00 — so week Pass 1 ≈ $1.50–1.80, month ≈ $2.60–3.20, quarter ≈ $4.10–5.50 (research §2 at $5/$25: $0.90–1.10 / $1.60–2.00 / $2.50–3.50). All above the week and month guidance, the quarter near its $5.00; guidance only (CON-7, F8-AC2). Kado calls +≤ 4 per read (test: `tests/test_review_previous.py::test_previous_notes_add_at_most_four_calls`); one dispatch round for ≤ 15 units (test: `tests/test_review_digest.py::test_plan_rounds`). Overruns block nothing.
 - **Usability**: no new question (test: `tests/test_047_skill_contract.py::test_step4_5_ask_no_new_question`); one line for a continued read with its time (same file, `test_continued_read_line`); one line per previous note (test: `tests/test_review_doc.py::test_one_top_line_per_previous_note`).
 - **Security / privacy**: 0 note-text strings in stdout, stderr, `manifest.json`, `condensed.json`, `meta.json`, cost records (test: `tests/test_review_privacy.py` leak guard over every review script incl. `review-digest.py`); 0 content files left after write, Pass 1 abort or drop (test: `tests/test_review_stage.py::test_discard_leaves_only_meta_and_payloads` + `tests/test_review_e2e_cleanup.py`); agents have no Bash and no MCP tool (test: `tests/test_047_agents.py::test_tools_are_read_and_write_only`).
-- **Reliability**: 0 carried items placed twice and 0 without a previous-note link (test: `tests/test_review_carried.py` coverage and source cases); 0 carried items dropped at a full section (test: `tests/test_review_carried.py::test_overflow_moves_to_group_of_mark`); every PRD criterion traced to a test or a recorded live run (check: the close-out trace in ONE pytest invocation); the baseline fingerprint equal for week, month and quarter except the named differences (test: `tests/test_047_baseline_e2e.py`); a re-review replaces Tomo's earlier block incl. carried items (test: `tests/test_047_baseline_e2e.py::test_rereview_replaces_block_with_carried_items`, F5-AC6).
+- **Reliability**: 0 carried items placed twice and 0 without a previous-note link (test: `tests/test_review_carried.py` coverage and source cases); 0 carried items dropped at a full section (test: `tests/test_review_carried.py::test_overflow_moves_to_group_of_mark`); every created note in exactly one `growth/` file of its creation day and that day's unit, none in `context.json` (test: `tests/test_review_stage.py::test_growth_goes_to_the_day_it_was_created`); every PRD criterion traced to a test or a recorded live run (check: the close-out trace in ONE pytest invocation); the baseline fingerprint equal for week, month and quarter except the named differences (test: `tests/test_047_baseline_e2e.py`); a re-review replaces Tomo's earlier block incl. carried items (test: `tests/test_047_baseline_e2e.py::test_rereview_replaces_block_with_carried_items`, F5-AC6).
 
 ## Acceptance Criteria
 
@@ -1300,14 +1339,14 @@ stateDiagram-v2
 
 - `tests/test_review_sdd_map.py` accepts a review file only when spec 045's or 046's Directory Map names it; extend it to spec 047's map, or every new file fails it.
 - `tests/test_review_why_docs.py` reads every review script's argparse (`review_cli_contract.py`); `review-digest.py` and its subcommands must be named in `docs/tomo/dot_claude/skills/periodic-review.md`, and every new lib needs its `docs/tomo/scripts/lib/*.md` mirror.
-- Kado's per-path denial: confirm (check `_inbox/from-kado` first) whether a denied path answers 403 (`KadoAuthError`, kado_client.py:761) or a tool error; ADR-5 catches both for previous notes only, never for the period's dailies.
 - Agent writes into nested folders (early smoke task, Phase 1 of the plan, owner go): in the test instance, dispatch a throwaway agent with the review agents' frontmatter (`tools: Read, Write`, `permissionMode: acceptEdits`) and have it write `tomo-tmp/review/smoke/digests/x.json`; assert the file exists without a permission prompt. Do not rely on `Edit(tomo-tmp/*)` matching nested paths (a single `*` may not cross `/`); if the smoke fails, the fallback is that `review-digest.py plan` pre-creates `digests/` and the agents rely on `acceptEdits` for the working directory — never a `settings.json` change without the full eval suite (CON-6).
 - `PacedReader.folder` caches per folder: a week review's previous-week listing of the weekly folder is the same key as the target probe's folder only by accident; previous notes must go through the reader before `finish()` so a 429 on them is retried in the end pass.
 - `replace --confirm` renders from the kept stage; it must load through `review_stage.load` and keep `condensed.json` and `carryover.json`.
 - A pre-047 stage (`read.json`) left by an older session: `review-read.py` deletes it on the next read; `review-doc.py write` refuses `read-missing` until then.
 - The agents' reply must be one line; a digester that echoes the day text into its reply inflates the main context — the agent file says the reply format, and the plugin eval checks it.
 - `update-tomo.sh` does not delete files removed from the source: the instance keeps an orphan `scripts/lib/review_read_parts.py` (harmless, nothing imports it).
-- `review_period.read_period`'s result gains `previous`; `test_review_period_golden.py` changes by that key only.
+- `review_period.read_period`'s result gains `previous`, and each `growth.created` entry gains `day`; `test_review_period_golden.py` changes by those keys only.
+- Growth day (v1.2): the created query asks `fields: ["links"]` (review_period.py:302-303); verified: `created` is a base field of every search item, not gated by `fields` (Kado `src/types/canonical.ts:440-444` `CoreSearchItem {created; modified}`, set in `src/obsidian/search-adapter.ts:40, 250, 352`), and the time filter uses it (`search-adapter.ts:630-631`); the fake vault matches (tests/review_fake_vault.py:229). The day is the local date of `created`, the same local-day convention as `period_bounds_ms` (review_period.py:139-143); an entry without a usable `created` goes to the period's first day.
 
 ## Glossary
 

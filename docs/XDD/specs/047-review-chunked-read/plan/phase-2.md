@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Stage layout, limits and the loader"
-status: pending
+status: in_progress
 version: "1.2"
 phase: 2
 ---

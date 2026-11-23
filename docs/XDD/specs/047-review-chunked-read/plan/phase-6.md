@@ -60,6 +60,8 @@ Puts the three agents in place and makes the skill drive them, with the main ses
 
   - **Carry-over from the T2.4 review (2026-11-23):** SKILL.md's refused-problems list (~164) does not name `read-stale`; add it with the step 4/5 rewrite.
 
+  - **Carry-over from the T4.3 review (2026-11-23):** `review-digest.py plan` resets every failed unit (and a whole-file failed carryover) to pending on each call, because it cannot tell a continued read from a repeat call; retries stay bounded only if the skill runs `plan` once per run, then `check` at most twice. Step 5 says so as an imperative (STRICT only if a live run shows a second `plan`), and the WHY doc says a unit that fails twice stays failed until the next session.
+
 - [ ] **T6.4 Plugin eval case `review-no-stage-read`** `[activity: testing]`
 
   1. Prime: `evals/README.md` (adding a case, graders' limits), an existing case folder (`evals/pass1-suggest-pipeline/`), memory notes on plugin eval (sees subagent calls; no AskUserQuestion; traces and `input_match`) `[ref: SDD/Quality Requirements/Performance (hard); lines: 1234]` `[ref: SDD/Error Handling; lines: 961]`

@@ -40,7 +40,7 @@ Pins what the review document and Pass 2 look like today for a week, a month and
   4. Validate: new tests green; `test_review_sdd_map.py` green with `test_review_doc_fingerprint.py` named in spec 047's map; ruff clean.
   5. Success: a document's structure can be compared without its wording `[ref: PRD/F2-AC1]` `[ref: SDD/ADR-11]`
 
-- [ ] **T1.2 Fixture and walk for the quarter and the previous notes** `[activity: testing]` `[parallel: true]`
+- [x] **T1.2 Fixture and walk for the quarter and the previous notes** `[activity: testing]` `[parallel: true]`
 
   1. Prime: `tests/review_privacy_fixture.py` (folders `DAILY`, `WEEKLY`, `MONTHLY`, `CONFIG`, `build_vault`, `proposals`), `tests/review_e2e_walk.py` (`Walk`, `WEEK`/`MONTH` constants lines 52-66, `pass1`, `deliver`, `stage`), `tests/test_review_e2e.py`; spec 046 quarter config shape (`review.quarterly`, `GRANULARITY[QUARTER]`) `[ref: SDD/Directory Map/Tests; lines: 490-491]` `[ref: SDD/Complex Logic (a); lines: 966-989]`
   2. Test: a quarterly folder and a quarter setup in the fixture config; `build_vault` writes weekly notes for 2026-W12 and W13, monthly notes for 2026-02 (and 2026-01), no 2025-Q4 note, dailies spanning 2026-01-01 … 2026-03-31 with at least one day per ISO week of 2026-Q1 holding content (structure only, synthetic text, no journal text); quarterly fixture proposals valid against today's `review-proposals.schema.json`; `Walk` gains `QUARTER` / `2026-Q1` constants and runs Pass 1 and Pass 2 for the quarter on the old flow; every existing e2e test (`test_review_e2e*.py`, `test_review_privacy.py`) stays green with the extended fixture.

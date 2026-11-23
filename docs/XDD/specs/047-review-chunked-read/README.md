@@ -60,6 +60,8 @@
 | 2026-11-23 | Deviation from ADR-2: FILE_CEILING = 32,768 bytes (was 40,960); ADR-5 catches KadoToolError FORBIDDEN for previous notes (not KadoAuthError) | Owner (recommended) / fact correction |
 | 2026-11-23 | T2.5 measured 2026-Q1 on the new stage: 0 over the ceiling; the bulk-import day 2026-01-19 (86 KB growth) makes `2026-W04a` 92.9 KB, over the 80 KB unit budget; context.json 86 KB in 4 files, mostly per-day `fields` | Measurement (owner go) |
 | 2026-11-23 | Deviation from ADR-2: `UNIT_BUDGET` = 131,072 B (128 KB); `context.json` carries per-tracker aggregates (days with a value, min/max/mean, per unit) instead of raw per-day `fields` | Owner (recommended): fewest opus tokens, no special case for bulk days |
+| 2026-11-23 | T3.2: one `previous/<kind>-<name>.json` per previous period (non-found files hold metadata only), as SDD Data Storage Changes says; the plan's "found only" applies to `sections` | Orchestrator; SDD governs |
+| 2026-11-23 | A previous-note folder whose listing answers empty is `missing` ("no note found", no error tone), not `not-read`/`kado-none`; amends PRD F3-AC9, ADR-5, ADR-12. Accepted trade-off: a key denial that shows as an empty listing also reads "no note found" | Owner (recommended): spec 045 Rule 6, the dailies were read |
 
 ## Context
 

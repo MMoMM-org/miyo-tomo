@@ -49,7 +49,7 @@ Reads the review notes of the period before inside the same paced pass and recor
   4. Validate: tests green; module ≤ 300 lines; ruff clean.
   5. Success: each previous note is found by setup only and has exactly one named state `[ref: PRD/F3-AC1, F3-AC2, F3-AC3, F3-AC4, F3-AC5, F3-AC7, F3-AC8, F3-AC9, F3-AC10, F4-AC9, F6-AC7]`
 
-- [ ] **T3.2 Previous notes in the period read and the stage** `[activity: backend-api]`
+- [x] **T3.2 Previous notes in the period read and the stage** `[activity: backend-api]`
 
   1. Prime: `lib/review_period.py` (`PeriodSources` 68-87, `CHILD` 61, the single pass and `reader.finish()` 369-391, result keys 400-427), `review-read.py` report, `lib/review_stage.py` (T2.3), `tests/test_review_period_golden.py`, `docs/tomo/scripts/lib/review_period.md` `[ref: SDD/ADR-5]` `[ref: SDD/Internal API Changes; lines: 592-594]` `[ref: SDD/Implementation Gotchas; lines: 1304, 1309]`
   2. Test: `PeriodSources.quarterly_folder` resolved config over profile; `review_period` calls `review_previous` before `reader.finish()` and resolves after it, so a 429 on a previous note is retried in the end pass; the result gains `previous` and nothing else (`test_review_period_golden.py` changes by that key only); the stage writes `previous/<kind>-<name>.json` with `read_id` and line-array sections (found only) and the manifest lists them; `report.previous` lists kind, name, role, path, state, cause, `partly_read` with no text; one retry/wait report covers the period's notes and the previous notes together (F2-AC6); the month walkthrough (2026-03: 2026-02 found, 2025-Q4 missing) and the quarter walkthrough (2025-Q4 missing) on the fake vault; the baseline e2e still GREEN (the old fingerprint does not show previous notes yet).

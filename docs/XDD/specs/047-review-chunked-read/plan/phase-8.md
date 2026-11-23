@@ -56,6 +56,8 @@ Proves on the fake vault that the new flow produces the same review and the same
   4. Validate: GREEN; full suite green; ruff clean.
   5. Success: every failure is named, a resumed run equals an uninterrupted one, and a re-review leaves one block `[ref: PRD/F5-AC6, F6-AC1, F6-AC2, F6-AC4, F6-AC5, F6-AC6, F6-AC7, F6-AC8]`
 
+  - **Carry-over from the T3.2 review (2026-11-23):** add a test where a previous note's folder listing is rate-limited past the retries and only recovered by the end pass, so `resolve` reads the note after `finish()` (verified by hand in the review, not yet committed).
+
 - [ ] **T8.3 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean; wire gate and manifests green and unchanged. Trace F2-AC1, F2-AC2, F5-AC6 and the e2e halves of F5-AC4, F5-AC5, F6-AC1 … F6-AC8 to node ids. Drift check spec vs code: every SDD interface shape (`review-read.py` ok/continued, `plan`, `check`, `write` refusals and `written` keys) compared with the scripts' docstrings and actual output; differences fixed or recorded as deviations in the SDD. Confirm no eval-gated file changed across the branch (`git diff --stat main...`).

@@ -69,7 +69,7 @@ Lets a proposal carry an item from a previous note, proves its mark and sources 
 
   - **Carry-over from the T4.4 review (2026-11-23, orchestrator):** `review-doc.py write` refuses only open UNITS (`condense-incomplete`), not an open carryover. So define `carry_failed` as "at least one previous note was found and the carryover state is not `passed`" (pending, retry and failed all count; `none` stays false). Test: a carryover still `pending` or `retry` at write time renders the carry-failed top line and no carried mark (F6-AC2), making `test_047_t4_4_condense_gate.py::test_an_open_carryover_does_not_hold_the_document_back` consistent with F6-AC2.
 
-- [ ] **T5.5 Pass 2 regression: a carried mark is item text** `[activity: testing]` `[parallel: true]`
+- [x] **T5.5 Pass 2 regression: a carried mark is item text** `[activity: testing]` `[parallel: true]`
 
   1. Prime: `lib/review_doc_parse.py` (`_TRAILING_DONE_MARK` 74, `edited` 94-100), `tests/test_review_doc_parse.py` `[ref: SDD/ADR-9; lines: 1212]` `[ref: SDD/Implementation Examples; lines: 869]`
   2. Test: a ticked carried line is kept with the mark as part of its text; a line whose mark the user edited or deleted is kept as the user left it and is not an edit (link stems unchanged) and not a done tick; an unticked or deleted carried item is absent (F5-AC4, F5-AC5); a line carrying both marks and a trailing ` ✅ YYYY-MM-DD` reads the date only as the done mark it already is; RED proof: a parse mutation that strips text after ` · ` fails the test.

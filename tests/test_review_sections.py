@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.2.0
 """test_review_sections.py — lib/review_sections.py and the spec 046 proposals schema (046 T4.1).
 
 Synthetic read.json / proposals.json dicts, no Kado:
@@ -18,6 +18,9 @@ Synthetic read.json / proposals.json dicts, no Kado:
 - spec 045 proposals without ``sections`` and a read without ``sections`` give no section result and
   check_items exactly as before
 - an echoed rendered line (`x ([[a]]) %%t1%%`) loses its id before its trailing link list (T4.2)
+- spec 047 T5.4: a carried section item takes the carried branch after the 046 mark check, keeps
+  `carried` and its mark, fails as an error never a rejected row (empty-text included); section_cap is
+  public; an off-limits heading is never a section, so a carried item goes to the next section or its group
 
 All data is synthetic.
 """
@@ -119,20 +122,20 @@ def test_monthly_only_needs_a_monthly_note_and_the_quarter_groups_need_monthly_n
     props = proposals(monthly_only=[item("only there", f"{MONTHLY}2026-02.md"), item("daily", "2026-02-15"),
                                     item("weekly is no monthly", "2026-W03")],
                       not_in_monthly=[item("left out", "2026-01-05")])
-    accepted, rejected = rd.check_items(props, quarter_read())
+    accepted, rejected, _ = rd.check_items(props, quarter_read())
     assert accepted["monthly_only"] == [{"text": "only there", "links": ["2026-02"]}]
     assert accepted["not_in_monthly"] == [{"text": "left out", "links": ["2026-01-05"]}]
     assert rejected == [{"group": "monthly_only", "index": 1, "reason": "no-source-in-period"},
                         {"group": "monthly_only", "index": 2, "reason": "no-source-in-period"}]
-    accepted, rejected = rd.check_items(props, quarter_read(monthly=False))
+    accepted, rejected, _ = rd.check_items(props, quarter_read(monthly=False))
     assert "monthly_only" not in accepted and {r["reason"] for r in rejected} == {"no-monthly-notes"}
     for read in (week_read(), month_read()):
-        accepted, rejected = rd.check_items(props, read)
+        accepted, rejected, _ = rd.check_items(props, read)
         assert "monthly_only" not in accepted and {r["reason"] for r in rejected} == {"quarter-only-group"}
 
 
 def test_a_quarter_still_rejects_the_month_groups():
-    _, rejected = rd.check_items(proposals(weekly_only=[item("a", "2026-W03")]), quarter_read())
+    _, rejected, _ = rd.check_items(proposals(weekly_only=[item("a", "2026-W03")]), quarter_read())
     assert rejected == [{"group": "weekly_only", "index": 0, "reason": "month-only-group"}]
 
 
@@ -144,7 +147,7 @@ DOUBLED = proposals(done=[item("Same", "2026-03-24")], open=[item("same", "2026-
 def test_without_a_mapping_spec_045_proposals_give_no_section_result():
     result = rs.check(DOUBLED, week_read())
     assert (result.accepted, result.rejected, result.errors) == ({}, [], [])
-    accepted, rejected = rd.check_items(DOUBLED, week_read())
+    accepted, rejected, _ = rd.check_items(DOUBLED, week_read())
     assert [i["text"] for i in accepted["done"] + accepted["open"]] == ["Same", "same"] and rejected == []
 
 
@@ -324,3 +327,97 @@ def test_a_refused_section_entry_adds_no_double_placement(key):
     props["groups"]["done"] = [item("a", "2026-03-24")]       # the pass still runs on the accepted places
     assert rs.check(props, mapped(week_read())).errors == [f"/sections/1/key: {error}",
                                                            "/groups/done/0: double-placement"]
+
+
+# ---------------------------------------------------------------- spec 047 T5.4: the carried branch, sections
+
+PREV_FEB = f"{MONTHLY}2026-02.md"
+MONTH_CARRY = {"read_id": "r2", "notes": [{"path": PREV_FEB, "kind": "month", "name": "2026-02", "items": 2}],
+               "items": [{"id": "c4", "type": "intention", "text": "screen", "sources": ["2026-02"]},
+                         {"id": "c5", "type": "open", "text": "dentist", "sources": ["2026-02"]}]}
+
+
+def carried(text: str, value: str, ids, *sources: str, mark=None) -> dict:
+    out = {**item(text, *sources), "carried": value, "carried_ids": list(ids)}
+    return {**out, "mark": mark} if mark else out
+
+
+def carried_month(carryover=MONTH_CARRY, weekly=True) -> dict:
+    read = mapped(month_read(weekly=weekly), definition("s1"), definition("s3"))
+    read["previous"] = [{"kind": "month", "name": "2026-02", "path": PREV_FEB, "state": "found"}]
+    read["carryover"] = carryover
+    return read
+
+
+def test_a_carried_section_item_is_accepted_with_its_carried_value_and_its_mark():
+    props = with_sections(proposals(), section("s3", carried("Weniger Bildschirm", "still_open", ["c4"], "2026-02",
+                                                             "2026-03-12", mark="not_in_weekly"),
+                                               carried("Zahnarzt", "not_mentioned", ["c5"], PREV_FEB)))
+    result = rs.check(props, carried_month())
+    assert (result.errors, result.rejected) == ([], [])
+    assert result.accepted["s3"] == [
+        {"text": "Weniger Bildschirm", "links": ["2026-02", "2026-03-12"], "carried": "still_open",
+         "mark": "not_in_weekly"},
+        {"text": "Zahnarzt", "links": ["2026-02"], "carried": "not_mentioned"}]
+
+
+def test_a_carried_section_failure_is_an_error_never_a_rejected_row():
+    props = with_sections(proposals(), section("s1", carried("a", "still_open", ["c4"], "2026-02", "2026-W13",
+                                                             mark="weekly_only"),
+                                               carried("b", "done", ["c5"], "2026-03-12"),
+                                               item("kein Tag", "2026-04-02")))
+    result = rs.check(props, carried_month())
+    assert result.errors == ["/sections/0/items/0: carried-mark-conflict",
+                             "/sections/0/items/1: carried-needs-previous-note"]
+    assert result.rejected == [{"section": "s1", "index": 2, "reason": rd.NO_SOURCE}]
+
+
+def test_a_carried_section_item_without_a_carryover_is_refused():
+    props = with_sections(proposals(), section("s1", carried("a", "done", ["c4"], "2026-02", "2026-03-12")))
+    assert rs.check(props, carried_month(carryover=None)).errors == ["/sections/0/items/0: carried-without-carryover"]
+
+
+def test_a_carried_item_keeps_the_spec_046_mark_check_first():
+    props = with_sections(proposals(), section("s1", carried("a", "still_open", ["c4"], "2026-02", "2026-03-12",
+                                                             mark="not_in_monthly")))
+    assert rs.check(props, carried_month()).errors == ["/sections/0/items/0/mark: mark-not-allowed"]
+    props = with_sections(proposals(), section("s1", carried("a", "still_open", ["c4"], "2026-02", "2026-03-12",
+                                                             mark="not_in_weekly")))
+    assert rs.check(props, carried_month(weekly=False)).errors == ["/sections/0/items/0/mark: mark-not-allowed"]
+
+
+def test_a_whitespace_only_carried_section_item_is_an_empty_text_error():
+    props = with_sections(proposals(), section("s1", carried(" \t ", "done", ["c4"], "2026-02", "2026-03-12")))
+    result = rs.check(props, carried_month())
+    assert (result.errors, result.rejected) == (["/sections/0/items/0: empty-text"], [])
+
+
+def test_the_section_cap_is_public_and_the_one_rule_overflow_uses():
+    from lib import review_carried as rcar
+    from lib.review_config import DEFAULT_CAP
+
+    assert rs.section_cap({"cap": 2}) == 2 and rs.section_cap({}) == DEFAULT_CAP
+    assert rs.section_cap({"cap": True}) == DEFAULT_CAP
+    full = with_sections(proposals(), section("s1", item("a", "2026-03-12"),
+                                              carried("b", "done", ["c4"], "2026-02", "2026-03-12")))
+    _, notices = rcar.overflow(full, {"s1": definition("s1", cap=1)}, MONTH_CARRY)
+    assert notices == [{"key": "s1", "to": "done", "count": 1}]
+
+
+def test_an_off_limits_heading_is_never_a_section_so_no_carried_item_lands_there():
+    from lib import review_mapping as rm
+
+    template = "# T\n\n## Health\n\n## Wins\n\n## Notes\n"
+    heads = {h.heading: h for h in rm.analyse_template(template, [{"heading": "Health", "level": 2,
+                                                                     "parent": None, "occurrence": 1}])}
+    assert heads["Health"].state == "left-out" and heads["Health"].reason == rm.OFF_LIMITS
+    assert heads["Wins"].state == "offered"
+    # the off-limits heading never became a row, so the read has no definition for it
+    read = carried_month()
+    misplaced = with_sections(proposals(), section("s9", carried("a", "done", ["c4"], "2026-02", "2026-03-12")))
+    assert rs.check(misplaced, read).errors == ["/sections/0/key: unknown-section"]
+    in_next = with_sections(proposals(), section("s3", carried("a", "done", ["c4"], "2026-02", "2026-03-12")))
+    assert rs.check(in_next, read).errors == []
+    in_group = proposals(done=[carried("a", "done", ["c4"], "2026-02", "2026-03-12")])
+    accepted, rejected, errors = rd.check_items(in_group, read)
+    assert (rejected, errors) == ([], []) and accepted["done"][0]["carried"] == "done"

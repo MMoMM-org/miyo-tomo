@@ -100,8 +100,19 @@ CON-2). The result is the `carried-moved` notice rows `{key, to, count}`
 section without a carried item keeps spec 046's `over-cap` refusal. The input
 is not mutated; the caller gets a new proposals dict.
 
-The cap comes from `review_sections._cap` through a call-time import:
+The cap comes from `review_sections.section_cap` through a call-time import:
 `review_sections` will import this module for its carried branch (T5.4), so
 a module-level import would be a cycle, and a second cap rule would drift.
 The document order of `coverage` (`review_doc.MODEL_GROUPS`) is imported at
 call time for the same reason: `review_doc.check_items` will call `check`.
+
+## WHY the Call-Time Imports Stay (Spec 047 T5.4, 0.1.1)
+
+T5.4 wired the call sites: `review_doc` imports this module at module level
+(`check_carried`), and `review_sections` reaches it through `review_doc`.
+The two names this module needs back — `review_doc.MODEL_GROUPS` and
+`review_sections.section_cap` (public since T5.4, was `_cap`) — stay
+call-time imports. Moving them into the leaf `review_sources` would put the
+group table and the cap rule into a module about sources, which they are
+not; the call-time import keeps each rule in its owner at the cost of one
+import line inside two functions.

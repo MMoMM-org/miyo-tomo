@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic reads staged through lib/review_stage.write (spec 047
@@ -54,6 +54,10 @@ T2.4; the stage replaced read.json) and proposals.json files:
   English otherwise; one top line per previous note in every state, one Not condensed line per
   failed unit, the carry-failed line, EN and DE; the callout's first line unchanged; the document
   still parses with no checkbox above the first ## but Approved
+- spec 047 T5.4: check_items returns (accepted, rejected, errors); a carried item takes the carried
+  branch (review_carried), keeps `carried`, and every carried failure (empty-text included) is an error,
+  never a rejected row; the carried label precedes the child mark (both SDD lines byte-exact); a
+  single-day not-condensed unit shows the day alone; previous_rows counts carried items per found note
 
 All data is synthetic.
 """
@@ -251,7 +255,7 @@ def test_item_without_a_source_inside_the_period_is_rejected_and_listed():
     props = proposals(done=[item("ok", "2026-03-24"), item("outside", "2026-03-22", "Efforts/X.md"),
                             item("other year", f"{DAILY}2025-03-24.md")],
                       open=[item("linked note only", "DP-2026-03-24")])
-    accepted, rejected = rd.check_items(props, week_read())
+    accepted, rejected, _ = rd.check_items(props, week_read())
     assert [i["text"] for i in accepted["done"]] == ["ok"]
     assert accepted["open"] == []
     assert rejected == [
@@ -264,13 +268,13 @@ def test_item_without_a_source_inside_the_period_is_rejected_and_listed():
 def test_a_theme_naming_fewer_than_two_days_is_rejected():
     props = proposals(themes=[item("one day twice", "2026-03-24", _daily("2026-03-24")),
                               item("two days", "2026-03-24", "2026-03-25")])
-    accepted, rejected = rd.check_items(props, week_read())
+    accepted, rejected, _ = rd.check_items(props, week_read())
     assert [i["text"] for i in accepted["themes"]] == ["two days"]
     assert rejected == [{"group": "themes", "index": 0, "reason": "theme-needs-two-days"}]
 
 
 def test_sources_render_as_links_of_the_note_stem():
-    accepted, _ = rd.check_items(GOOD, week_read())
+    accepted, _, _ = rd.check_items(GOOD, week_read())
     assert accepted["done"][0]["links"] == ["2026-03-24", "2026-03-26"]
     assert accepted["growth"][0]["links"] == ["2026-03-24"]          # Efforts/X.md is not a daily of the period
 
@@ -283,14 +287,14 @@ def test_links_come_only_from_resolved_sources_as_the_listed_stem():
     props = proposals(done=[item("forged", "2026-03-24", *FORGED_SOURCES),
                             item("dupes", "2026-03-24", _daily("2026-03-24"), "[[2026-03-24]]", "2026-03-26"),
                             item("only forged", *FORGED_SOURCES)])
-    accepted, rejected = rd.check_items(props, week_read())
+    accepted, rejected, _ = rd.check_items(props, week_read())
     assert [i["links"] for i in accepted["done"]] == [["2026-03-24"], ["2026-03-24", "2026-03-26"]]
     assert rejected == [{"group": "done", "index": 2, "reason": "no-source-in-period"}]
 
 
 def test_a_bare_weekly_stem_resolves_for_weekly_only():
     props = proposals(weekly_only=[item("bare stem", "2026-W13"), item("path and day", f"{WEEKLY}2026-W13.md", "2026-03-04")])
-    accepted, rejected = rd.check_items(props, month_read())
+    accepted, rejected, _ = rd.check_items(props, month_read())
     assert [i["links"] for i in accepted["weekly_only"]] == [["2026-W13"], ["2026-W13", "2026-03-04"]]
     assert rejected == []
 
@@ -300,7 +304,7 @@ def test_a_wiki_link_shaped_daily_as_the_only_source_resolves_through_the_stem_f
     # listed path or stem, the item has no other source and is rejected with no-source-in-period
     props = proposals(done=[item("only a wiki link", "[[2026-03-26]]")],
                       themes=[item("two wiki links", "[[2026-03-24]]", "[[2026-03-26.md]]")])
-    accepted, rejected = rd.check_items(props, week_read())
+    accepted, rejected, _ = rd.check_items(props, week_read())
     assert rejected == []
     assert [i["links"] for i in accepted["done"]] == [["2026-03-26"]]
     assert [i["links"] for i in accepted["themes"]] == [["2026-03-24", "2026-03-26"]]
@@ -310,14 +314,14 @@ def test_a_wiki_link_shaped_weekly_as_the_only_source_resolves_through_the_stem_
     # RED when Sources.child_of drops `or notes.get(note_stem(source))`: Sources.of keys the weekly
     # by its path and bare stem only, so `[[2026-W13]]` matches neither and the item is rejected
     props = proposals(weekly_only=[item("only a wiki link", "[[2026-W13]]")])
-    accepted, rejected = rd.check_items(props, month_read())
+    accepted, rejected, _ = rd.check_items(props, month_read())
     assert rejected == []
     assert [i["links"] for i in accepted["weekly_only"]] == [["2026-W13"]]
 
 
 def test_whitespace_only_text_is_rejected_as_empty_text():
     props = proposals(done=[item("   ", "2026-03-24"), item("%% \n %%", "2026-03-24"), item("ok", "2026-03-24")])
-    accepted, rejected = rd.check_items(props, week_read())
+    accepted, rejected, _ = rd.check_items(props, week_read())
     assert [i["text"] for i in accepted["done"]] == ["ok"]
     assert rejected == [{"group": "done", "index": 0, "reason": "empty-text"},
                         {"group": "done", "index": 1, "reason": "empty-text"}]
@@ -360,13 +364,13 @@ def test_forged_sources_and_structural_lines_cannot_reach_the_document(mod, inst
 def test_weekly_only_needs_a_weekly_note_and_month_groups_need_a_month_with_weeklies():
     props = proposals(weekly_only=[item("only there", f"{WEEKLY}2026-W13.md"), item("daily", "2026-03-24")],
                       not_in_weekly=[item("left out", "2026-03-24")])
-    accepted, rejected = rd.check_items(props, month_read())
+    accepted, rejected, _ = rd.check_items(props, month_read())
     assert [i["text"] for i in accepted["weekly_only"]] == ["only there"]
     assert [i["text"] for i in accepted["not_in_weekly"]] == ["left out"]
     assert rejected == [{"group": "weekly_only", "index": 1, "reason": "no-source-in-period"}]
-    _, rejected = rd.check_items(props, month_read(weekly=False))
+    _, rejected, _ = rd.check_items(props, month_read(weekly=False))
     assert {r["reason"] for r in rejected} == {"no-weekly-notes"}
-    _, rejected = rd.check_items(props, week_read())
+    _, rejected, _ = rd.check_items(props, week_read())
     assert {r["reason"] for r in rejected} == {"month-only-group"}
 
 
@@ -916,3 +920,103 @@ def test_the_top_lines_keep_the_document_parseable_for_pass2():
     doc = rdp.parse_document(text, pass1_links=rdp.link_stems(text))
     assert doc.warnings == [] and doc.approved is False
     assert [(it.id, it.kept) for it in doc.items if it.origin == "tomo"] == [("t1", True)]
+
+
+# ---------------------------------------------------------------- spec 047 T5.4: the carried branch, groups
+
+CARRY = {"read_id": "r1", "notes": [{"path": PREV_WEEK, "kind": "week", "name": "2026-W12", "items": 2}],
+         "items": [{"id": "c1", "type": "open", "text": "run", "sources": ["2026-W12"]},
+                   {"id": "c2", "type": "open", "text": "call", "sources": ["2026-W12"]}]}
+
+
+def carried(text: str, mark: str, ids, *sources: str) -> dict:
+    return {**item(text, *sources), "carried": mark, "carried_ids": list(ids)}
+
+
+def _carried_read(carryover=CARRY) -> dict:
+    return week_read(previous=[_prev("week", "2026-W12", "found", PREV_WEEK)], carryover=carryover)
+
+
+def test_check_items_sends_a_carried_item_to_the_carried_rules_and_keeps_its_mark():
+    props = proposals(done=[carried("Lief wieder", "done", ["c1"], "2026-W12", "2026-03-24")],
+                      open=[carried("Jana anrufen", "not_mentioned", ["c2"], PREV_WEEK),
+                            item("Steuer", "2026-03-25")])
+    accepted, rejected, errors = rd.check_items(props, _carried_read())
+    assert (rejected, errors) == ([], [])
+    assert accepted[rd.DONE] == [{"text": "Lief wieder", "links": ["2026-W12", "2026-03-24"], "carried": "done"}]
+    assert accepted[rd.OPEN] == [{"text": "Jana anrufen", "links": ["2026-W12"], "carried": "not_mentioned"},
+                                 {"text": "Steuer", "links": ["2026-03-25"]}]
+
+
+def test_a_carried_failure_is_an_error_never_a_rejected_row():
+    props = proposals(open=[carried("Jana anrufen", "not_mentioned", ["c2"], "2026-W12", "2026-03-24")],
+                      themes=[carried("Lief", "done", ["c1"], "2026-W12", "2026-03-24")],
+                      done=[item("kein Tag")])
+    accepted, rejected, errors = rd.check_items(props, _carried_read())
+    assert errors == ["/groups/open/0: carried-gone-has-day", "/groups/themes/0: carried-not-allowed (themes)"]
+    assert rejected == [{"group": "done", "index": 0, "reason": rd.NO_SOURCE}]
+    assert accepted[rd.OPEN] == [] and accepted[rd.THEMES] == []
+
+
+def test_a_carried_item_without_a_passed_carryover_is_refused():
+    props = proposals(done=[carried("Lief", "done", ["c1"], "2026-W12", "2026-03-24")])
+    _, rejected, errors = rd.check_items(props, _carried_read(carryover=None))
+    assert (rejected, errors) == ([], ["/groups/done/0: carried-without-carryover"])
+
+
+def test_a_carried_item_in_a_group_its_kind_does_not_render_is_an_error_not_a_rejection():
+    props = proposals(weekly_only=[carried("Lief", "done", ["c1"], "2026-W12", "2026-03-24")],
+                      growth=[carried("Neu", "done", ["c1"], "2026-W12", "2026-03-24")])
+    accepted, rejected, errors = rd.check_items(props, _carried_read())
+    assert rejected == []
+    assert errors == ["/groups/growth/0: carried-not-allowed (growth)",
+                      "/groups/weekly_only/0: carried-not-allowed (weekly_only)"]
+
+
+def test_a_whitespace_only_carried_item_is_an_empty_text_error():
+    props = proposals(done=[carried("  \n ", "done", ["c1"], "2026-W12", "2026-03-24")])
+    _, rejected, errors = rd.check_items(props, _carried_read())
+    assert (rejected, errors) == ([], ["/groups/done/0: empty-text"])
+
+
+def test_the_carried_label_comes_before_the_child_mark_both_sdd_lines_byte_exact():
+    from lib import review_sections as rs
+
+    en = rs.part_items([{"text": "Started running again: 5 km run", "links": ["2026-W13", "2026-02", "2026-03-31"],
+                         "carried": "done"}], 0, rd.labels("en"))[0]
+    assert en == ["- [x] Started running again: 5 km run ([[2026-W13]], [[2026-02]], [[2026-03-31]]) "
+                  "· done (previous review) %%t1%%"]
+    de = rs.part_items([{"text": "Weniger Bildschirm am Abend", "links": ["2026-02", "2026-03-12"],
+                         "carried": "still_open", "mark": "not_in_weekly"}], 6, rd.labels("de"))[0]
+    assert de == ["- [x] Weniger Bildschirm am Abend ([[2026-02]], [[2026-03-12]]) · noch offen (letzter Rückblick) "
+                  "· in keinem Wochenrückblick %%t7%%"]
+
+
+def test_a_group_item_renders_its_carried_label():
+    groups = {rd.OPEN: [{"text": "Book the dentist", "links": ["2026-02"], "carried": "not_mentioned"}]}
+    text, _ = rd.render_document(_doc_input(language="en", groups=groups))
+    assert "- [x] Book the dentist ([[2026-02]]) · not mentioned again (previous review) %%t1%%" in text.split("\n")
+
+
+def test_a_single_day_not_condensed_unit_shows_the_day_alone_en_and_de():
+    unit = [{"unit": "2026-W10", "days": ["2026-03-02"]}]
+    assert _top(_doc_input(language="en", not_condensed=unit))[1:] == ["> Not condensed: 2026-W10 (2026-03-02)"]
+    assert _top(_doc_input(not_condensed=unit))[1:] == ["> Nicht verdichtet: 2026-W10 (2026-03-02)"]
+
+
+def test_previous_rows_count_the_accepted_carried_items_linking_each_found_note():
+    read = week_read(previous=[_prev("week", "2026-W12", "found", PREV_WEEK),
+                               _prev("month", "2026-02", "found", PREV_MONTH, partly_read=True),
+                               _prev("quarter", "2025-Q4", "missing"),
+                               _prev("week", "2026-W11", "not-read", "W/2026-W11.md", cause="refused")])
+    groups = {rd.DONE: [{"text": "a", "links": ["2026-W12", "2026-03-24"], "carried": "done"},
+                        {"text": "b", "links": ["2026-W12"]}],
+              rd.OPEN: [{"text": "c", "links": ["2026-W12", "2026-02"], "carried": "still_open"}]}
+    sections = {"s1": [{"text": "d", "links": ["2026-W12"], "carried": "not_mentioned", "mark": "x"}]}
+    assert rd.previous_rows(read, groups, sections) == [
+        {"kind": "week", "name": "2026-W12", "state": "found", "partly_read": False, "carried": 3},
+        {"kind": "month", "name": "2026-02", "state": "found", "partly_read": True, "carried": 1},
+        {"kind": "quarter", "name": "2025-Q4", "state": "missing", "partly_read": False, "carried": 0},
+        {"kind": "week", "name": "2026-W11", "state": "not-read", "partly_read": False, "carried": 0,
+         "cause": "refused"},
+    ]

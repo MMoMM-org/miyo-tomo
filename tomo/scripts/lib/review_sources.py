@@ -1,5 +1,5 @@
 # review_sources.py — what a /review proposal's source may resolve to, and the one loop that resolves it.
-# version: 0.1.0
+# version: 0.1.1
 """Sources of a review read and the one source resolver (spec 047 T5.2, SDD ADR-6; split from review_doc, CON-5).
 
 ``Sources.of(read)`` keys every note a source may name by its listed path and by its stem: the dailies of the
@@ -23,7 +23,7 @@ from datetime import date
 from typing import Dict, List, Optional, Tuple
 
 WEEKLY_ONLY, MONTHLY_ONLY = "weekly_only", "monthly_only"
-_ONLY_IN_CHILD = (WEEKLY_ONLY, MONTHLY_ONLY)                         # rests on a child note, not on a daily
+ONLY_IN_CHILD = (WEEKLY_ONLY, MONTHLY_ONLY)                         # rests on a child note, not on a daily
 
 
 def note_stem(path: str) -> str:
@@ -92,7 +92,7 @@ def resolve_sources(item: dict, sources: Sources, child_group: str = "") -> Reso
     out = Resolved()
     for source in (str(s) for s in item.get("sources") or []):
         daily = sources.daily_of(source)
-        child = sources.child_of(child_group, source) if child_group in _ONLY_IN_CHILD and daily is None else None
+        child = sources.child_of(child_group, source) if child_group in ONLY_IN_CHILD and daily is None else None
         prev = sources.previous_of(source) if daily is None and child is None else None
         if daily is not None:
             out.days.add(daily[0])

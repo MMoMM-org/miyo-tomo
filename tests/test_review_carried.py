@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_carried.py — spec 047 T5.3: the document-level rules of a carried item (``lib/review_carried``).
 
 Every row of the SDD trace table "A carried item checked (traced)" is one case below, on the W14 data of
@@ -349,5 +349,5 @@ def test_overflow_within_the_cap_moves_nothing():
 def test_module_header_and_size():
     path = TESTS_DIR.parent / "tomo" / "scripts" / "lib" / "review_carried.py"
     lines = path.read_text(encoding="utf-8").splitlines()
-    assert lines[1] == "# version: 0.1.0"
+    assert lines[1] == "# version: 0.1.1"
     assert len(lines) <= 300

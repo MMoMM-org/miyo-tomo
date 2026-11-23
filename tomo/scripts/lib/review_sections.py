@@ -1,5 +1,5 @@
 # review_sections.py — the Pass 1 section side of /review: section proposals checked, parts rendered.
-# version: 0.2.2
+# version: 0.3.0
 """The user's mapped sections in the Pass 1 proposals of ``/review`` (spec 046, ADR-1, ADR-2).
 
 ``read.json`` carries ``sections`` (the SectionDefinitions) only when the
@@ -21,7 +21,13 @@ returns a ``SectionCheck``: the accepted items per section key
 
 A section item follows ``review_doc.check_item`` with its mark as the group:
 a ``weekly_only`` / ``monthly_only`` item rests on a listed weekly / monthly
-note, every other section item on a daily of the period.
+note, every other section item on a daily of the period. A carried item
+(``carried`` set; spec 047 ADR-6) takes the explicit carried branch after the
+mark check: ``review_doc.check_carried`` with ``in_section=True`` and its mark,
+against ``read["carryover"]``; its failure is an ``errors`` entry
+(``"<item pointer>: <error>"``), never a rejected row, and an accepted one
+keeps ``carried`` beside ``mark``. ``section_cap`` is the cap rule
+(``review_carried.overflow`` uses it too).
 
 ``parts(defs, rows, accepted)`` builds one ``SectionPart`` per definition in
 ``read.json`` order from the configured row of the same id (heading, level,
@@ -31,8 +37,9 @@ checkbox ``- [x] <label> %%<key>%%``, unticked when empty, the italic landing
 line, the items or the nothing-found bullet), then, when an analysis part, a
 routed part or a non-empty group is left, the ``## <review heading> %%review%%`` divider with its
 landing line, the analysis parts and the non-empty groups. ``group_parts`` and
-``part_items`` render the groups and the items of any part (a mark as the
-``_LABELS`` suffix, ids global over the document), for both documents.
+``part_items`` render the groups and the items of any part (the carried label,
+then the mark, each as a `` · `` ``_LABELS`` suffix; ids global over the
+document), for both documents.
 Every heading, parent and anchor text placed in a part, a landing line or the
 divider goes through ``display_heading`` first; the parts keep the config text.
 
@@ -62,11 +69,12 @@ _LINK_LIST = re.compile(rf"\(\s*{_LINK}(?:\s*,\s*{_LINK})*\s*\)\s*$")   # the tr
 _INLINE_LINK = re.compile(r"!?\[\[([^\]|\n]*)(?:\|[^\]\n]*)?\]\]")      # [[a|b]] -> a, [[a#h]] -> a#h
 _COMMENT = re.compile(r"%%.*?%%")                                       # an Obsidian comment span, ids included
 _PERCENTS = re.compile(r"%{2,}")
+_SUFFIXES = (("carried", "carried_"), ("mark", "mark_"))                # label order on an item line (F5-AC2)
 
 
 @dataclass
 class SectionCheck:
-    accepted: Dict[str, List[dict]] = field(default_factory=dict)    # key -> [{text, links, mark?}]
+    accepted: Dict[str, List[dict]] = field(default_factory=dict)    # key -> [{text, links, carried?, mark?}]
     rejected: List[dict] = field(default_factory=list)               # [{section, index, reason}]
     errors: List[str] = field(default_factory=list)                  # ["<pointer>: <error>"]
 
@@ -83,7 +91,7 @@ class SectionsChanged(ValueError):
     """The section keys of ``read.json`` are not the configured rows: the mapping changed after the read."""
 
 
-def _cap(definition: dict) -> int:
+def section_cap(definition: dict) -> int:
     cap = definition.get("cap")
     return cap if isinstance(cap, int) and not isinstance(cap, bool) else DEFAULT_CAP
 
@@ -102,6 +110,7 @@ def check(proposals: dict, read: dict) -> SectionCheck:
     kind = str((read.get("period") or {}).get("kind"))
     has_children = rd.has_child_notes(read)
     sources = rd.Sources.of(read)
+    carryover = read.get("carryover")
     seen = set()
     refused: set = set()                                # entry indexes refused by key, out of the double pass
     for i, entry in enumerate(entries):
@@ -115,7 +124,7 @@ def check(proposals: dict, read: dict) -> SectionCheck:
             refused.add(i)
             continue
         seen.add(key)
-        if len(items) > _cap(defs[key]):
+        if len(items) > section_cap(defs[key]):
             result.errors.append(_error(f"/sections/{i}/items", f"{OVER_CAP} ({key})"))
         result.accepted[key] = []
         for j, item in enumerate(items):
@@ -123,11 +132,19 @@ def check(proposals: dict, read: dict) -> SectionCheck:
             if mark is not None and rd.group_reason(str(mark), kind, has_children) is not None:
                 result.errors.append(_error(f"/sections/{i}/items/{j}/mark", MARK_NOT_ALLOWED))
                 continue
-            reason, links = rd.check_item(str(mark or ""), item, sources)
-            if reason is not None:
-                result.rejected.append({"section": key, "index": j, "reason": reason})
-                continue
-            accepted = {"text": str(item["text"]), "links": links}
+            if item.get("carried"):
+                error, links = rd.check_carried(key, item, sources, carryover, in_section=True,
+                                                mark=None if mark is None else str(mark))
+                if error is not None:
+                    result.errors.append(_error(f"/sections/{i}/items/{j}", error))
+                    continue
+                accepted = {"text": str(item["text"]), "links": links, "carried": str(item["carried"])}
+            else:
+                reason, links = rd.check_item(str(mark or ""), item, sources)
+                if reason is not None:
+                    result.rejected.append({"section": key, "index": j, "reason": reason})
+                    continue
+                accepted = {"text": str(item["text"]), "links": links}
             if mark is not None:
                 accepted["mark"] = str(mark)
             result.accepted[key].append(accepted)
@@ -222,11 +239,12 @@ def parts(defs: Dict[str, dict], rows: Sequence[dict], accepted: Dict[str, List[
 
 
 def part_items(items: Sequence[dict], number: int, words: Dict[str, str]) -> Tuple[List[str], int]:
-    """A part's item lines, ids from ``number + 1`` and a mark as suffix, or the nothing-found bullet; the last id."""
+    """A part's item lines, ids from ``number + 1``, the carried label then the mark as suffix, or the
+    nothing-found bullet; the last id."""
     lines: List[str] = [] if items else [f"- {words['nothing']}"]
     for entry in items:
         number += 1
-        suffix = f" · {words['mark_' + entry['mark']]}" if entry.get("mark") else ""
+        suffix = "".join(f" · {words[prefix + entry[key]]}" for key, prefix in _SUFFIXES if entry.get(key))
         lines += rd.item_lines(entry["text"], entry.get("links") or [], number, suffix)
     return lines, number
 

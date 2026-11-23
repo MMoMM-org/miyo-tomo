@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.6.0
+# version: 0.6.1
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13; spec 047 ADR-6, ADR-12).
 
 Pure functions between the model's ``proposals.json`` and the document the script writes: ``load_proposals`` /
@@ -7,14 +7,19 @@ Pure functions between the model's ``proposals.json`` and the document the scrip
 the ``Period`` from ``read.json`` under the configured week rule; ``check_items`` applies the source rule (every item
 needs a daily of the period — never one of a day the read's ``not_condensed`` units hold — a ``weekly_only`` item a
 weekly note the reader listed, a theme two distinct days, a text that is not empty; the month-only groups only for a
-month with weekly notes) and returns the accepted items per group with their links and the rejected ones with group,
-index and reason. The groups come from ``KIND_GROUPS`` per kind (the quarter's ``monthly_only`` needs a listed
-monthly note, its pair only a quarter with monthly notes; ``group_reason``); ``check_item`` and ``group_reason`` also
-serve ``review_sections`` for the section items. ``check_item`` rests on ``review_sources.resolve_sources`` (re-exported
-here with ``Sources`` and ``note_stem``); a found previous review note is never a source of a non-carried item. A link is the stem of a note ``read.json`` lists that a
-source resolved to — a daily of the period or, for ``weekly_only`` / ``monthly_only``, a listed weekly / monthly —
-deduplicated in source order; a source that resolves to nothing is dropped from the links, and no model string is
-ever rendered as a link. ``render_document`` renders the frontmatter (a schema-valid ``tomo:`` block plus the
+month with weekly notes) and returns the accepted items per group with their links, the rejected ones with group,
+index and reason, and the refusal ``errors`` of the carried items. A carried item (``carried`` set) takes the
+explicit carried branch instead: ``check_carried`` (the empty-text test, then ``review_carried.check`` against
+``read["carryover"]``, None unless it passed); its failure is an ``"<pointer>: <error>"`` entry, never a rejected
+row, and an accepted one keeps ``carried``. The groups come from ``KIND_GROUPS`` per kind (the quarter's
+``monthly_only`` needs a listed monthly note, its pair only a quarter with monthly notes; ``group_reason``);
+``check_item``, ``check_carried`` and ``group_reason`` also serve ``review_sections`` for the section items.
+``check_item`` rests on ``review_sources.resolve_sources`` (re-exported here with ``Sources`` and ``note_stem``); a
+found previous review note is never a source of a non-carried item. A link is the stem of a note ``read.json`` lists
+that a source resolved to — a daily of the period or, for ``weekly_only`` / ``monthly_only``, a listed weekly /
+monthly — deduplicated in source order; a source that resolves to nothing is dropped from the links, and no model
+string is ever rendered as a link. ``previous_rows`` gives the read's previous notes with the number of accepted
+carried items linking each found one. ``render_document`` renders the frontmatter (a schema-valid ``tomo:`` block plus the
 top-level ``review_*`` keys) and the body: title, info callout (its first line, then one ``> `` line per previous
 note, per not-condensed unit and for a failed carry), ``- [ ] Approved``, one H2 per group from the de/en label
 table (English otherwise), Tomo items as ``- [x] <text> ([[stem]], …) %%t<n>%%`` with the id on the checkbox line
@@ -41,10 +46,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from lib import review_carried
 from lib.doc_frontmatter import build_tomo_block
 from lib.period import KINDS, MONTH, QUARTER, WEEK, Period, WeekRule
 from lib.review_sources import (  # noqa: F401 - re-exported: rd.Sources / rd.note_stem / rd.resolve_sources
-    _ONLY_IN_CHILD, MONTHLY_ONLY, WEEKLY_ONLY, Resolved, Sources, note_stem, resolve_sources)
+    ONLY_IN_CHILD, MONTHLY_ONLY, WEEKLY_ONLY, Resolved, Sources, note_stem, resolve_sources)
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "review-proposals.schema.json"
 
@@ -212,46 +218,84 @@ def group_reason(group: str, kind: str, has_children: bool) -> Optional[str]:
     return None
 
 
+def empty_text(item: dict) -> bool:
+    return _clean(item.get("text")) == [""]
+
+
 def check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str], List[str]]:
     """``(reason, links)``: the rejection reason or None, and the stems of the resolved sources in source order.
 
     ``group`` is the item's group, or a section item's mark ("" without one)."""
-    if _clean(item.get("text")) == [""]:
+    if empty_text(item):
         return EMPTY_TEXT, []
     got = resolve_sources(item, sources, group)
     links = [link for link in got.links if link not in got.previous]     # no source of a non-carried item
-    if (not got.children) if group in _ONLY_IN_CHILD else (not got.days):
+    if (not got.children) if group in ONLY_IN_CHILD else (not got.days):
         return NO_SOURCE, links
     if group == THEMES and len(got.days) < MIN_THEME_DAYS:
         return THEME_DAYS, links
     return None, links
 
 
-def check_items(proposals: dict, read: dict) -> Tuple[Dict[str, List[dict]], List[dict]]:
-    """``(accepted {group: [{text, links}]}, rejected [{group, index, reason}])`` over the model groups.
+def check_carried(where: str, item: dict, sources: Sources, carryover: Optional[dict], *, in_section: bool,
+                  mark: Optional[str] = None) -> Tuple[Optional[str], List[str]]:
+    """``(error, links)`` of a carried item: ``empty-text`` as ``check_item`` tests it, then ``review_carried.check``."""
+    if empty_text(item):
+        return EMPTY_TEXT, []
+    return review_carried.check(where, item, sources, carryover, in_section=in_section, mark=mark)
 
-    A child group appears in ``accepted`` only for its kind (month, quarter) when
-    the reader listed that kind's child notes; its items are rejected otherwise."""
+
+def check_items(proposals: dict, read: dict) -> Tuple[Dict[str, List[dict]], List[dict], List[str]]:
+    """``(accepted {group: [{text, links, carried?}]}, rejected [{group, index, reason}], errors)`` over the groups.
+
+    A child group appears in ``accepted`` only for its kind (month, quarter) when the reader listed
+    that kind's child notes; its items are rejected otherwise. A carried item is never rejected: its
+    failure is an ``errors`` entry (also in a group its kind does not render)."""
     kind = str((read.get("period") or {}).get("kind"))
     has_children = has_child_notes(read)
     sources = Sources.of(read)
+    carryover = read.get("carryover")
     accepted: Dict[str, List[dict]] = {}
     rejected: List[dict] = []
+    errors: List[str] = []
     groups = proposals.get("groups") or {}
     for group in MODEL_GROUPS:
-        items = groups.get(group) or []
         reason = group_reason(group, kind, has_children)
-        if reason is not None:
-            rejected.extend(_rejection(group, i, reason) for i in range(len(items)))
-            continue
-        accepted[group] = []
-        for index, item in enumerate(items):
-            reason, links = check_item(group, item, sources)
+        if reason is None:
+            accepted[group] = []
+        for index, item in enumerate(groups.get(group) or []):
+            if item.get("carried"):
+                error, links = check_carried(group, item, sources, carryover, in_section=False)
+                if error is not None:
+                    errors.append(f"/groups/{group}/{index}: {error}")
+                    continue
+                accepted[group].append({"text": str(item["text"]), "links": links, "carried": str(item["carried"])})
+                continue
             if reason is not None:
                 rejected.append(_rejection(group, index, reason))
                 continue
+            why, links = check_item(group, item, sources)
+            if why is not None:
+                rejected.append(_rejection(group, index, why))
+                continue
             accepted[group].append({"text": str(item["text"]), "links": links})
-    return accepted, rejected
+    return accepted, rejected, errors
+
+
+def previous_rows(read: dict, groups: Dict[str, List[dict]], sections: Dict[str, List[dict]]) -> List[dict]:
+    """The read's previous notes ``{kind, name, state, partly_read, carried, cause?}``; ``carried`` counts the
+    accepted carried items (groups and sections) whose links hold a found note's stem."""
+    links = [e.get("links") or [] for entries in (*groups.values(), *sections.values()) for e in entries
+             if e.get("carried")]
+    rows = []
+    for prev in read.get("previous") or []:
+        stem = note_stem(str(prev.get("path") or "")) if prev.get("state") == "found" else None
+        row = {"kind": prev.get("kind"), "name": prev.get("name"), "state": prev.get("state"),
+               "partly_read": bool(prev.get("partly_read")), "carried": sum(1 for ls in links if stem in ls)}
+        if prev.get("cause"):
+            row["cause"] = prev["cause"]
+        rows.append(row)
+    return rows
 
 
 # --- rendering ---------------------------------------------------------------------------
@@ -313,9 +357,15 @@ def _callout(inp: DocInput, words: Dict[str, str], anchor: str) -> str:
     lines = ["> [!info] " + " · ".join(parts)]
     lines += [f"> {words['previous']} · {words.get('kind_' + p['kind'], p['kind'])} {p['name']}: {_state(p, words)}"
               for p in inp.previous]
-    lines += [f"> {words['not_condensed']}: {u['unit']}" + (f" ({u['days'][0]} – {u['days'][-1]})" if u.get("days")
-              else "") for u in inp.not_condensed]
+    lines += [f"> {words['not_condensed']}: {u['unit']}{_days_span(u.get('days') or [])}" for u in inp.not_condensed]
     return "\n".join(lines + ([f"> {words['carry_failed']}"] if inp.carry_failed else []))
+
+
+def _days_span(days: Sequence[str]) -> str:
+    """`` (first – last)`` of a unit's days, `` (day)`` for one, nothing for none."""
+    if not days:
+        return ""
+    return f" ({days[0]})" if days[0] == days[-1] else f" ({days[0]} – {days[-1]})"
 
 
 def _state(row: dict, words: Dict[str, str]) -> str:

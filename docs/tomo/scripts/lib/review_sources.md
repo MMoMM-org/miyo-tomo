@@ -47,3 +47,9 @@ monthly notes, so the model may cite either.
 See `docs/tomo/scripts/lib/review_doc.md`, "WHY `Sources` Leaves Out the
 Days of a Not-Condensed Unit (Spec 047 T4.4, 0.5.4)" — the rule moved here
 with the class unchanged.
+
+## WHY `ONLY_IN_CHILD` Is Public (Spec 047 T5.4, 0.1.1)
+
+`review_doc.check_item` reads it to decide whether an item rests on a child
+note or on a day. A leading underscore promised it was private to this
+module while another module depended on it; the name is now public.

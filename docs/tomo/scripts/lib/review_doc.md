@@ -317,3 +317,42 @@ failed unit (F6-AC1) and one "The previous reviews could not be taken into
 account." line when the carry failed as a whole (F6-AC2). Pass 2 is
 unaffected: `review_doc_parse` reads nothing above the first `## ` but the
 column-0 `- [ ] Approved` line, and no top line starts with a checkbox.
+
+## WHY the Carried Branch Sits in `check_items` (Spec 047 T5.4, 0.6.1)
+
+WHY an explicit branch at the call site (ADR-6): a carried item follows
+other rules than a found one — it must rest on a previous note within its
+carryover ids, `not_mentioned` forbids a day, and the two-day theme rule does
+not apply. Folding those into `check_item` would change the spec 045/046
+behaviour every existing test pins. So `check_items` asks `item["carried"]`
+first and sends a carried item to `check_carried` (which runs the
+`empty-text` test `check_item` uses, then `review_carried.check` with
+`in_section=False`); every other item goes through `check_item` unchanged.
+`review_sections.check` uses the same `check_carried` with `in_section=True`
+and the item's mark, so the empty-text test exists once.
+
+WHY carried failures are `errors`, never `rejected`: a rejected row is
+dropped from the document and only counted. A carried item exists because
+the previous review left it open; dropping it silently would lose exactly
+what the carry is for. An error refuses the whole file (`proposals-invalid`)
+and the skill re-dispatches the proposer once with the errors verbatim.
+That is why `check_items` now returns `(accepted, rejected, errors)`: a third
+value no caller can overlook, rather than a list a caller could forget to
+read. A carried item in a group its kind does not render (a child group of
+another kind, growth) is an error too (`carried-not-allowed (<group>)`),
+not a group-wide rejection.
+
+WHY the carryover comes from the read: `review_stage.load` puts
+`carryover.json` into the read only when its state is `passed`, else None.
+A carried item without it is `carried-without-carryover` — the proposer
+cannot have seen a carryover that never passed.
+
+WHY `previous_rows` counts carried items by link: a top line says how many
+items were carried from one note (F3-AC11). An accepted carried item links
+the previous notes it rests on, so the count per found note is the number of
+accepted carried items (groups and sections) whose links hold that note's
+stem. A not-found note carries nothing and shows no count.
+
+WHY a single-day not-condensed unit shows the day alone: "(2026-03-02 –
+2026-03-02)" reads as a range that is not one. A unit of one taking-part day
+renders "Not condensed: W10 (2026-03-02)".

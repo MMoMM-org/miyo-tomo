@@ -1,5 +1,5 @@
 # review_carried.py — the document-level rules of a /review item carried over from a previous review.
-# version: 0.1.0
+# version: 0.1.1
 """Carried items of the ``/review`` proposals (spec 047 T5.3, SDD ADR-6; PRD F4-AC6, F4-AC7, F4-AC10, F5-AC3).
 
 A group or section item of ``proposals.json`` may carry ``carried`` (``done`` | ``still_open`` |
@@ -138,7 +138,7 @@ def overflow(proposals: dict, defs: Dict[str, dict], carryover: Optional[dict]) 
         if key not in defs:
             continue
         items = entry.get("items") or []
-        cap = rs._cap(defs[key])
+        cap = rs.section_cap(defs[key])
         while len(items) > cap:
             carried = [n for n, item in enumerate(items) if item.get("carried")]
             if not carried:

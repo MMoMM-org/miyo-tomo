@@ -323,3 +323,38 @@ Known limit: the id pattern is evaluated with Python `re.search`, where `$`
 also matches before a trailing `\n`, so `"c1\n"` passes the schema. Such an
 id matches no carryover id and is refused as `carried-unknown` by
 `lib/review_carried.py`.
+
+## WHY `write` Orders Overflow, Checks and Coverage as It Does (Spec 047 T5.4)
+
+WHY `overflow` first (F4-AC10): a full section must not refuse a carried
+item, and a rewrite to make it fit would cost a proposer run and could still
+drop the item. With a passed carryover, `review_carried.overflow` moves the
+last carried items of an over-cap section into the group of their mark
+before any check, so `over-cap` is counted on what is left and stays a
+refusal for non-carried items only (spec 046). Without a carryover nothing
+moves: every carried item is then `carried-without-carryover` at the place
+the proposer put it, so the error pointers name the proposer's own file.
+
+WHY `coverage` runs once, after both checks: it is a rule over the whole
+document (every carryover id exactly once over groups and sections), not
+over an item. The errors are joined in one list — section errors, group
+carried errors, coverage — and any of them refuses `proposals-invalid`.
+
+WHY `carry_failed` is "a previous note was found and the carryover did not
+pass" (F6-AC2): `write` refuses only open units (`condense-incomplete`), not
+an open carryover, so a carryover still `pending` or `retry` at write time
+is as absent as a `failed` one. With a found note, any state but `passed`
+means the previous reviews were not taken into account, and the document
+says so in one top line; no item can carry a mark then, because the
+carryover is None and every carried item is refused. With no found note
+there was nothing to take into account: no line.
+
+WHY the new `written` keys are counts and names only: `previous`
+(`[{kind, name, state, carried}]`), `not_condensed` (`[{unit, days}]`),
+`carry_failed` and `carried_moved` (`[{key, to, count}]`) let the skill
+report what the top lines say without reading the document. None carries a
+proposal text, a note text or a path: the stdout privacy rule of this
+script holds. Each key is present only when it has a fact (a previous row,
+a failed unit, a failed carry, a moved item): a run without any of them
+returns spec 046's result unchanged, which
+`tests/test_046_t4_2_unmapped_doc_golden.py` pins.

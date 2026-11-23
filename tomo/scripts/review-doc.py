@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.9.1
+# version: 0.10.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
@@ -31,11 +31,14 @@ Usage (cwd = instance root):
 
 Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
-           counts {group or section key: n}, rejected [{group | section, index, reason}], calls
+           counts {group or section key: n}, rejected [{group | section, index, reason}],
+           previous? [{kind, name, state, carried}], not_condensed? [{unit, days}], carry_failed?,
+           carried_moved? [{key, to, count}] (each only when non-empty / true), calls
          | status refused, problems [condense-incomplete | proposals-invalid | doc-name-taken | review-exists |
            read-missing | read-stale | read-invalid | setup-missing | setup-invalid | inbox-not-configured |
            sections-changed],
-           errors? [pointers, or "<pointer>: <error>" for a section check]
+           errors? [pointers, or "<pointer>: <error>" for a section or carried check, or
+           "carried-missing (<id>)"]
          | status stopped, problems [kado-write-failed] or error {kind kado-unreachable|kado-auth, detail}
     parse: status ok, stem, doc_path, approved, nothing_to_deliver,
            items {group: [{id?, origin tomo|user, kept, edited}]},
@@ -62,7 +65,12 @@ Rules:
     ``condense-incomplete`` while ``condensed.json`` is missing or holds a unit
     ``pending`` or ``retry`` (before the proposals are read); the days of a
     ``failed`` unit (``review_digest.not_condensed`` over ``review_stage.units``)
-    are no sources. A part lands where its configured row
+    are no sources. With a passed carryover, ``review_carried.overflow`` first
+    moves the carried items of a full section into the group of their mark
+    (``carried_moved``); then the group and section checks run, each carried
+    failure an error, and ``review_carried.coverage`` once over the document.
+    ``carry_failed``: a previous note was found and the carryover did not pass.
+    A part lands where its configured row
     says; for a new note the template (or its ``_tomo`` variant) is read and
     a part whose heading it cannot take is marked routed to "Tomo Review"
     (``review_section_set.routed_keys``). The target is the first
@@ -105,6 +113,7 @@ from typing import List, Optional, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from lib import review_carried as rcar  # noqa: E402
 from lib import review_config as rc  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
@@ -243,6 +252,13 @@ def _load_condensed(stage: Path) -> dict:
     return read
 
 
+def _carry_failed(read: dict) -> bool:
+    """A previous note was found and the carryover did not pass (pending, retry or failed)."""
+    found = any((row or {}).get("state") == "found" for row in read.get("previous") or [])
+    state = ((read.get("condensed") or {}).get("carryover") or {}).get("state")
+    return found and state != rdg.PASSED
+
+
 def _drop_stage_content(stage: Path, proposals_path: Path) -> None:
     review_stage.discard(stage)
     proposals_path.unlink(missing_ok=True)
@@ -304,11 +320,16 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
         raise Refused("proposals-invalid", errors=problems)
     config, setup, period, doc_path = _resolve(args, read)
 
-    accepted, rejected = rd.check_items(proposals, read)
-    sections = rs.check(proposals, read)
-    if sections.errors:
-        raise Refused("proposals-invalid", errors=sections.errors)
+    carryover = read.get("carryover")
     defs = rs.definitions(read)
+    moved: List[dict] = []
+    if carryover is not None:
+        proposals, moved = rcar.overflow(proposals, defs or {}, carryover)
+    accepted, rejected, errors = rd.check_items(proposals, read)
+    sections = rs.check(proposals, read)
+    errors = sections.errors + errors + rcar.coverage(proposals, carryover)
+    if errors:
+        raise Refused("proposals-invalid", errors=errors)
     try:
         parts = rs.parts(defs or {}, setup.sections, sections.accepted)
     except rs.SectionsChanged:
@@ -338,6 +359,8 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
         partly_read=[str(d.get("date")) for d in read.get("days") or [] if d.get("partly_read")],
         month_groups=any(g in accepted for g in rd.CHILD_GROUPS.get(period.kind, ())), groups=accepted,
         sections=parts if defs is not None else None, review_heading=setup.heading,
+        previous=rd.previous_rows(read, accepted, sections.accepted), not_condensed=read["not_condensed"],
+        carry_failed=_carry_failed(read),
     )
     text, counts = rd.render_document(inp)
     try:
@@ -349,7 +372,14 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
     _write_meta(stage, inp, counts, doc_path, text)
     _drop_stage_content(stage, proposals_path)
     return {"status": "written", **result, "counts": counts, "rejected": rejected + sections.rejected,
-            "calls": vault.client.call_count}
+            **_top_facts(inp, moved), "calls": vault.client.call_count}
+
+
+def _top_facts(inp: rd.DocInput, moved: List[dict]) -> dict:
+    """The new ``written`` keys, each only when it has something to say (spec 046's result stays as it was)."""
+    facts = {"previous": [{k: row[k] for k in ("kind", "name", "state", "carried")} for row in inp.previous],
+             "not_condensed": inp.not_condensed, "carry_failed": inp.carry_failed, "carried_moved": moved}
+    return {key: value for key, value in facts.items() if value}
 
 
 def write_document(args: argparse.Namespace) -> dict:

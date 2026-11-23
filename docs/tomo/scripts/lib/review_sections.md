@@ -241,3 +241,35 @@ the sections in the order they configured them. Its items land in Tomo
 Review, so the divider with Tomo Review's own landing line is rendered
 whenever any part lands there — an analysis part, a routed part or a
 non-empty group.
+
+## WHY the Section Check Has a Carried Branch (Spec 047 T5.4, 0.3.0)
+
+A section item may be carried (ADR-6). The mark-fits-the-period check of
+spec 046 (`group_reason` → `mark-not-allowed`) still runs first, exactly as
+it runs ahead of `check_item`: `review_carried.check` checks whether a mark
+may sit on a carried item, not whether the mark fits the period, so without
+this order a `not_in_monthly` carried item could slip into a month review.
+Then a carried item goes to `review_doc.check_carried` with
+`in_section=True` and its mark; every failure is an `errors` entry, never a
+`rejected` row (see review_doc.md, "WHY the Carried Branch Sits in
+`check_items`"). An accepted carried item keeps `carried` beside `mark`.
+
+WHY the suffix order is carried label, then child mark (F5-AC2):
+`part_items` builds `" · " + carried label` then `" · " + mark label`. The
+carried mark says where the item comes from, the child mark what the child
+notes say about it; the owner chose this order.
+
+WHY the cap is counted after `review_carried.overflow`: `review-doc.py write`
+runs `overflow` on the proposals before this check, so a section the
+carried items made full has already moved them to their groups, and
+`over-cap` is left for non-carried items only (F4-AC10).
+
+WHY an off-limits heading never receives a carried item (F4-AC5): the
+off-limits rows of `review_mapping` leave such a heading out of the offered
+headings, so it never becomes a configured row, never a SectionDefinition
+in `read.json`, and a proposal naming a key for it is `unknown-section`.
+The proposer places the item in the next fitting section or its group.
+
+WHY `section_cap` is public: `review_carried.overflow` needs the same cap
+rule; a second copy would drift. It is imported at call time there because
+this module imports `review_doc`, which imports `review_carried`.

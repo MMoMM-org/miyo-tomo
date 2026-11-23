@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_review_digest.py — spec 047 T4.2/T4.3: digest and carryover file checks, the condensed.json job state,
 the ``review-digest.py plan | check`` CLI.
 
@@ -43,6 +43,9 @@ found), 2026-03 (six units W09 … W14, previous month found, previous quarter m
   unit's days; every unit failed → ``stopped nothing-condensed``, the stage kept; a carryover
   whole-file failure → ``carry_failed``; one note's invalid items → that note ``failed`` and its
   items removed from ``carryover.json``;
+- (T4.4) the write order: ``condensed.json`` (the settled job state) before the settled
+  ``carryover.json``, which is written with ``review_stage_codec.encode``; a crash between the two
+  writes and a second check keeps the failed note and its removed items;
 - the three refusals; no note text on stdout or stderr.
 """
 from __future__ import annotations
@@ -795,6 +798,52 @@ def test_one_notes_invalid_items_fail_that_note_only_and_leave_carryover_json(tm
     assert rs.load(stage)["carryover"] == settled
     assert second["proposer"]["carried"] is True and "carryover.json" in second["proposer"]["inputs"]
     assert _check(capsys, stage)["carryover"]["notes"] == second["carryover"]["notes"], "final, counted once"
+
+
+def _one_note_failing(stage: Path, capsys) -> None:
+    """W14 with the week note's items invalid twice: the second check fails that note."""
+    _plan(capsys, stage)
+    _write_digests(stage)
+    _put(stage, "carryover.json", _carryover(stage, [(WEEK_PREV, "week", "2026-W13", 2),
+                                                     (MONTH_PREV, "month", "2026-02", 1)], [
+        {"id": "c1", "type": "intention", "text": f"Start running {SECRET}", "sources": ["2026-02"]},
+        {"id": "c2", "type": "open", "text": f"Call Jana {SECRET}", "sources": ["2026-W13", "2025-Q3"]},
+        {"id": "c3", "type": "open", "text": f"Book {SECRET}", "sources": ["2026-W13"]}]))
+    assert _check(capsys, stage)["carryover"]["state"] == "retry"
+
+
+def test_a_crash_between_the_two_writes_keeps_the_failed_note(tmp_path, capsys, monkeypatch):
+    stage = _w14_stage(tmp_path)
+    _one_note_failing(stage, capsys)
+    real, writes = CLI.atomic_write_text, []
+
+    def second_write_crashes(path, text):
+        writes.append(Path(path).name)
+        if len(writes) == 2:
+            raise OSError("crash")
+        real(path, text)
+
+    monkeypatch.setattr(CLI, "atomic_write_text", second_write_crashes)
+    assert CLI.main(["check", "--stem", stage.name, "--tmp", str(stage.parent)]) == 1
+    capsys.readouterr()
+    monkeypatch.setattr(CLI, "atomic_write_text", real)
+    assert writes[0] == "condensed.json", "the job state is written first"
+    after = _check(capsys, stage)
+    assert after["carryover"]["notes"] == [{"path": WEEK_PREV, "state": "failed", "items": 0},
+                                           {"path": MONTH_PREV, "state": "passed", "items": 1}], after
+    settled = json.loads((stage / "carryover.json").read_text(encoding="utf-8"))
+    assert [i["id"] for i in settled["items"]] == ["c1"]
+    assert rs.load(stage)["carryover"] == settled
+    assert _condensed(stage)["carryover"]["notes"] == {WEEK_PREV: "failed", MONTH_PREV: "passed"}
+
+
+def test_the_settled_carryover_is_written_with_the_stage_encoder(tmp_path, capsys):
+    from lib.review_stage_codec import encode
+    stage = _w14_stage(tmp_path)
+    _one_note_failing(stage, capsys)
+    _check(capsys, stage)
+    text = (stage / "carryover.json").read_text(encoding="utf-8")
+    assert text == encode(json.loads(text)) and SECRET in text, "indent=1, UTF-8, one encoder"
 
 
 def test_w14_passes_as_in_walkthrough_b(tmp_path, capsys):

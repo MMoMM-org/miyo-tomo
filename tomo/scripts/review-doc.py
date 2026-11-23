@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.8.0
+# version: 0.9.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
@@ -32,7 +32,7 @@ Usage (cwd = instance root):
 Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
            counts {group or section key: n}, rejected [{group | section, index, reason}], calls
-         | status refused, problems [proposals-invalid | doc-name-taken | review-exists | read-missing |
+         | status refused, problems [condense-incomplete | proposals-invalid | doc-name-taken | review-exists | read-missing |
            read-stale | read-invalid | setup-missing | setup-invalid | inbox-not-configured | sections-changed],
            errors? [pointers, or "<pointer>: <error>" for a section check]
          | status stopped, problems [kado-write-failed] or error {kind kado-unreachable|kado-auth, detail}
@@ -57,7 +57,11 @@ Rules:
     refused ``sections-changed``; a stage without manifest.json (also a
     pre-047 stage of read.json) is ``read-missing``, a stage file whose
     read_id is not the manifest's ``read-stale``, an unreadable or
-    malformed one ``read-invalid``. A part lands where its configured row
+    malformed one ``read-invalid``. ``write`` and ``replace --confirm`` refuse
+    ``condense-incomplete`` while ``condensed.json`` is missing or holds a unit
+    ``pending`` or ``retry`` (before the proposals are read); the days of a
+    ``failed`` unit (``review_digest.not_condensed`` over ``review_stage.units``)
+    are no sources. A part lands where its configured row
     says; for a new note the template (or its ``_tomo`` variant) is read and
     a part whose heading it cannot take is marked routed to "Tomo Review"
     (``review_section_set.routed_keys``). The target is the first
@@ -103,6 +107,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from lib import review_config as rc  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
+from lib import review_digest as rdg  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_habits as rh  # noqa: E402
 from lib import review_new_note as rnn  # noqa: E402
@@ -220,6 +225,23 @@ def _load_read(stage: Path) -> dict:
         raise Refused("read-invalid") from None
 
 
+def _load_condensed(stage: Path) -> dict:
+    """The read once every unit is condensed or failed, with ``not_condensed`` [{unit, days}] of the failed ones."""
+    read = _load_read(stage)
+    condensed = read.get("condensed")
+    jobs = (condensed or {}).get("units") or {}
+    if not isinstance(condensed, dict) or any((j or {}).get("state") in (rdg.PENDING, rdg.RETRY)
+                                              for j in jobs.values()):
+        raise Refused("condense-incomplete")
+    try:
+        read["not_condensed"] = rdg.not_condensed(condensed, review_stage.units(stage))
+    except (review_stage.StageMissing, review_stage.StageInvalid, KeyError, TypeError):
+        raise Refused("read-invalid") from None
+    except review_stage.StageStale:
+        raise Refused("read-stale") from None
+    return read
+
+
 def _drop_stage_content(stage: Path, proposals_path: Path) -> None:
     review_stage.discard(stage)
     proposals_path.unlink(missing_ok=True)
@@ -274,7 +296,7 @@ def _resolve(args: argparse.Namespace, read: dict) -> Tuple[dict, rc.ReviewSetup
 def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) -> dict:
     """Check, render and write the document; over Tomo's own review only when the flag says so."""
     stage = Path(args.tmp) / args.stem
-    read = _load_read(stage)
+    read = _load_condensed(stage)
     proposals_path = Path(args.proposals) if args.proposals else stage / PROPOSALS_FILE
     proposals, problems = rd.load_proposals(proposals_path)
     if proposals is None:

@@ -1,5 +1,5 @@
 # review_stage.py — the stage a /review read rests in: day, growth, child and context files, weeks.json, the manifest.
-# version: 0.3.0
+# version: 0.4.0
 """The stage folder of a ``/review`` read (spec 047 T2.3; PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; ADR-1/2/3/10).
 
 ``write(stage, result, *, stem, rule, sections_digest)`` discards the stage's
@@ -25,6 +25,8 @@ given, plus ``previous``,
 ``StageMissing``: no manifest (also a pre-047 stage); ``StageInvalid``: an
 unreadable or malformed file, or a file name that is not one safe stage name;
 ``StageStale``: a file of another read. ``load`` raises nothing else.
+``units(stage)`` gives the units of ``weeks.json``, read-id-checked, under
+the same three errors (the days of a unit ``condensed.json`` names failed).
 ``discard(stage)`` keeps only ``meta.json`` and ``payloads.json`` (temp
 leftovers ``<name>.json.tmp`` included in what it removes).
 ``can_continue(stage, period, digest)`` and ``sections_digest(definitions)``
@@ -264,6 +266,15 @@ def _load(stage: Path, manifest: dict) -> dict:
     passed = ((condensed or {}).get("carryover") or {}).get("state") == "passed"
     result["carryover"] = _stamped(stage, CARRYOVER, read_id) if passed else None
     return result
+
+
+def units(stage: Path) -> List[dict]:
+    """The ``weeks.json`` units of the stage, checked against the manifest's ``read_id``."""
+    stored = manifest(stage)
+    try:
+        return list(_stamped(stage, stored["files"].get("weeks", WEEKS), stored["read_id"])["units"])
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise StageInvalid(f"malformed {WEEKS}: {type(exc).__name__}") from exc
 
 
 # ---------------------------------------------------------------- discard and continue

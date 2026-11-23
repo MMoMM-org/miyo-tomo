@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic reads staged through lib/review_stage.write (spec 047
@@ -70,6 +70,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
 from review_fake_vault import ReviewFakeVault, split_frontmatter  # noqa: E402
+from review_privacy_fixture import condense  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_stage  # noqa: E402
 from lib.kado_client import KadoToolError  # noqa: E402
@@ -166,11 +167,15 @@ def instance(tmp_path, monkeypatch):
     return tmp_path
 
 
-def stage(instance: Path, read: dict, props, stem: str | None = None) -> tuple[str, Path]:
+def stage(instance: Path, read: dict, props, stem: str | None = None, *, condensed: bool = True) -> tuple[str, Path]:
+    """The read staged as review-read.py writes it and, unless ``condensed=False``, condensed by the fixture
+    agents through review-digest.py (spec 047 T4.4: write refuses an uncondensed stage)."""
     stem = stem or f"{read['period']['name']}_review"
     folder = instance / "tomo-tmp" / "review" / stem
     review_stage.write(folder, read, stem=stem, rule=ISO,
                        sections_digest=review_stage.sections_digest(read.get("sections")))
+    if condensed:
+        condense(folder)
     path = folder / "proposals.json"
     path.write_text(props if isinstance(props, str) else json.dumps(props), encoding="utf-8")
     return stem, path

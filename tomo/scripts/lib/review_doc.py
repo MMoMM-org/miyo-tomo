@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.5.3
+# version: 0.5.4
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -7,7 +7,7 @@ script writes: ``load_proposals`` / ``proposal_problems`` validate the file
 against ``tomo/schemas/review-proposals.schema.json``; ``period_of`` rebuilds
 the ``Period`` from ``read.json`` under the configured week rule;
 ``check_items`` applies the source rule (every item needs a daily of the
-period, a ``weekly_only`` item a weekly note the reader listed, a theme two
+period — never one of a day the read's ``not_condensed`` units hold — a ``weekly_only`` item a weekly note the reader listed, a theme two
 distinct days, a text that is not empty; the month-only groups only for a
 month with weekly notes) and returns the accepted items per group with their
 links and the rejected ones with group, index and reason. The groups come
@@ -202,8 +202,12 @@ class Sources:
 
     @classmethod
     def of(cls, read: dict) -> "Sources":
+        """The read's sources; the days of a unit in ``read["not_condensed"]`` give none."""
         sources = cls()
+        not_condensed = {str(d) for unit in read.get("not_condensed") or [] for d in unit.get("days") or []}
         for entry in read.get("days") or []:
+            if str(entry.get("date")) in not_condensed:
+                continue
             try:
                 day = date.fromisoformat(str(entry.get("date")))
             except ValueError:

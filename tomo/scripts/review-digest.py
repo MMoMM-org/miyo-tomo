@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-digest.py — Plan and check the condensing jobs of a /review read: digesters, carryover, the proposer's inputs.
-# version: 0.1.0
+# version: 0.1.1
 """The condensing step of /review (spec 047 T4.3; PRD F1-AC6, F6-AC1, F6-AC2, F6-AC4, F6-AC8; ADR-4, ADR-8).
 
 After ``review-read.py`` wrote the stage ``tomo-tmp/review/<stem>/``, ``plan``
@@ -27,7 +27,9 @@ Rules:
     plan: a job failed in an earlier run is pending again with 0 attempts; every open job's present file is
     checked without counting an attempt; a proposals.json is deleted. check: every open job spends one
     attempt — 1st failure retry, 2nd failed; a carryover passing with one note's items invalid has those
-    items removed from carryover.json. Only taking-part units and their taking-part days are dispatched.
+    items removed from carryover.json, after condensed.json recorded the failed note; a passed carryover
+    whose file still holds a recorded failed note's items is settled again. Only taking-part units and
+    their taking-part days are dispatched.
 
 Exit codes:
     0 — output usable (ok, stopped, refused)
@@ -52,7 +54,7 @@ from lib import review_stage  # noqa: E402
 from lib.note_io import atomic_write_text  # noqa: E402
 from lib.period import MONTH, WEEK  # noqa: E402
 from lib.review_period import CHILD  # noqa: E402
-from lib.review_stage_codec import compact  # noqa: E402
+from lib.review_stage_codec import compact, encode  # noqa: E402
 from lib.review_state import safe_stem  # noqa: E402
 
 DEFAULT_TMP = "tomo-tmp/review"
@@ -215,23 +217,34 @@ def plan(stage: Stage) -> dict:
 
 # ---------------------------------------------------------------- check
 
-def _check_carryover(stage: Stage, retry: List[dict]) -> dict:
+def _check_carryover(stage: Stage, retry: List[dict]) -> List[str]:
+    """One counted attempt for an open carryover; returns the check's errors (``[]`` when not checked)."""
     job = stage.state["carryover"]
     if not _open(job):
-        return {"state": job["state"], "notes": _carry_notes(stage, job)}
+        return []
     check = stage.carry_check()
     job = rd.advance_carryover(job, check, count=True)
     stage.state["carryover"] = job
-    if job["state"] == rd.PASSED and check.errors:
-        data = json.loads(stage.text(review_stage.CARRYOVER) or "")
-        settled = rd.settle_carryover(data, check)
-        atomic_write_text(stage.path / review_stage.CARRYOVER, json.dumps(settled, indent=1, ensure_ascii=False))
     if job["state"] == rd.RETRY:
         retry.append({"agent": CARRIER, "errors": list(check.errors)})
-    out = {"state": job["state"], "notes": _carry_notes(stage, job)}
-    if check.errors:
-        out["errors"] = list(check.errors)
-    return out
+    return list(check.errors)
+
+
+def _settle_carryover(stage: Stage) -> None:
+    """A passed carryover.json without its invalid items and the items of every note condensed.json records
+    as failed; written only when that changes it, so it runs again after a crash at no cost."""
+    job = stage.state["carryover"]
+    failed = [path for path, state in (job.get("notes") or {}).items() if state == rd.FAILED]
+    if job["state"] != rd.PASSED or stage.text(review_stage.CARRYOVER) is None:
+        return
+    check = stage.carry_check()
+    if not failed and not check.bad_items:
+        return
+    data = json.loads(stage.text(review_stage.CARRYOVER) or "")
+    settled = rd.settle_carryover(data, rd.CarryoverCheck(bad_items=check.bad_items,
+                                                          failed_notes=sorted(set(failed) | set(check.failed_notes))))
+    if settled != data:
+        atomic_write_text(stage.path / review_stage.CARRYOVER, encode(settled))
 
 
 def _carry_notes(stage: Stage, job: dict) -> List[dict]:
@@ -259,8 +272,12 @@ def check(stage: Stage) -> dict:
         units[name] = {"state": job["state"], **({"errors": errors} if errors else {})}
         if job["state"] == rd.RETRY:
             retry.append({"agent": DIGESTER, "unit": name, "errors": errors})
-    carryover = _check_carryover(stage, retry)
-    stage.save()
+    carry_errors = _check_carryover(stage, retry)
+    stage.save()                      # the settled job state first: a crash after it loses no failed note
+    _settle_carryover(stage)
+    job = stage.state["carryover"]
+    carryover = {"state": job["state"], "notes": _carry_notes(stage, job),
+                 **({"errors": carry_errors} if carry_errors else {})}
     if rd.nothing_condensed(state):
         return {"status": "stopped", "problems": [NOTHING_CONDENSED],
                 "not_condensed": rd.not_condensed(state, stage.units)}

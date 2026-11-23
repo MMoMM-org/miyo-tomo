@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_046_t4_5_quarter_read.py — review-doc.py on a quarter's stage (spec 046 T4.5; spec 047 T2.4; PRD F6-AC6,
 047 F2-AC4).
 
@@ -33,6 +33,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
 from review_fake_vault import ReviewFakeVault, split_frontmatter  # noqa: E402
+from review_privacy_fixture import condense  # noqa: E402
 from lib import review_stage  # noqa: E402
 from lib.kado_client import KadoToolError  # noqa: E402
 from lib.period import ISO  # noqa: E402
@@ -101,6 +102,7 @@ def stage_quarter(inst: Path, read: dict, props) -> Path:
     folder = stage_dir(inst)
     review_stage.write(folder, read, stem=STEM, rule=ISO,
                        sections_digest=review_stage.sections_digest(read.get("sections")))
+    condense(folder)                    # spec 047 T4.4: write refuses an uncondensed stage
     path = folder / "proposals.json"
     path.write_text(json.dumps(props), encoding="utf-8")
     return path
@@ -130,7 +132,7 @@ def names(inst: Path) -> list:
     return sorted(p.name for p in stage_dir(inst).iterdir())
 
 
-STAGE_FILES = ["children", "context.json", "days", "manifest.json", "weeks.json"]
+STAGE_FILES = ["children", "condensed.json", "context.json", "days", "digests", "manifest.json", "weeks.json"]
 PROPS = proposals(done=[item(MARKER + " done", "2026-01-05", _daily("2026-03-25"), "2025-12-31")],
                   open=[item("outside only", "2025-12-31")],
                   monthly_only=[item("only there", f"{MONTHLY}2026-02.md")])

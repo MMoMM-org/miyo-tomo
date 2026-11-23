@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -49,7 +49,7 @@ which marker kinds it may carry and why. The walk then asserts:
 - (spec 046 T4.2, amended CON-3) a mapped write's meta.json is a closed key set: spec 045's keys
   plus `pass1_sections` with entries exactly {key, count, empty}; section headings, parents,
   descriptions and keywords carrying a marker never reach it.
-- (spec 047 T4.3) `review-digest.py plan` and `check` run on the month's stage after each month read, with
+- (spec 047 T4.3, T4.4) `review-digest.py plan` and `check` run on the week's stage and after each month read, with
   digests and a carryover whose text carries the daily marker; `digests/` and `carryover.json` are content files
   like the stage's, `condensed.json` stays under the guard; a `plan` on a stem without a stage is refused;
   one forced exception and one bad invocation of `review-digest.py` join the lists.
@@ -85,7 +85,8 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
 from review_privacy_fixture import (  # noqa: E402
-    ANCHOR, ANS, CONFIG, DAY, INBOX, KIND_OF, MARKER_RE, PRP, READABLE, TRK, WKL, build_vault, proposals,
+    ANCHOR, ANS, CONFIG, DAY, INBOX, KIND_OF, MARKER_RE, PRP, READABLE, TRK, WKL, build_vault, condense_files,
+    proposals, put_files,
 )
 from lib import review_day as rday  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
@@ -364,6 +365,7 @@ def _week(w: Walk) -> None:
     assert rc == 0 and out["status"] == "ok" and out["nothing_to_review"] is False, out
     assert out["report"]["days"][2]["linked"][0]["state"] == "read"
     w.keep_read_file("week", out["stage"])
+    _condense(w, WEEK_STEM)
     path = w.write_proposals(WEEK_STEM, "week")
     rc, out = w.run("review-doc", "write", ["write", "--stem", WEEK_STEM, "--proposals", str(path),
                                             "--run-id", "r-week", "--today", TODAY])
@@ -415,28 +417,16 @@ def _month_read(w: Walk) -> Path:
     return w.write_proposals(MONTH_STEM, "month")
 
 
-def _condense(w: Walk) -> None:
-    """spec 047 T4.3: plan, the agents' files with the daily marker in their text, check — no marker reaches
-    stdout or stderr, condensed.json stays content-free (the tmp-leak check of every call)."""
-    rc, out = w.run("review-digest", "plan", ["plan", "--stem", MONTH_STEM])
+def _condense(w: Walk, stem: str = MONTH_STEM, carried: bool = True) -> None:
+    """spec 047 T4.3/T4.4: plan, the agents' files (the privacy fixture's one builder) with the daily marker in
+    their text, check — no marker reaches stdout or stderr, condensed.json stays content-free (the tmp-leak
+    check of every call)."""
+    rc, out = w.run("review-digest", "plan", ["plan", "--stem", stem])
     assert rc == 0 and out["status"] == "ok" and out["rounds"], out
-    stage = w.stage(MONTH_STEM)
-    for job in out["rounds"][0]:
-        if job["agent"] == "review-digester":
-            data = {"read_id": out["read_id"], "unit": job["unit"], "days": job["days"],
-                    "done": [{"text": f"run {DAY}", "sources": [job["days"][0]]}], "open": [], "notable": [],
-                    "themes": [], "sections": [], "child_notes": [], "growth": []}
-        else:
-            notes = [json.loads((stage / name).read_text(encoding="utf-8")) for name in job["previous_files"]]
-            data = {"read_id": out["read_id"],
-                    "notes": [{"path": n["path"], "kind": n["kind"], "name": n["name"], "items": 1} for n in notes],
-                    "items": [{"id": f"c{i}", "type": "open", "text": f"carry {DAY}", "sources": [n["name"]]}
-                              for i, n in enumerate(notes, 1)]}
-        (stage / job["out"]).parent.mkdir(parents=True, exist_ok=True)
-        (stage / job["out"]).write_text(json.dumps(data), encoding="utf-8")
-    rc, out = w.run("review-digest", "check", ["check", "--stem", MONTH_STEM])
+    put_files(w.stage(stem), condense_files(out, w.stage(stem), text=DAY))
+    rc, out = w.run("review-digest", "check", ["check", "--stem", stem])
     assert rc == 0 and out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
-    assert out["proposer"]["carried"] is True, "the month's previous note was carried"
+    assert out["proposer"]["carried"] is carried, "the previous note was carried"
     rc, out = w.run("review-digest", "plan", ["plan", "--stem", "2026-02_review"])
     assert rc == 0 and out["problems"] == ["stage-missing"], out
 

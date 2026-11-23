@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """Record tests/fixtures/046-t4-2-unmapped-doc-golden/{week,month}.md and .json from
 the `review-doc.py write` of the source tree passed as --tree.
 
@@ -24,7 +24,9 @@ meta.json keys, `pass1_counts` and `pass1_links`.
 
 Staging (spec 047 T2.4): a tree with ``lib/review_stage.py`` gets the read as the
 stage ``review_stage.write`` leaves; an older tree (before spec 047) gets it as
-``read.json``, the file its ``review-doc.py`` loads.
+``read.json``, the file its ``review-doc.py`` loads. A tree with
+``review-digest.py`` (spec 047 T4.4) has the stage condensed by the fixture agents
+(``review_privacy_fixture.condense``) before ``write``.
 
 Usage: python3 record.py --tree <exported source tree>
 """
@@ -132,6 +134,9 @@ def _stage_read(tree: Path, stage: Path, stem: str, read: dict) -> None:
     from lib import review_stage
     from lib.period import ISO
     review_stage.write(stage, read, stem=stem, rule=ISO, sections_digest=review_stage.sections_digest(None))
+    if (tree / "tomo/scripts/review-digest.py").is_file():      # spec 047 T4.4: write refuses an uncondensed stage
+        from review_privacy_fixture import condense
+        condense(stage)
 
 
 def capture(tree: Path, name: str) -> dict:

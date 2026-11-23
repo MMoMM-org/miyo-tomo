@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """review_privacy_fixture.py — the marked vault of the /review privacy walk
 (tests/test_review_privacy.py; spec 045 T5.4).
 
@@ -25,11 +25,25 @@ quarterly folder empty) and one synthetic daily per ISO week of 2026-Q1 from
 2026-01-01 on. Two of those days fall in March (W10, W12): they would join the
 month 2026-03's read and change its report, so only `build_vault(quarter=True)`
 adds them (`QUARTER_MARCH_DAYS`); the quarter walk uses that vault.
+
+The condensing (spec 047 T4.4): `condense_files(plan, stage, text)` builds the
+files the agents would write for every job of a `review-digest.py plan`
+answer — a digest per unit (one `done` entry on the unit's first day with a
+daily, growth candidates from the unit's `growth/` files sourced by their
+creation day's daily, at most 10 notes each) and the carryover (one `open`
+item per found previous note, sourced by its stem). `condense(stage)` runs
+plan → those files → check in-process, without printing, for the tests that
+stage a read directly. The one builder for the privacy walk, the e2e walk and
+the review-doc tests.
 """
 from __future__ import annotations
 
+import importlib.util
+import json
 import re
+import sys
 from datetime import date
+from pathlib import Path
 
 from review_fake_vault import ReviewFakeVault
 
@@ -171,3 +185,90 @@ def proposals(kind: str) -> dict:
         groups = {"done": [{"text": f"March done {PRP}", "sources": ["2026-03-01", "2026-03-23"]}],
                   "weekly_only": [{"text": f"only weekly {PRP}", "sources": ["2026-W13"]}]}
     return {"language": "en", "groups": groups}
+
+
+# ---------------------------------------------------------------- the condensing (spec 047 T4.4)
+
+def _stage_json(stage: Path, name: str) -> dict:
+    return json.loads((stage / name).read_text(encoding="utf-8"))
+
+
+def _stem(path: str) -> str:
+    name = path.rsplit("/", 1)[-1]
+    return name[:-3] if name.endswith(".md") else name
+
+
+def _day_stems(stage: Path, job: dict) -> dict:
+    """``{date: stem of its first daily}`` of the job's days that have a daily."""
+    out = {}
+    for day, name in zip(job["days"], job["day_files"]):
+        dailies = _stage_json(stage, name).get("dailies") or []
+        if dailies:
+            out[day] = _stem(str(dailies[0]))
+    return out
+
+
+def _digest(job: dict, stage: Path, read_id: str, text: str) -> dict:
+    stems = _day_stems(stage, job)
+    done = [{"text": f"{job['unit']} {text}", "sources": [stems[d]]} for d in job["days"] if d in stems][:1]
+    growth = []
+    for name in job["growth_files"]:
+        doc = _stage_json(stage, name)
+        paths = [c["path"] for c in doc["created"]]
+        if doc["date"] in stems:
+            growth += [{"text": f"created {text}", "sources": [stems[doc["date"]]], "notes": paths[i:i + 10]}
+                       for i in range(0, len(paths), 10)]
+    return {"read_id": read_id, "unit": job["unit"], "days": list(job["days"]), "done": done, "open": [],
+            "notable": [], "themes": [], "sections": [], "child_notes": [], "growth": growth[:15]}
+
+
+def _carryover(job: dict, stage: Path, read_id: str, text: str) -> dict:
+    notes = [_stage_json(stage, name) for name in job["previous_files"]]
+    return {"read_id": read_id,
+            "notes": [{"path": n["path"], "kind": n["kind"], "name": n["name"], "items": 1} for n in notes],
+            "items": [{"id": f"c{i}", "type": "open", "text": f"carry {text}", "sources": [_stem(n["path"])]}
+                      for i, n in enumerate(notes, 1)]}
+
+
+def condense_files(plan: dict, stage: Path, text: str = "condensed") -> dict:
+    """``{stage-relative out path: data}`` the agents would write for every job of ``plan``."""
+    files = {}
+    for job in (j for r in plan["rounds"] for j in r):
+        build = _digest if job["agent"] == "review-digester" else _carryover
+        files[job["out"]] = build(job, stage, plan["read_id"], text)
+    return files
+
+
+def put_files(stage: Path, files: dict) -> None:
+    for name, data in files.items():
+        (stage / name).parent.mkdir(parents=True, exist_ok=True)
+        (stage / name).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+_DIGEST_SCRIPT = Path(__file__).resolve().parent.parent / "tomo" / "scripts" / "review-digest.py"
+_DIGEST_MOD = []
+
+
+def _digest_script():
+    if not _DIGEST_MOD:
+        spec = importlib.util.spec_from_file_location("review_fixture_digest", _DIGEST_SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+        _DIGEST_MOD.append(mod)
+    return _DIGEST_MOD[0]
+
+
+def condense(stage: Path, text: str = "condensed") -> dict:
+    """plan → the agents' files → check on ``stage``, in-process and silent; returns check's answer."""
+    mod = _digest_script()
+
+    def call(command: str) -> dict:
+        return mod.run(mod.build_parser().parse_args([command, "--stem", stage.name, "--tmp", str(stage.parent)]))
+
+    plan = call("plan")
+    assert plan["status"] == "ok", plan
+    put_files(stage, condense_files(plan, stage, text))
+    out = call("check")
+    assert out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
+    return out

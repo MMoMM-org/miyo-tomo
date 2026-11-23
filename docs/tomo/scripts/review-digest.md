@@ -178,3 +178,18 @@ exceptions map one to one to the three refusals, so the skill's handling
 object; an unexpected exception prints only its class name (exit 1); a bad
 `--stem` is a bad invocation (exit 2). No note text reaches stdout or stderr:
 errors carry pointers and codes, jobs carry paths.
+
+## WHY condensed.json Is Written Before the Settled carryover.json (Spec 047 T4.4)
+
+WHY: crash safety (T4.3 code-review leftover). `check` used to rewrite
+`carryover.json` first and `condensed.json` after it. A crash between the two
+writes left the cleaned file and no record of the failed note: the next
+`check` validated the cleaned file as fully passed and the note-failed marker
+was lost. Now `condensed.json` (the settled job state, with `notes {path:
+failed}`) is written first, then `carryover.json` is settled from it: the
+items of every note the state records as failed (and any item that is still
+invalid) are removed. A `check` after a crash between the writes finds the
+job already passed with its failed note recorded and settles the file again —
+the settling is idempotent, a settled file is left as it is. The rewritten
+`carryover.json` goes through `review_stage_codec.encode` like every other
+agent-read stage file (indented, UTF-8, one encoder).

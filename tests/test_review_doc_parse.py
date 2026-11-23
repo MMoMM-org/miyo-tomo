@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.5
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -61,7 +61,8 @@ from test_review_doc import GOOD, INBOX, MARKER, SCRIPT_PATH, WEEKLY, _config, _
 
 STEM = "2026-W13_review"
 # the kept stage of a week read (spec 047 T2.4): no growth, no children
-KEPT_STAGE = ["context.json", "days", "manifest.json", "meta.json", "proposals.json", "weeks.json"]
+KEPT_STAGE = ["condensed.json", "context.json", "days", "digests", "manifest.json", "meta.json", "proposals.json",
+              "weeks.json"]      # spec 047 T4.4: the condensed stage is kept on review-exists
 
 
 @pytest.fixture

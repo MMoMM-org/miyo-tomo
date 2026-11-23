@@ -272,3 +272,16 @@ text, before its first sub-heading, not at the end of its whole subtree. "At the
 and so promised the wrong place. The `end_h` label now says `at the end of the own text of "H"` /
 `am Ende des eigenen Texts von „H“`. Tests: `test_046_t4_2_doc_sections.py`, `test_046_t5_2_new_note_sections.py`.
 The owner chose the wording (2026-11-19): "the text under H" still read as covering the sub-headings.
+
+## WHY `Sources` Leaves Out the Days of a Not-Condensed Unit (Spec 047 T4.4, 0.5.4)
+
+WHY: F6-AC1, ADR-4. A unit that failed its retry was condensed by nobody: the
+proposer never saw its days, so an item citing one of them can only be
+invented. `Sources.of` drops the dailies of every day listed in the read's
+`not_condensed` (`[{unit, days}]`, set by `review-doc.py` from
+`condensed.json` and `weeks.json`) and an item resting only on such a day is
+rejected exactly as spec 045 rejects a source outside the period — no new
+reason, the user sees the same rejection. The rule keys on `not_condensed`,
+which only `review-doc.py` sets: `review-digest.py` builds `Sources` from the
+plain loaded read, so when it offers a failed unit again on a continued read
+that unit's own digest is checked against its own days.

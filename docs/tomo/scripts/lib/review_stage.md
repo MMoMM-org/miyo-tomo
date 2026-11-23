@@ -265,3 +265,25 @@ read), names from a file on disk are checked with `fullmatch` before they are
 opened, and the encoding lives next to the writer so the measured and the
 written bytes are the same. What did not: one model reading a whole month —
 the spec 046 walk showed that a model holding ≈ 240 KB still skipped days.
+
+## WHY `load` Gives `condensed` and Only a Passed `carryover` (Spec 047 T4.4)
+
+WHY: ADR-4 ownership. `condensed.json` is written only by `review-digest.py`;
+`load` reads it read-id-checked (`StageStale` for another read's file, as for
+every stage file) and hands it to `review-doc.py`, which decides from it
+whether the document may be written (`condense-incomplete`). `carryover.json`
+is given back only when the condensed carryover state is `passed`: a file the
+check failed, or one still waiting for its retry, must never reach the
+document's carried rules. Without `condensed.json` both are `None`.
+
+## WHY `units(stage)` Is Public (Spec 047 T4.4)
+
+WHY: the not-condensed days. `condensed.json` holds job states per unit, not
+the unit's days; `weeks.json` holds the days. `review-doc.py` needs both to
+name a failed unit with its days and to leave those days out of the sources,
+so `units` returns the `weeks.json` units, read-id-checked against the
+manifest, through the same three errors as `load`. It is a separate function
+rather than a key of `load`'s result so the merged read stays the dict
+`read_period` returned, and `review-digest.py` (which also loads the stage)
+never sees a not-condensed rule it must not apply while it re-offers a failed
+unit.

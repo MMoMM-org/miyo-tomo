@@ -267,3 +267,30 @@ its landing line must say so before the user approves. For a new target
 `review_section_set.routed_keys` names. That is one or two Kado reads per
 new-note run; the template text goes nowhere but that call. An existing
 note needs no read: its routing depends on the user's Pass 2 choices.
+
+## WHY `write` Refuses `condense-incomplete` (Spec 047 T4.4, ADR-4, F6-AC1)
+
+WHY: the proposer reads digests, never days (ADR-4). A document written
+while a unit is still `pending` or `retry` would review a period of which
+part was neither condensed nor named as not condensed: those days would
+silently be missing from the proposals and from the top lines alike.
+`write` and `replace --confirm` therefore refuse `condense-incomplete` when
+`condensed.json` is missing or any unit in it is still `pending` or `retry`,
+before the proposals are read and before any Kado call. Only
+`review-digest.py` writes `condensed.json`, so this refusal is the one place
+the two scripts meet: the skill answers it by running step 5 from `plan`
+once. A unit that is `failed` is not incomplete — it is named as not
+condensed (`review_digest.not_condensed` over the stage's `weeks.json` units,
+`review_stage.units`) and its days are left out of `review_doc.Sources`, so
+no item may rest on a day nobody condensed. The carryover's state is not
+part of the gate: a carryover that never passed is `carry_failed`, which the
+document names (ADR-12); it never holds the review back.
+
+`replace`'s `needs-confirm` answer loads the read without this gate: it is a
+question to the user, not a write.
+
+WHY `replace --confirm` keeps `condensed.json` and `carryover.json`: a
+`review-exists` refusal keeps the whole stage (the refusal comes before any
+discard), so the confirmed start-over renders from the same condensed read
+the refused `write` had; the stage content — these two files included — is
+discarded only after a document was written.

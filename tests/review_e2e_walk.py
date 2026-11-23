@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -36,6 +36,13 @@ The quarter (spec 047 T1.2): `QUARTER` / `QUARTER_PERIOD` (2026-Q1) and its
 stem, target and document paths; `Walk(..., quarter=True)` builds the vault
 with the quarter's March days (`build_vault(quarter=True)`), and the quarter
 walk passes `config=QUARTER_CONFIG`.
+
+The condensing (spec 047 T4.4): `write` runs step 5 the way the skill does
+before the proposals — `review-digest.py plan`, the agents' files built by the
+privacy fixture's `condense_files` (digests with growth candidates from the
+stage's `growth/` files, the carryover from its `previous/` files), `check` —
+unless `condense=False`; a stage `plan` refuses (no read) is left alone, so
+`write`'s own refusal still shows.
 """
 from __future__ import annotations
 
@@ -55,12 +62,12 @@ for entry in (str(SCRIPTS_DIR), str(TESTS_DIR)):
 
 from review_fake_vault import _folder_key, split_frontmatter  # noqa: E402
 from review_privacy_fixture import (  # noqa: E402
-    CONFIG, DAILY, INBOX, MOCS, MONTHLY, QUARTERLY, WEEKLY, build_vault, proposals,
+    CONFIG, DAILY, INBOX, MOCS, MONTHLY, QUARTERLY, WEEKLY, build_vault, condense_files, proposals, put_files,
 )
 from review_deliver_helpers import GuardedVault  # noqa: E402
 
 TODAY = "2026-11-11"
-SCRIPTS = ("review-session", "review-read", "review-doc", "review-instructions")
+SCRIPTS = ("review-session", "review-read", "review-doc", "review-instructions", "review-digest")
 WRITER = SCRIPTS_DIR / "vault-config-writer.py"
 WEEK, MONTH = "week", "month"
 WEEK_PERIOD, MONTH_PERIOD = "2026-W13", "2026-03"
@@ -154,7 +161,7 @@ class Walk:
         self.vault = RecordingVault(files, test_id=test_id)
         self.mods = {name: _load(name) for name in SCRIPTS}
         for mod in self.mods.values():
-            monkeypatch.setattr(mod, "KadoClient", self.vault)
+            monkeypatch.setattr(mod, "KadoClient", self.vault, raising=False)   # review-digest has none
         self.writer = _load("vault-config-writer")
 
     # ── running the scripts the way the skill does ──
@@ -174,7 +181,19 @@ class Walk:
     def read(self, period: str, kind: str) -> dict:
         return self.run("review-read", "--period", period, "--kind", kind, "--stem", f"{period}_review")
 
-    def write(self, stem: str, kind: str, props: dict | None = None) -> dict:
+    def condense(self, stem: str) -> dict:
+        """Step 5 before the proposer: plan, the agents' files, check; ``plan``'s refusal as it stands."""
+        plan = self.run("review-digest", "plan", "--stem", stem)
+        if plan["status"] != "ok":
+            return plan
+        put_files(self.stage(stem), condense_files(plan, self.stage(stem)))
+        out = self.run("review-digest", "check", "--stem", stem)
+        assert out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
+        return out
+
+    def write(self, stem: str, kind: str, props: dict | None = None, *, condense: bool = True) -> dict:
+        if condense:
+            self.condense(stem)
         path = self.stage(stem) / "proposals.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(props if props is not None else proposals(kind)), encoding="utf-8")

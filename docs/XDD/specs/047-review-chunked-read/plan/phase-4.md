@@ -65,7 +65,7 @@ Turns the stage into dispatchable jobs, checks every agent file before anything 
   4. Validate: tests green; ruff clean.
   5. Success: every job is checked, retried once, and a failure is named, never a partial read `[ref: PRD/F6-AC1, F6-AC2, F6-AC8]`
 
-- [ ] **T4.4 The document waits for the condensing; the walk condenses** `[activity: backend-api]`
+- [x] **T4.4 The document waits for the condensing; the walk condenses** `[activity: backend-api]`
 
   1. Prime: `review-doc.py` (T2.4 state), `lib/review_stage.load`, `lib/review_doc.py` `Sources.of` 203-221, `tests/review_e2e_walk.py`, `tests/review_privacy_fixture.py` `[ref: SDD/Internal API Changes; lines: 626-627]` `[ref: SDD/Application Data Models; lines: 668-671]` `[ref: SDD/Implementation Gotchas; lines: 1305]`
   2. Test: `write` refuses `condense-incomplete` with no `condensed.json` or a unit `pending`/`retry`; `load` returns `condensed` (read-id-checked) and `carryover` only when its state is `passed`; `Sources` leaves out the dailies of a `failed` unit, so a proposal citing one is rejected as spec 045 does; `replace --confirm` keeps `condensed.json` and `carryover.json`; the walk runs `plan` → fixture digests (growth candidates derived from the fixture's `growth/` files, sourced by creation day) and carryover (derived from the fixture's day data, written by a test helper as the agents would) → `check` → fixture proposals → `write`; the baseline e2e stays GREEN for all three kinds.

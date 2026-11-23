@@ -1,13 +1,15 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: draft
-version: "1.1"
+version: "1.2"
 date: "2026-11-22"
 ---
 
 # Product Requirements Document
 
 > v1.1 (2026-11-22): validation fixes; owner decision on continuing an unfinished read; open questions settled; mechanism moved to "Notes for the SDD".
+
+> v1.2 (2026-11-23): owner — a previous note's folder listing answered with nothing is "no note found" (missing), not "Kado returned none" with the key hint. Amended: F3-AC9 and its edge case.
 
 ## Validation Checklist
 
@@ -177,7 +179,8 @@ F1-AC3, F1-AC4 and F2-AC3 apply one principle — judge over the whole period, n
   - [ ] F3-AC6: Given the previous notes of a review, When the document is written, Then its top names each previous note in one line with its state, and the run report says the same; the line for missing says no note was found for that period, without an error tone, also for a user's first review
   - [ ] F3-AC7: Given a previous note that holds nothing beyond its template's skeleton, When Tomo reads it, Then its state is empty; a note with any text of the user's, with or without a Tomo block, is found
   - [ ] F3-AC8: Given a previous period whose kind has no folder or name format in the setup, When Tomo reads the period, Then that note's state is not set up, and no setup question is asked during the review
-  - [ ] F3-AC9: Given a previous note that Kado refuses or fails to return, When Tomo reads, Then its state is not read and the line names the cause; given a listing of its folder that Kado answers with nothing, Then the line says Kado returned none and that the Kado key may not reach the folder (spec 045 Rule 6), never only missing
+  - [ ] F3-AC9: Given a previous note that Kado refuses or fails to return, When Tomo reads, Then its state is not read and the line names the cause; given a listing of its folder that Kado answers with nothing, Then its state is missing ("no note found")
+    - Amended 2026-11-23 (owner): an empty listing is missing — spec 045 Rule 6 gives the key hint only when Kado answered nothing at all, and the period's dailies were read; a key denial that lists as empty also reads "no note found" (accepted).
   - [ ] F3-AC10: Given a previous note larger than the per-day reading limit, When Tomo reads it, Then it reads it up to that limit at a heading boundary, and its line says it was read in part
   - [ ] F3-AC11: Given a found previous note from which Tomo carries no item, When the document is written, Then its state line says found and that nothing was carried from it
 
@@ -317,7 +320,7 @@ Everything of spec 045's PRD (v1.8) and spec 046's PRD (v1.3) stays in force. No
 - January → Expected: previous month December of the year before; previous quarter Q4 of the year before.
 - Previous notes in year subfolders → Expected: found as weekly and monthly notes are found today.
 - Months are set up, quarters are not → Expected: a monthly review names the previous quarter as not set up; no setup question.
-- Kado refuses the previous note's path, or answers the folder listing with nothing → Expected: not read with the cause, or Kado returned none with the key hint (F3-AC9); the review continues.
+- Kado refuses the previous note's path, or answers the folder listing with nothing → Expected: not read with the cause, or no note found for an empty listing (F3-AC9, amended 2026-11-23); the review continues.
 - A very long previous note → Expected: read up to the limit at a heading boundary, named as read in part (F3-AC10).
 - The same open item in the previous week and the previous month → Expected: one item, both notes as sources, one mark (F4-AC7).
 - An item still open for the third review in a row → Expected: still open again, no age (F4-AC8).

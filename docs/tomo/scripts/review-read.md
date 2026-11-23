@@ -232,7 +232,7 @@ paced pass (`lib/review_period.py`), so the one summary (calls, retried,
 waited_s, not_read, advice) covers them with the period's notes. The report
 gains `previous`: one row per previous period with kind, name, role, path,
 state (`found` / `empty` / `missing` / `not-set-up` / `not-read`), cause
-(`refused` / `failed` / `kado-none`, only for `not-read`) and `partly_read` —
+(`refused` / `failed`, only for `not-read`; an empty folder listing is `missing`) and `partly_read` —
 no text (CON-3). The skill and `review-doc.py` render the top lines from it;
 the text rests in `previous/` of the stage.
 

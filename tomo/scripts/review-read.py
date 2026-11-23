@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: the stage for the agents, the report on stdout.
-# version: 0.5.0
+# version: 0.5.1
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13; spec 046 T3.3; spec 047 T2.4).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -32,7 +32,7 @@ Output: one JSON object on stdout, ASCII-escaped.
             monthly_status? (quarter, same values), monthly_notes? [{month, path, state}],
             growth {created, mocs_changed, mocs_linked_by_new, moc_folders, kado_none},
             previous [{kind week|month|quarter, name, role previous-week|previous-month|previous-quarter, path,
-                       state found|empty|missing|not-set-up|not-read, cause? refused|failed|kado-none,
+                       state found|empty|missing|not-set-up|not-read, cause? refused|failed,
                        partly_read}] (the previous review notes, read in the same paced pass; no text),
             calls, retried, waited_s, not_read [paths], kado_empty [sources],
             advice [raise-kado-limit | check-key-access]}

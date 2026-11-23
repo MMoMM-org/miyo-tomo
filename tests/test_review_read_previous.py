@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_read_previous.py — review-read.py reads the previous review notes in its one paced pass and
 writes them to the stage (spec 047 T3.2; ADR-5; PRD F2-AC6, F3-AC1, F3-AC2, F3-AC3).
 
 WHAT THIS GUARDS, on the fake vault of tests/review_privacy_fixture.py through the script:
 - the month walkthrough (SDD Implementation Examples): 2026-03 reads 2026-02 (found) and 2025-Q4 (missing);
-  the quarter walkthrough: 2026-Q1 reads 2025-Q4 (missing) — the quarterly folder holds a note of another
-  quarter, so its listing is answered; the fixture's own empty quarterly folder is `not-read` / `kado-none`
-  (a live Kado lists a denied folder as empty, ADR-5);
+  the quarter walkthrough: 2026-Q1 reads 2025-Q4 (missing) — the fixture's quarterly folder is empty, and an
+  empty listing is `missing` with no cause (owner 2026-11-23, ADR-5 v1.6); a quarterly folder holding a note
+  of another quarter is `missing` too;
 - `report.previous` on stdout and in manifest.json: kind, name, role, path, state, cause?, partly_read,
   never the note's text;
 - `previous/<kind>-<name>.json` per previous period, stamped with the read id, a found note's sections as
@@ -39,7 +39,7 @@ from review_privacy_fixture import (  # noqa: E402
 
 TODAY = "2026-11-11"
 FEB = f"{MONTHLY}2026-02.md"
-OTHER_QUARTER = f"{QUARTERLY}2025-Q3.md"       # answers the quarterly listing without being 2025-Q4
+OTHER_QUARTER = f"{QUARTERLY}2025-Q3.md"       # a note of another quarter: the listing answers, no 2025-Q4
 ROW_KEYS = {"kind", "name", "role", "path", "state", "partly_read"}
 
 
@@ -70,7 +70,7 @@ def _read(mod, monkeypatch, capsys, instance, config, vault, period, kind):
     return json.loads(out)
 
 
-def _vault(*, quarter: bool = False, other_quarter: bool = True):
+def _vault(*, quarter: bool = False, other_quarter: bool = False):
     vault = build_vault(quarter=quarter)
     if other_quarter:
         vault.files[OTHER_QUARTER] = "# 2025-Q3\n\n## Theme\n- the Q3 theme\n"
@@ -131,12 +131,13 @@ def test_the_quarter_reads_its_previous_quarter(mod, instance, monkeypatch, caps
     assert _manifest(instance, "2026-Q1_review")["files"]["previous"] == ["quarter-2025-Q4.json"]
 
 
-def test_an_empty_quarterly_folder_is_not_read_kado_none(mod, instance, monkeypatch, capsys):
-    # the fixture as it stands: the quarterly folder declared but empty, as a denied folder lists on a live Kado
-    vault = _vault(quarter=True, other_quarter=False)
+@pytest.mark.parametrize("other_quarter", [False, True], ids=["empty-folder", "another-quarter"])
+def test_a_quarterly_folder_without_the_note_is_missing(mod, instance, monkeypatch, capsys, other_quarter):
+    # owner 2026-11-23: an empty listing is "no note found" (state missing, no cause), like a listing without it
+    vault = _vault(quarter=True, other_quarter=other_quarter)
     out = _read(mod, monkeypatch, capsys, instance, QUARTER_CONFIG, vault, "2026-Q1", "quarter")
     (row,) = out["report"]["previous"]
-    assert (row["state"], row["cause"], row["path"]) == ("not-read", "kado-none", None)
+    assert (row["state"], row["path"]) == ("missing", None) and "cause" not in row
     assert out["status"] == "ok" and out["nothing_to_review"] is False, "the review goes on"
 
 

@@ -1,5 +1,5 @@
 # review_previous.py — the previous review notes of a period read: which periods, found how, in which state, what text.
-# version: 0.1.1
+# version: 0.2.0
 """Finding and reading the previous review notes (spec 047, T3.1; ADR-5; PRD F3-AC1..F3-AC10, F4-AC9, F6-AC7).
 
 ``previous_periods`` names the previous periods of a review as ``(role,
@@ -13,7 +13,8 @@ first of its ``Period.note_paths`` candidates the listing holds, before the
 reader's ``finish()``; ``resolve`` turns each note into its row after it:
 ``{kind, name, role, path, state, cause?, partly_read, sections?}`` with
 state ``found`` / ``empty`` / ``missing`` / ``not-set-up`` / ``not-read``,
-cause (only for ``not-read``) ``refused`` / ``failed`` / ``kado-none``, and
+cause (only for ``not-read``) ``refused`` / ``failed`` (a listing Kado answered
+with nothing is ``missing``), and
 ``sections`` ``{heading: [lines]}`` (only for ``found``); ``report_rows`` gives
 the same rows without ``sections`` for the report. A ``KadoToolError``
 whose text carries Kado's quoted error code ``"FORBIDDEN"`` is caught per call
@@ -36,7 +37,7 @@ from lib.vault_paths import path_key
 
 FOUND, EMPTY, MISSING, NOT_SET_UP, NOT_READ = "found", "empty", "missing", "not-set-up", "not-read"
 STATES = (FOUND, EMPTY, MISSING, NOT_SET_UP, NOT_READ)
-REFUSED, FAILED, KADO_NONE = "refused", "failed", "kado-none"
+REFUSED, FAILED = "refused", "failed"
 FORBIDDEN = "FORBIDDEN"
 _FORBIDDEN_CODE = f'"{FORBIDDEN}"'    # the quoted code of {"code":"FORBIDDEN",...}
 ROLE = {WEEK: "previous-week", MONTH: "previous-month", QUARTER: "previous-quarter"}
@@ -169,8 +170,9 @@ def _resolve_one(reader, note: PreviousNote, max_chars: int) -> dict:
     if note.folder in note.refused:
         return _row(note, NOT_READ, cause=REFUSED)
     if not listing:
-        answered = reader.answered(reader.dir_key(note.folder))
-        return _row(note, NOT_READ, cause=KADO_NONE if answered else FAILED)
+        if not reader.answered(reader.dir_key(note.folder)):
+            return _row(note, NOT_READ, cause=FAILED)
+        return _row(note, MISSING)      # answered with nothing: "no note found", no key hint
     path = _path(note, listing)
     if path is None:
         return _row(note, MISSING)

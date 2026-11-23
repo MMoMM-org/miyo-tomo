@@ -1,7 +1,7 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: draft
-version: "1.5"
+version: "1.6"
 ---
 
 # Solution Design Document
@@ -15,6 +15,8 @@ version: "1.5"
 > v1.4 (2026-11-23): T2.3 review — wording matched to what is built: ADR-2's day re-cut cuts the stored entry's texts (no re-run of `read_day`), a re-cut day is `partly-read` in the manifest's report, a file still over the ceiling is named in `manifest.over_ceiling`; the line gate exempts single-value fields; the manifest shape gains `child_labels` and `over_ceiling`. Amended: ADR-2.
 >
 > v1.5 (2026-11-23): owner, after the T2.5 measurement (bulk-import day 2026-01-19 = 92,890 B alone over the unit budget; `context.json` 86,345 B in 4 files, mostly per-day `fields`): `UNIT_BUDGET` 81,920 → 131,072 bytes (ADR-2); `context.json` carries `field_aggregates` (per field: days/min/max/mean per period and per unit; days only for a non-numeric field) instead of raw per-day `fields`, which stay in the day files (ADR-1, data model).
+
+> v1.6 (2026-11-23): owner, on the T3.2 finding (the fixture's empty quarterly folder read as `not-read` / `kado-none`): a previous-note folder whose listing Kado answers with nothing is `missing` ("no note found", no error tone); the cause `kado-none` and the line "Kado returned none; the Kado key may not reach the folder" are dropped for previous notes. Why: spec 045 Rule 6 gives the key hint only when Kado answered nothing at all, and the previous notes are read only after the period's dailies were. Accepted trade-off: a key denial that lists as empty also reads "no note found". Amended: ADR-5, ADR-12, Error Handling, data model; PRD F3-AC9.
 
 ## Validation Checklist
 
@@ -575,7 +577,7 @@ children/<label>-<name>[-<n>].json:   # one per child-note entry (label weekly|m
 
 previous/<kind>-<name>.json:          # one per previous period of the kind (ADR-5)
   read_id, kind week|month|quarter, name, role previous-week|previous-month|previous-quarter,
-  path: string|null, state found|empty|missing|not-set-up|not-read, cause?: refused|failed|kado-none,
+  path: string|null, state found|empty|missing|not-set-up|not-read, cause?: refused|failed,
   partly_read: bool, sections: {heading: [lines]}   # only for found; joined by load
 
 growth/<YYYY-MM-DD>.json (+ growth/<YYYY-MM-DD>-<n>.json parts):   # one per day of the period on which notes were created
@@ -980,7 +982,7 @@ sequenceDiagram
 | Kado unreachable / key refused during the period read | `review-read.py` | `stopped` as today; nothing written; with `--fresh` the stored read was discarded first, so nothing is left to continue (F6-AC4) |
 | Daily folder listing not read | `review-read.py` | `stopped dailies-not-read` as today |
 | No day with content | `review-read.py` | `nothing_to_review` as today; nothing written |
-| A previous note refused (a `FORBIDDEN` tool error on its read), failed after the end pass, or its folder listing answered with nothing | `lib/review_previous.py` | state `not-read`, cause `refused` / `failed` / `kado-none`; the review continues (F3-AC9). The `KadoToolError` with `FORBIDDEN` is caught per previous-note call; a `KadoAuthError` (wrong token, 401/403) is not caught and stops the read as today |
+| A previous note refused (a `FORBIDDEN` tool error on its read) or failed after the end pass; its folder listing answered with nothing | `lib/review_previous.py` | state `not-read`, cause `refused` / `failed`; an empty listing (or "Path not found") is `missing`, no key hint (v1.6, owner); the review continues (F3-AC9). The `KadoToolError` with `FORBIDDEN` is caught per previous-note call; a `KadoAuthError` (wrong token, 401/403) is not caught and stops the read as today |
 | A day file whose indented form is over 32,768 B | `lib/review_stage.py` → `lib/review_day.cut_at_boundary` | the day's units re-cut by the one cutter of `review_day` with `max_chars` scaled by ceiling/size (≤ 3 tries, then a hard cut of the first section), `partly_read` true, named partly read in the report and the callout (F1-AC7); still over after every cut (non-text content) → listed in `manifest.over_ceiling` |
 | A week's day files plus growth files over 128 KB | `lib/review_weeks.py` | split into units `<week>a`, `<week>b`… in date order (a day weighs its day file + its growth files); never a day dropped; a single day over the budget is a unit alone, named in `over_budget` |
 | A day's created notes over 32,768 B indented | `lib/review_stage.py` | `growth/<date>.json` split into parts `growth/<date>-<n>.json` at entry boundaries, each ≤ 32,768 B; no entry cut or dropped; `--measure` lists them in `over_ceiling` |
@@ -1008,6 +1010,7 @@ INPUT: /review 2026-Q1; dailies 2026-01-01 … 2026-03-31; weekly notes to 2026-
        quarterly folder "Calendar/304 Quarterly/" (miyo profile), format YYYY-[Q]Q; no 2025-Q4 note
 1. review-read (new read): CHILD[quarter] = month → levels weekly (sources) + monthly (marked).
    Kado: ≈ 460 calls as in spec 046 + 1 listing of Calendar/304 Quarterly/ (depth 2) → no 2025-Q4.md, no 2025/2025-Q4.md
+   (an empty folder lists as nothing: missing as well, v1.6)
    previous/quarter-2025-Q4.json = {state: missing, path: null}
 2. Stage: days/ 90 files, average ≈ 5.8 KB compact (Jan 179,969 B / 31) ≈ 6.7 KB indented; none over 32,768 B (measured max 8,303 B).
    Measured T1.5 (indent=1): days mean 6,008 B, max 8,303 B; ISO-week day sums mean 38,621 B, max 46,747 B.
@@ -1235,7 +1238,7 @@ stateDiagram-v2
   - Trade-offs: the check cannot prove a digest is faithful to its days, only that it is well-formed and stays inside them; fidelity rests on the digester prompt and the owner's quality comparison (KPI).
   - User confirmed: owner, 2026-11-23
 
-- [x] ADR-5 Previous notes: new `lib/review_previous.py`, called by `review_period._PeriodRead.run` before `reader.finish()` and resolved after it, through the same `PacedReader`. Periods per kind by `Period.previous` / `Period.containing` (table above). Set up = folder (`folder_for`, config over profile) and format (`configured_formats`); `PeriodSources` gains `quarterly_folder`. Found by the folder listing (depth 2) and `note_paths` (flat, year subfolder) only — no search (F3-AC4). States: `found` (any text beyond the template skeleton by `review_day.has_content`, Tomo blocks included), `empty`, `missing` (listing answered, no candidate), `not-set-up` (no question, F3-AC8), `not-read` with cause `refused` (a `KadoToolError` whose text names `FORBIDDEN` on that call, caught per call; a `KadoAuthError` still stops the read), `failed` (still pending after the end pass) or `kado-none` (listing answered with nothing; the key hint, 045 Rule 6). Text: the whole body cleaned by `review_md` (queries, embeds, navigation dropped), off-limits headings included as source text (F4-AC5), cut at a heading boundary at `max_chars_per_day` (`partly_read`, F3-AC10). The target note of the period is never a previous note (different period by construction, Rule 6, F6-AC7); previous notes are read as they are now (F4-AC9).
+- [x] ADR-5 Previous notes: new `lib/review_previous.py`, called by `review_period._PeriodRead.run` before `reader.finish()` and resolved after it, through the same `PacedReader`. Periods per kind by `Period.previous` / `Period.containing` (table above). Set up = folder (`folder_for`, config over profile) and format (`configured_formats`); `PeriodSources` gains `quarterly_folder`. Found by the folder listing (depth 2) and `note_paths` (flat, year subfolder) only — no search (F3-AC4). States: `found` (any text beyond the template skeleton by `review_day.has_content`, Tomo blocks included), `empty`, `missing` (listing answered without a candidate, or answered with nothing: v1.6, owner — spec 045 Rule 6 gives the key hint only when Kado answered nothing at all, and the dailies were read; a key denial that lists as empty also reads missing, accepted), `not-set-up` (no question, F3-AC8), `not-read` with cause `refused` (a `KadoToolError` whose text names `FORBIDDEN` on that call, caught per call; a `KadoAuthError` still stops the read), `failed` (still pending after the end pass). Text: the whole body cleaned by `review_md` (queries, embeds, navigation dropped), off-limits headings included as source text (F4-AC5), cut at a heading boundary at `max_chars_per_day` (`partly_read`, F3-AC10). The target note of the period is never a previous note (different period by construction, Rule 6, F6-AC7); previous notes are read as they are now (F4-AC9).
   - Status: Accepted
   - Rationale: the same discovery the child notes use (one listing, no search), inside the single-pass rule (review_period.py:23-30), 2–4 extra calls.
   - Amended 2026-11-23 (owner, T1.4 smoke): a per-path denial (path ACL or tag rules) is an MCP tool error `FORBIDDEN`, raised by the client as `KadoToolError` (kado_client.py:948-954; `_inbox/from-kado/2026-11-11_kado-to-tomo_tag-access-rules.md`), never retried; HTTP 401/403 → `KadoAuthError` (kado_client.py:51-52, 761) means a wrong token. So `review_previous` catches `KadoToolError` with `FORBIDDEN` in its text per previous-note call → `not-read`, cause `refused`; any other `KadoToolError` is not swallowed; a `KadoAuthError` stops the whole read as today (`stopped kado-auth`). `KadoToolError` carries only the message text, so the match is on that text. Kado answers the same `FORBIDDEN` text for a missing, untagged or denied note, so `refused` never claims which.
@@ -1277,7 +1280,7 @@ stateDiagram-v2
   - Trade-offs: the fingerprint proves structure, not quality; wording and usefulness stay the owner's live comparison (KPI).
   - User confirmed: owner, 2026-11-23
 
-- [x] ADR-12 Top lines of the document: the info callout keeps its first line and gains continuation lines (`> …`): one per previous note — `Previous review · <kind word> <name>: <state>` (EN) / `Letzter Rückblick · <Art> <name>: <state>` (DE) with states "found, n carried" / "found, nothing carried" (F3-AC11) / "read in part" appended when partly read / "empty" / "no note found for <name>" (F3-AC6, no error tone) / "<kind> notes are not set up" / "not read: Kado refused it | Kado did not return it | Kado returned none; the Kado key may not reach the folder" (F3-AC9); one `Not condensed: <unit> (<first day> – <last day>)` line per failed unit (F6-AC1); one line "The previous reviews could not be taken into account." when `carry_failed` (F6-AC2). The parser ignores lines above the first `## ` that are not column-0 checkbox lines, so Pass 2 is unaffected.
+- [x] ADR-12 Top lines of the document: the info callout keeps its first line and gains continuation lines (`> …`): one per previous note — `Previous review · <kind word> <name>: <state>` (EN) / `Letzter Rückblick · <Art> <name>: <state>` (DE) with states "found, n carried" / "found, nothing carried" (F3-AC11) / "read in part" appended when partly read / "empty" / "no note found for <name>" (F3-AC6, no error tone) / "<kind> notes are not set up" / "not read: Kado refused it | Kado did not return it" (F3-AC9; an empty folder listing is "no note found", v1.6); one `Not condensed: <unit> (<first day> – <last day>)` line per failed unit (F6-AC1); one line "The previous reviews could not be taken into account." when `carry_failed` (F6-AC2). The parser ignores lines above the first `## ` that are not column-0 checkbox lines, so Pass 2 is unaffected.
   - Status: Accepted
   - Trade-offs: the state wording is Tomo's proposal (the PRD fixes only the mark labels); the owner may reword before T-impl.
   - User confirmed: owner, 2026-11-23

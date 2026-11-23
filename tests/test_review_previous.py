@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_previous.py — finding and reading the previous review notes of a period
 (spec 047 T3.1; ADR-5; PRD F3-AC1..F3-AC5, F3-AC7..F3-AC10, F4-AC9, F6-AC7).
 
@@ -9,8 +9,9 @@ week STARTS in); `locations` + `set_up` (config over profile, a kind without
 folder or format is `not-set-up` with no Kado call); `prefetch` (before the
 end pass) and `resolve` (after it) through the one `PacedReader`; the five
 states with the `not-read` causes `refused` (a `KadoToolError` naming
-`FORBIDDEN`, caught per call), `failed` (still pending after the end pass)
-and `kado-none` (a listing answered with nothing); a `KadoAuthError` or any
+`FORBIDDEN`, caught per call) and `failed` (still pending after the end
+pass); a folder listing answered with nothing (an empty folder, or "Path not
+found") is `missing` with no cause (owner 2026-11-23); a `KadoAuthError` or any
 other `KadoToolError` propagates; the note's text cleaned and cut at a heading
 boundary at `max_chars`; at most four Kado calls for a week review.
 
@@ -48,7 +49,6 @@ from lib.review_previous import (  # noqa: E402
     EMPTY,
     FAILED,
     FOUND,
-    KADO_NONE,
     MISSING,
     NOT_READ,
     NOT_SET_UP,
@@ -315,10 +315,14 @@ def test_recovered_in_the_end_pass_is_found():
     assert _by_role(_run(vault, W14), "previous-week")["state"] == FOUND
 
 
-def test_empty_listing_is_kado_none():
-    vault = ReviewFakeVault({MONTHLY + "2026-02.md": FEB_NOTE}, folders=[WEEKLY, MONTHLY])
+@pytest.mark.parametrize("folders", [[WEEKLY, MONTHLY], [MONTHLY]], ids=["empty-folder", "path-not-found"])
+def test_empty_listing_is_missing(folders):
+    # owner 2026-11-23: a listing Kado answered with nothing is "no note found", not a not-read with a key hint
+    vault = ReviewFakeVault({MONTHLY + "2026-02.md": FEB_NOTE}, folders=folders)
     row = _by_role(_run(vault, W14), "previous-week")
-    assert (row["state"], row["cause"], row["path"]) == (NOT_READ, KADO_NONE, None)
+    assert (row["state"], row["path"]) == (MISSING, None)
+    assert "cause" not in row
+    assert _by_role(_run(vault, W14), "previous-month")["state"] == FOUND
 
 
 # ── the text (F3-AC10, F4-AC5, F4-AC9) ──

@@ -48,7 +48,7 @@ The listing goes through the reader's cache, so a folder that is also a child
 level's folder (a month's weekly folder) is listed once for both. A week
 review costs at most four calls: two listings and two reads.
 
-## WHY Five States and Three Causes
+## WHY Five States and Two Causes
 
 WHY: F3-AC5, F3-AC9 and the document's top line per note (F3-AC6). Every
 previous note ends in exactly one of `found`, `empty`, `missing`,
@@ -67,9 +67,17 @@ because the user acts differently on each cause:
   note so the read after the end pass does not ask again (Kado says a denial
   is permanent: do not retry the same path).
 - `failed` — the read was still turned away after the reader's end pass.
-- `kado-none` — the folder listing came back with nothing (also "Path not
-  found"). On a live Kado a denied folder lists as empty, so the line names
-  the key as a possible cause (spec 045 Rule 6) instead of saying `missing`.
+
+A folder listing that Kado answers with nothing — an empty folder, or "Path
+not found" — is `missing` ("no note found", no error tone), not `not-read`
+with a key hint (owner decision 2026-11-23, ADR-5 v1.6, F3-AC9 amended).
+WHY: spec 045 Rule 6 shows the access hint only when Kado answered nothing at
+all, never when other notes were read — and a review reaches the previous
+notes only after the period's dailies were read, so the key demonstrably
+reaches the vault. Accepted trade-off: a real per-folder key denial that
+lists as empty on a live Kado also reads "no note found"; the user who
+expects a note there checks the key's folder list. T3.1 shipped a third
+cause `kado-none` for this case; T3.2 removed it.
 
 Not caught: a `KadoAuthError` (HTTP 401/403 means the token is wrong, so
 every later call fails too; the read stops as it does today) and any other

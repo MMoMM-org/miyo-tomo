@@ -50,6 +50,7 @@
 | 2026-11-23 | Model tier: hard (override) | Classifier recommended frontier (novel_pattern=true: manifest-last stage, agent output contract; high_risks=3). Owner chose hard, as for spec 046 (no fable; opus where design judgment is needed). |
 | 2026-11-23 | Plan v1.0 (opus): 9 phases, 45 tasks; validated (sonnet): NEEDS FIXES, 10 local fixes (parallel overlaps T6.2/T6.3 and T5.1/T5.2, RED gap T2.4→T2.5, missing version bump, shifted cites, unmapped new test files) | Validation pass |
 | 2026-11-23 | T2.4 and T2.5 merged into one task (read + loader switch in one commit); new test_review_*.py files go into spec 047's Directory Map by the task that creates them; code review = the per-task review chain of /implement, no extra phase review | Owner (recommended) |
+| 2026-11-23 | Cost KPIs are a token-volume proxy for optimising, not real spend (owner on a subscription); goal: as few tokens as possible at the best quality | Owner |
 | 2026-11-23 | Specification ready: PRD v1.1, SDD v1.1 (12 confirmed ADRs), plan v1.1 (9 phases, 44 tasks); readiness HIGH | Owner approved each phase |
 
 ## Context

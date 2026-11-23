@@ -33,7 +33,7 @@ phase: 3
 
 Reads the review notes of the period before inside the same paced pass and records each one's state.
 
-- [ ] **T3.1 Finding and reading previous notes (`lib/review_previous.py`)** `[activity: domain-modeling]`
+- [x] **T3.1 Finding and reading previous notes (`lib/review_previous.py`)** `[activity: domain-modeling]`
 
   1. Prime: `lib/period.py` (`Period.previous` 176-177, `containing` 159, `note_paths` 196-200), `lib/review_config.py` (`GRANULARITY` 53, `folder_for` 173-186, `configured_formats` 194-201), `lib/review_children.py` (`find`/`prefetch`/`read`/`status` 58-106 — the pattern), `lib/review_reader.py` (`PacedReader` 39-141), `lib/kado_client.py` (`KadoAuthError` 51-52 / 761, `KadoToolError` 948-954), `_inbox/from-kado/2026-11-11_kado-to-tomo_tag-access-rules.md` (`FORBIDDEN`), `lib/review_md.py`, `lib/review_mapping.py` (off-limits); T1.4 outcome (3) `[ref: SDD/ADR-5]` `[ref: SDD/Implementation Examples; lines: 753-776]`
   2. Test: `tests/test_review_previous.py`:

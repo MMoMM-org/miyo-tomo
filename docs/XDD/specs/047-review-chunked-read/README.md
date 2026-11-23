@@ -64,6 +64,7 @@
 | 2026-11-23 | A previous-note folder whose listing answers empty is `missing` ("no note found", no error tone), not `not-read`/`kado-none`; amends PRD F3-AC9, ADR-5, ADR-12. Accepted trade-off: a key denial that shows as an empty listing also reads "no note found" | Owner (recommended): spec 045 Rule 6, the dailies were read |
 | 2026-11-23 | Model escalation: T4.1 sonnet → opus | Trigger: second review FAIL (nested `required` lists untested after the cap fix) |
 | 2026-11-23 | Model escalation: T4.1 opus → opus@max | Trigger: second review FAIL at opus (pattern anchors `^`/`$` unguarded after the sweep) |
+| 2026-11-23 | Known limitation accepted: the digest/carryover schema patterns use `$`, which in Python's `re` also matches before a final newline, so `"2026-03-30\n"`, `"s1\n"`, `"c1\n"` validate; dates and section keys are refused downstream (`days-mismatch`, `unknown-section`), carryover ids are only compared with each other | Orchestrator; no schema change |
 
 ## Context
 

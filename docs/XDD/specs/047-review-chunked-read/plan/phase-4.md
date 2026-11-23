@@ -35,7 +35,7 @@ phase: 4
 
 Turns the stage into dispatchable jobs, checks every agent file before anything uses it, and names what could not be condensed.
 
-- [ ] **T4.1 Digest and carryover schemas** `[activity: data-architecture]`
+- [x] **T4.1 Digest and carryover schemas** `[activity: data-architecture]`
 
   1. Prime: `tomo/schemas/review-proposals.schema.json` (closed-schema style), SDD Digest and Carryover entities `[ref: SDD/Application Data Models; lines: 641-652]` `[ref: SDD/ADR-4]`
   2. Test: `tests/test_review_digest_schemas.py` — the W14 example digest and carryover of walkthrough (b) validate; refused: an unknown field, an empty `text`, an entry without sources, more than 25 `done`, a section key outside `^s[0-9]{1,3}$`, a carryover id outside `^c[0-9]{1,3}$`, an item `type` outside open/intention/theme, more than 30 carryover items; a single-day theme is allowed in a digest; a `growth` candidate validates with ≥ 1 source and 1–10 `notes`; refused: a growth candidate without `notes`, with more than 10 `notes`, more than 15 candidates.

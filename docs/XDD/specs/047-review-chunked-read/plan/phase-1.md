@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Behaviour baseline and early smoke checks"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -79,6 +79,9 @@ Pins what the review document and Pass 2 look like today for a week, a month and
 
   - **Outcome (2026-11-23, owner go):** `--measure` 2026-Q1 on the old flow, host source against the test-vault Kado (tomo-instance key): 454 calls, 0 retried, 101.7 s waited, 0 not read, no file written. Read files: `read-index.json` 150,718 B; `read-2026-01/02/03.json` 193,079 / 176,710 / 196,357 B; day bytes per month 179,969 / 164,293 / 181,763. Size breakdown (a second read into a deleted temp dir, sizes only): days n=90, indent=1 mean 6,008 B, max 8,303 B, 0 partly read; ISO-week sums (indent=1) max 46,747 B, mean 38,621 B, 14 weeks, none over 81,920; weekly notes n=13, max 3,889 B; monthly notes n=3, max 161 B; index keys: `growth` 124,582 / 157,722 B (`growth.created` n=746), `report` 30,361 / 39,481 B, `sections` 3,357 B, `dailies_not_in_monthly` 1,873 B. Day, week and digest limits of ADR-2 hold. Deviation (owner, 2026-11-23): `growth.created` goes per unit to the digesters (each unit's created notes, condensed like the days); `context.json` keeps only growth counts and the MOC changes; the read report stays in `manifest.json` and is not proposer input. SDD ADR-1/2/4 and the Phase 2/4 tasks are amended accordingly.
 
-- [ ] **T1.6 Phase Validation** `[activity: validate]`
+- [x] **T1.6 Phase Validation** `[activity: validate]`
 
   - Run the full suite in ONE invocation (`./venv/bin/python -m pytest tests/ -q`) — GREEN; `./venv/bin/ruff check tomo/scripts scripts tests` clean. Trace F2-AC1 and F2-AC2 (old-flow half) to the node ids of `tests/test_047_baseline_e2e.py`. Confirm no file under `tomo/` changed in this phase and no eval-gated file changed. T1.4 and T1.5 outcomes recorded (or explicitly deferred by the owner).
+
+  - **Outcome (2026-11-23):** full suite in ONE invocation at `d2a003a9` (`./venv/bin/python -m pytest tests -q -p no:cacheprovider`): 11,085 passed, 18 skipped, 1 failed — `tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists`, the baseline failure (stale `test-ide-bridge-smoke` registry entry), so failing ⊆ baseline. `./venv/bin/ruff check tomo/scripts scripts tests`: clean. No file under `tomo/` changed in this phase (`git diff --name-only c16a484e HEAD -- tomo/` is empty); no eval-gated file changed. F2-AC1 (old-flow half): `tests/test_047_baseline_e2e.py::test_baseline[week]`, `[month]`, `[quarter]`, `::test_the_quarter_baseline_carries_a_mark_suffix_and_every_kind_its_set`; F2-AC2 (old-flow half): the same three `test_baseline` ids (instruction set strict, `<kind>-instructions.json`), `::test_a_key_outside_allowed_fails_and_the_set_is_never_allowed`. T1.4 and T1.5 outcomes recorded above; their deviations are in SDD v1.3.
+

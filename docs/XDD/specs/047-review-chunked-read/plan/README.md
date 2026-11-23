@@ -163,7 +163,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
-- [ ] [Phase 1: Behaviour baseline and early smoke checks](phase-1.md)
+- [x] [Phase 1: Behaviour baseline and early smoke checks](phase-1.md)
 - [ ] [Phase 2: Stage layout, limits and the loader](phase-2.md)
 - [ ] [Phase 3: Previous notes](phase-3.md)
 - [ ] [Phase 4: Condensing — units, digests, carryover, plan and check](phase-4.md)

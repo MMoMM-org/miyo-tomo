@@ -48,7 +48,7 @@ Pins what the review document and Pass 2 look like today for a week, a month and
   4. Validate: `test_review_e2e*.py`, `test_review_privacy*.py` green; the week and month outputs of the walk (documents, instruction sets, reports) and every existing e2e expectation are unchanged by the fixture extension — no existing assertion or expected value edited to make it pass; ruff clean.
   5. Success: the fake vault holds a quarter and the previous notes the new flow will read `[ref: PRD/Assumptions]` `[ref: SDD/ADR-11]`
 
-- [ ] **T1.3 Baseline e2e on the old flow (`tests/test_047_baseline_e2e.py`)** `[activity: testing]`
+- [x] **T1.3 Baseline e2e on the old flow (`tests/test_047_baseline_e2e.py`)** `[activity: testing]`
 
   1. Prime: T1.1 and T1.2 outputs; `tests/review_e2e_walk.py` (`pass1`, `parse`, `preview`, `deliver`); `tomo/scripts/review-instructions.py` output (the instruction set and the readable instructions) `[ref: SDD/ADR-11; lines: 1222-1225]` `[ref: SDD/Quality Requirements/Reliability; lines: 1238]`
   2. Test: for week 2026-W13, month 2026-03 and quarter 2026-Q1: Pass 1 → document → approve → Pass 2 `deliver`; the fingerprint of each document and the instruction set of each kind (ids and timestamps masked) are written once as golden files under `tests/fixtures/047-baseline/` and asserted equal on every run; the test names which golden file failed and which keys differ; a RED proof: a renderer mutation (one part dropped, one mark suffix removed) and an instruction-set mutation each fail it, recorded in the commit message.

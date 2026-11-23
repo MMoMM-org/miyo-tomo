@@ -1,5 +1,5 @@
 # review_stage_codec.py — the bytes of a /review stage file: line-broken encoding, the ceiling, cutting and parts.
-# version: 0.1.1
+# version: 0.2.0
 """Encoding and size rules of the agent-read stage files (spec 047 T2.3; ADR-2), split out of ``review_stage``.
 
 ``encode(data)`` is the one written form: ``indent=1``, UTF-8 (``ensure_ascii``
@@ -22,6 +22,8 @@ a partial doc from moved items, ``merge(into, part)`` joins a part back
 ``previous_doc`` turn an entry into its file doc (texts as lines, the
 ``read_id``; a child's ``clipped``), ``day_entry`` / ``child_entry`` /
 ``previous_entry`` back; ``growth_files`` packs the created notes per day.
+``field_aggregates(days, units)`` gives per field name ``{period, units}`` of
+``{days, min, max, mean}`` when every value is a number, else ``{days}`` only.
 ``compact`` is the script-only form of ``manifest.json``. No file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_stage_codec.md
@@ -33,6 +35,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from lib import review_day
+from lib.review_habits import Unreadable, parse_value
 from lib.review_weeks import FILE_CEILING
 
 LINE_PIECE = 1_000
@@ -42,7 +45,7 @@ Unit = Tuple[str, str, str]
 Item = Tuple[Tuple[str, ...], bool, Any]
 
 __all__ = ["FILE_CEILING", "LINE_PIECE", "child_doc", "child_entry", "child_text", "compact", "day_doc", "day_entry",
-           "day_text", "encode", "fit", "growth_files", "join_text", "lines_of", "mark_partly_read", "merge",
+           "day_text", "encode", "field_aggregates", "fit", "growth_files", "join_text", "lines_of", "mark_partly_read", "merge",
            "pack_parts", "place", "previous_doc", "previous_entry", "size", "spill", "text_key"]
 
 
@@ -275,4 +278,44 @@ def growth_files(read_id: str, created: Sequence[dict], first_day: str) -> Dict[
 
         out[day] = {(f"{day}.json" if n == 1 else f"{day}-{n}.json"): text
                     for n, text in enumerate(pack_parts(entries, render), 1)}
+    return out
+
+
+# ---------------------------------------------------------------- field aggregates
+
+def _reading(raw: Any) -> Tuple[bool, Optional[float]]:
+    """``(has a value, its number or None)``."""
+    try:
+        value = parse_value("integer", raw)
+    except Unreadable:
+        return True, None
+    return value is not None, value
+
+
+def _stats(values: List[Optional[float]], numeric: bool) -> Dict[str, Any]:
+    if not numeric:
+        return {"days": len(values)}
+    tidy = [int(v) if float(v).is_integer() else v for v in values]
+    mean = round(sum(values) / len(values), 2)
+    return {"days": len(values), "min": min(tidy), "max": max(tidy), "mean": int(mean) if mean.is_integer() else mean}
+
+
+def field_aggregates(days: Sequence[dict], units: Sequence[dict]) -> Dict[str, Dict[str, Any]]:
+    """Per field name: ``{period, units: {<unit>: …}}``; a unit without a value is left out."""
+    unit_of = {d: u["unit"] for u in units for d in u["days"]}
+    readings: Dict[str, List[Tuple[str, Optional[float]]]] = {}
+    for day in days:
+        for name, raw in (day.get("fields") or {}).items():
+            has_value, number = _reading(raw)
+            if has_value:
+                readings.setdefault(name, []).append((day["date"], number))
+    out: Dict[str, Dict[str, Any]] = {}
+    for name, values in readings.items():
+        numeric = all(v is not None for _, v in values)
+        per_unit: Dict[str, List[Optional[float]]] = {}
+        for day, v in values:
+            if day in unit_of:
+                per_unit.setdefault(unit_of[day], []).append(v)
+        out[name] = {"period": _stats([v for _, v in values], numeric),
+                     "units": {u: _stats(vs, numeric) for u, vs in per_unit.items()}}
     return out

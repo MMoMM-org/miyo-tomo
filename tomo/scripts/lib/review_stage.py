@@ -1,5 +1,5 @@
 # review_stage.py — the stage a /review read rests in: day, growth, child and context files, weeks.json, the manifest.
-# version: 0.2.0
+# version: 0.3.0
 """The stage folder of a ``/review`` read (spec 047 T2.3; PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; ADR-1/2/3/10).
 
 ``write(stage, result, *, stem, rule, sections_digest)`` discards the stage's
@@ -8,7 +8,8 @@ earlier material (``discard``), then writes a ``read_period`` result as
 created notes of a day, ``{path, links}`` by path; ``<date>-<n>.json``
 overflow parts), ``children/<label>-<name>[-<n>].json``,
 ``previous/<kind>-<name>.json``, ``context.json`` (+ ``context-<n>.json``
-parts), ``weeks.json`` and ``manifest.json`` last; every file is stamped with
+parts; per-field ``field_aggregates``, the raw fields stay in the day
+files), ``weeks.json`` and ``manifest.json`` last; every file is stamped with
 one ``read_id``. Agent-read files are ``review_stage_codec.encode``d and each
 kept ≤ ``FILE_CEILING`` bytes: an oversized day is re-cut and ``partly_read``
 (``partly-read`` in the manifest's copy of the report), a child note clipped
@@ -47,8 +48,8 @@ from lib import run_id as run_ids
 from lib.note_io import TEMP_SUFFIX, atomic_write_text
 from lib.period import Period, WeekRule
 from lib.review_stage_codec import (FILE_CEILING, child_entry, child_text, compact, day_entry, day_text, encode,
-                                    growth_files, mark_partly_read, merge, pack_parts, place, previous_doc,
-                                    previous_entry, size, spill)
+                                    field_aggregates, growth_files, mark_partly_read, merge, pack_parts, place,
+                                    previous_doc, previous_entry, size, spill)
 
 LAYOUT = 1
 MANIFEST, CONTEXT, WEEKS = "manifest.json", "context.json", "weeks.json"
@@ -103,13 +104,13 @@ def _child_files(read_id: str, result: dict) -> Tuple[Dict[str, str], List[str]]
 
 # ---------------------------------------------------------------- context and weeks
 
-def _context_files(read_id: str, result: dict) -> Dict[str, str]:
+def _context_files(read_id: str, result: dict, units: List[dict]) -> Dict[str, str]:
     growth = result.get("growth") or {}
     context = {"read_id": read_id, **{k: v for k, v in result.items() if k not in _NOT_CONTEXT},
                "growth": {"created_count": len(growth.get("created") or []),
                           "mocs_changed": list(growth.get("mocs_changed") or []),
                           "mocs_linked_by_new": list(growth.get("mocs_linked_by_new") or [])},
-               "fields": {d["date"]: d["fields"] for d in result["days"] if d.get("fields")}}
+               "field_aggregates": field_aggregates(result["days"], units)}
     text = encode(context)
     if size(text) <= FILE_CEILING:
         return {CONTEXT: text}
@@ -119,8 +120,8 @@ def _context_files(read_id: str, result: dict) -> Dict[str, str]:
     return {CONTEXT: encode(dict(head, parts=names)), **dict(zip(names, parts))}
 
 
-def _weeks_text(read_id: str, result: dict, rule: WeekRule, day_texts: Dict[str, str],
-                growth: Dict[str, Dict[str, str]], children: Dict[str, str]) -> str:
+def _weeks(read_id: str, result: dict, rule: WeekRule, day_texts: Dict[str, str],
+           growth: Dict[str, Dict[str, str]], children: Dict[str, str]) -> Tuple[str, List[dict]]:
     period = Period.containing(result["period"]["kind"], date.fromisoformat(result["period"]["start"]), rule)
     created = {day: sum(len(json.loads(t)["created"]) for t in files.values()) for day, files in growth.items()}
     day_bytes = {date.fromisoformat(d): size(t) + sum(size(g) for g in growth.get(d, {}).values())
@@ -136,7 +137,7 @@ def _weeks_text(read_id: str, result: dict, rule: WeekRule, day_texts: Dict[str,
     return encode({"read_id": read_id, "rule": {"first_day": rule.first_day,
                                                 "min_days_in_first_week": rule.min_days_in_first_week},
                    "budget_bytes": review_weeks.UNIT_BUDGET, "digest_cap_bytes": review_weeks.digest_cap(len(units)),
-                   "units": units})
+                   "units": units}), units
 
 
 # ---------------------------------------------------------------- write
@@ -151,12 +152,13 @@ def render(result: dict, *, stem: str, rule: WeekRule, sections_digest: str, rea
     growth = growth_files(read_id, (result.get("growth") or {}).get("created") or [], result["period"]["start"])
     children, labels = _child_files(read_id, result)
     previous = {f"{e['kind']}-{e['name']}.json": encode(previous_doc(read_id, e)) for e in result.get("previous", [])}
-    context = _context_files(read_id, result)
+    weeks, units = _weeks(read_id, result, rule, day_texts, growth, children)
+    context = _context_files(read_id, result, units)
     written = {**{f"{folder}/{name}": text for folder, files in (
         (DAYS, {f"{d}.json": t for d, t in day_texts.items()}),
         (GROWTH, {n: t for day in growth.values() for n, t in day.items()}),
         (CHILDREN, children), (PREVIOUS, previous)) for name, text in files.items()},
-        **context, WEEKS: _weeks_text(read_id, result, rule, day_texts, growth, children)}
+        **context, WEEKS: weeks}
     report = mark_partly_read(result.get("report"), [d for d, (_, recut) in cut.items() if recut])
     doc = {"layout": LAYOUT, "read_id": read_id, "read_at": read_at, "stem": stem, "period": result["period"],
            "sections_digest": sections_digest,
@@ -245,7 +247,7 @@ def _load(stage: Path, manifest: dict) -> dict:
         doc = _stamped(stage / GROWTH, name, read_id)
         created += [dict(c, day=doc["date"]) for c in doc["created"]]
     growth = context.get("growth") or {}
-    result = {k: v for k, v in context.items() if k not in ("read_id", "parts", "fields", "growth")}
+    result = {k: v for k, v in context.items() if k not in ("read_id", "parts", "field_aggregates", "growth")}
     result["growth"] = {"created": sorted(created, key=lambda c: c["path"]),
                         "mocs_changed": growth.get("mocs_changed", []),
                         "mocs_linked_by_new": growth.get("mocs_linked_by_new", [])}

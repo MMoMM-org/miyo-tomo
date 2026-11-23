@@ -248,7 +248,7 @@ function `write` writes, so the measured bytes are the written bytes),
 `units` (`{unit, bytes}`, a unit's bytes being its day files plus its
 growth files — the weight the unit budget is applied to), `over_ceiling`
 (files still over 32,768 B after every cut) and `over_budget` (units over
-81,920 B) — next to `status`, `stem`, `period` and `nothing_to_review`. It
+131,072 B) — next to `status`, `stem`, `period` and `nothing_to_review`. It
 neither continues nor discards a stored read and writes no file, so a
 measurement never leaves content in `tomo-tmp` for a later session to pick
 up and never destroys an interrupted review; the per-day report is left out

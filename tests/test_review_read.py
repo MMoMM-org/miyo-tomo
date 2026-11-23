@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -725,7 +725,7 @@ def test_measure_of_a_quarter_names_its_units(mod, instance, monkeypatch, capsys
 def test_measure_names_a_file_over_the_ceiling_and_a_unit_over_the_budget(mod, instance, monkeypatch, capsys):
     """A day whose links alone (non-text content, never cut) outweigh the ceiling and the unit budget."""
     heavy = copy.deepcopy(scaled_quarter(SHAPES[0]))
-    heavy["days"][10]["links"] = [f"Link {i:05d} " + "z" * 40 for i in range(2_000)]
+    heavy["days"][10]["links"] = [f"Link {i:05d} " + "z" * 40 for i in range(3_000)]
     _quarter_setup(instance)
     monkeypatch.setattr(mod, "read_period", _scaled_read(heavy))
     code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault(), "--measure")

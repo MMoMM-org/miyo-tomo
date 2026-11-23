@@ -1,7 +1,7 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: draft
-version: "1.3"
+version: "1.5"
 ---
 
 # Solution Design Document
@@ -13,6 +13,8 @@ version: "1.3"
 > v1.3 (2026-11-23): owner, after the T1.4 smoke: the per-file ceiling drops from 40,960 to 32,768 bytes (ADR-2); a Kado per-path denial is a `FORBIDDEN` tool error (`KadoToolError`), not HTTP 403 — previous notes catch that per call, a `KadoAuthError` still stops the read (ADR-5); the growth-day gotcha is verified against Kado's source. Amended: ADR-2, ADR-5.
 >
 > v1.4 (2026-11-23): T2.3 review — wording matched to what is built: ADR-2's day re-cut cuts the stored entry's texts (no re-run of `read_day`), a re-cut day is `partly-read` in the manifest's report, a file still over the ceiling is named in `manifest.over_ceiling`; the line gate exempts single-value fields; the manifest shape gains `child_labels` and `over_ceiling`. Amended: ADR-2.
+>
+> v1.5 (2026-11-23): owner, after the T2.5 measurement (bulk-import day 2026-01-19 = 92,890 B alone over the unit budget; `context.json` 86,345 B in 4 files, mostly per-day `fields`): `UNIT_BUDGET` 81,920 → 131,072 bytes (ADR-2); `context.json` carries `field_aggregates` (per field: days/min/max/mean per period and per unit; days only for a non-numeric field) instead of raw per-day `fields`, which stay in the day files (ADR-1, data model).
 
 ## Validation Checklist
 
@@ -384,7 +386,7 @@ graph LR
 | `lib/review_period.py` | Reading a period (unchanged rules) + calling `review_previous` inside the pass; `PeriodSources.quarterly_folder`; each created note of `growth.created` keeps its creation `day` (local date of Kado's `created`, the convention of `period_bounds_ms`, review_period.py:139-143) |
 | `lib/review_previous.py` (new) | Which previous periods a kind reads; whether a kind is set up; finding and reading each previous note through the `PacedReader`; its state (found, empty, missing, not set up, not read + cause); its text cut by `review_day.cut_at_boundary` (no cutter of its own) |
 | `lib/review_stage.py` (new; replaces `lib/review_read_parts.py`) | The stage layout: encoding the agent-read files line-broken (`indent=1`, long texts as arrays of lines) and measuring the 32 KB ceiling on that form; writing `days/`, `growth/` (the created notes per creation day), `children/`, `previous/`, `context*.json` (growth counts and MOC lists only), `weeks.json`, `manifest.json`; asking `review_day` to re-cut an oversized day; the read id; `load` → the merged dict (lines joined back, `growth.created` rebuilt from `growth/`, `report` from `manifest.json`, `condensed.json` read and read-id-checked); `discard`; the continue check |
-| `lib/review_weeks.py` (new) | The units of a period: weeks under the configured rule clipped to the period, packed into units under the 80 KB budget (a day weighs its day file plus its growth files); the digest cap per unit |
+| `lib/review_weeks.py` (new) | The units of a period: weeks under the configured rule clipped to the period, packed into units under the 128 KB budget (a day weighs its day file plus its growth files); the digest cap per unit |
 | `review-digest.py` (new) | Condense entry points: `plan` (what to dispatch, in which rounds, which files the proposer reads), `check` (validate digests and carryover, attempts, retry list, not condensed, nothing condensed) |
 | `lib/review_digest.py` (new) | Pure validation of a digest and of the carryover file against the stage (file level: schema, read id, sources, id uniqueness, size); the `condensed.json` state model. `condensed.json` is written only by `review-digest.py` (`plan`, `check`) and read by `review_stage.load` (for `review-doc.py`) and by `review-digest.py` itself |
 | agent `review-digester` (new, haiku) | Condense one unit's day files, its growth files (the notes created on its days, with their links) and its weekly note into `digests/<unit>.json`, growth candidates included |
@@ -583,13 +585,15 @@ growth/<YYYY-MM-DD>.json (+ growth/<YYYY-MM-DD>-<n>.json parts):   # one per day
 context.json (+ context-<n>.json overflow parts named in `parts`):
   read_id, period, sections?, open_tasks, growth {created_count: int, mocs_changed: [paths], mocs_linked_by_new: [paths]},
   only_in_weekly_links?, dailies_not_in_weekly?, only_in_monthly_links?, dailies_not_in_monthly?,
-  fields: {date: {name: value}}   # per-day tracker values for analysis rows, over the whole period
+  field_aggregates: {name: {period: agg, units: {<unit>: agg}}}   # v1.5; units = those of weeks.json, a unit
+  # without a value left out; agg = {days, min, max, mean} when every value of the field reads as a number
+  # (review_habits.parse_value "integer"), else {days}; raw per-day values stay in days/<date>.json
   parts?: [names]
   # no per-note growth list here (owner 2026-11-23, T1.5: 746 created notes ≈ 157.7 KB indented); the notes and their
   # links rest in growth/ and reach the proposer only through the digests' growth candidates
 
 weeks.json:               # lib/review_weeks.py
-  read_id, rule {first_day, min_days_in_first_week}, budget_bytes 81920, digest_cap_bytes,
+  read_id, rule {first_day, min_days_in_first_week}, budget_bytes 131072, digest_cap_bytes,
   units: [{unit, week, days [dates], day_files [names], growth_files [names], bytes, weekly_note: name|null, takes_part: bool}]
   # bytes = day files + growth files of the unit (indented); a day with created notes takes part
 
@@ -603,7 +607,7 @@ proposals.json            # agent review-proposer — schema review-proposals.sc
 meta.json, payloads.json  # unchanged (review-doc.py, review-instructions.py)
 ```
 
-Encoding (ADR-2): every file an agent reads (`days/`, `growth/`, `children/`, `previous/`, `context*.json`, `weeks.json`) is written line-broken — `json.dumps(..., indent=1, ensure_ascii=False)` with every long text (section, linked-note, child-note, previous-note text) stored as an array of its lines — so no line approaches the Read tool's line limit. Sizes are counted in UTF-8 bytes of exactly that indented form; the indentation and the per-line quotes cost about 15 % more bytes than compact JSON, which the 32,768-byte ceiling absorbs (the largest measured day is 8,303 B indented; a 7-day test-vault week ≈ 41 KB compact ≈ 47 KB indented, under the 80 KB unit budget). `manifest.json` and `condensed.json` (script-only) stay compact. stdout stays ASCII-escaped. The agents' own files (`digests/`, `carryover.json`, `proposals.json`) are whatever valid JSON the agent writes; their caps count their bytes as written.
+Encoding (ADR-2): every file an agent reads (`days/`, `growth/`, `children/`, `previous/`, `context*.json`, `weeks.json`) is written line-broken — `json.dumps(..., indent=1, ensure_ascii=False)` with every long text (section, linked-note, child-note, previous-note text) stored as an array of its lines — so no line approaches the Read tool's line limit. Sizes are counted in UTF-8 bytes of exactly that indented form; the indentation and the per-line quotes cost about 15 % more bytes than compact JSON, which the 32,768-byte ceiling absorbs (the largest measured day is 8,303 B indented; a 7-day test-vault week ≈ 41 KB compact ≈ 47 KB indented, under the 128 KB unit budget). `manifest.json` and `condensed.json` (script-only) stay compact. stdout stays ASCII-escaped. The agents' own files (`digests/`, `carryover.json`, `proposals.json`) are whatever valid JSON the agent writes; their caps count their bytes as written.
 
 #### Internal API Changes
 
@@ -734,7 +738,7 @@ def load(stage: Path) -> dict:
                      key=lambda c: c["path"])                     # today's growth.created, rebuilt
     context = _joined_context(stage, manifest["files"]["context"], read_id)   # context.json + parts
     children = [_stamped(stage / CHILDREN / n, read_id) for n in manifest["files"]["children"]]
-    result = {k: v for k, v in context.items() if k not in ("read_id", "parts", "fields")}
+    result = {k: v for k, v in context.items() if k not in ("read_id", "parts", "field_aggregates")}
     result["growth"] = {"created": created, "mocs_changed": context["growth"]["mocs_changed"],
                         "mocs_linked_by_new": context["growth"]["mocs_linked_by_new"]}
     result.update(period=manifest["period"], days=days, report=manifest["report"], not_read=manifest["not_read"])
@@ -754,7 +758,7 @@ def load(stage: Path) -> dict:
 
 ```python
 # lib/review_weeks.py — shape, not final code
-FILE_CEILING, UNIT_BUDGET, DIGEST_TOTAL, DIGEST_MAX = 32_768, 81_920, 114_688, 8_192
+FILE_CEILING, UNIT_BUDGET, DIGEST_TOTAL, DIGEST_MAX = 32_768, 131_072, 114_688, 8_192
 
 def units(period: Period, rule: WeekRule, day_bytes: Dict[date, int], takes_part: Set[date]) -> List[dict]:
     # day_bytes: UTF-8 bytes of each day file plus its growth files, in their written, indented (line-broken) form
@@ -976,7 +980,7 @@ sequenceDiagram
 | No day with content | `review-read.py` | `nothing_to_review` as today; nothing written |
 | A previous note refused (a `FORBIDDEN` tool error on its read), failed after the end pass, or its folder listing answered with nothing | `lib/review_previous.py` | state `not-read`, cause `refused` / `failed` / `kado-none`; the review continues (F3-AC9). The `KadoToolError` with `FORBIDDEN` is caught per previous-note call; a `KadoAuthError` (wrong token, 401/403) is not caught and stops the read as today |
 | A day file whose indented form is over 32,768 B | `lib/review_stage.py` → `lib/review_day.cut_at_boundary` | the day's units re-cut by the one cutter of `review_day` with `max_chars` scaled by ceiling/size (≤ 3 tries, then a hard cut of the first section), `partly_read` true, named partly read in the report and the callout (F1-AC7); still over after every cut (non-text content) → listed in `manifest.over_ceiling` |
-| A week's day files plus growth files over 80 KB | `lib/review_weeks.py` | split into units `<week>a`, `<week>b`… in date order (a day weighs its day file + its growth files); never a day dropped; a single day over the budget is a unit alone, named in `over_budget` |
+| A week's day files plus growth files over 128 KB | `lib/review_weeks.py` | split into units `<week>a`, `<week>b`… in date order (a day weighs its day file + its growth files); never a day dropped; a single day over the budget is a unit alone, named in `over_budget` |
 | A day's created notes over 32,768 B indented | `lib/review_stage.py` | `growth/<date>.json` split into parts `growth/<date>-<n>.json` at entry boundaries, each ≤ 32,768 B; no entry cut or dropped; `--measure` lists them in `over_ceiling` |
 | A child note, previous note or context whose indented form is over 32,768 B | `lib/review_stage.py` (child, context), `lib/review_previous.py` (previous) — both via `review_day.cut_at_boundary` | child and previous text cut at a heading boundary (`clipped` / `partly_read` true, named in the report; a previous note's line says "read in part"); context lists moved to `context-<n>.json` parts named in `context.json.parts`, each part again ≤ 32,768 B indented; `--measure` lists every file that needed it in `over_ceiling` |
 | A section at its cap with carried items in it | `lib/review_carried.overflow` (in `review-doc.py write`) | the last carried items move to the group of their mark until the section fits; `carried-moved` notice; no rewrite, no refusal (F4-AC10). Non-carried items over the cap keep 046's `over-cap` refusal |
@@ -1008,12 +1012,12 @@ INPUT: /review 2026-Q1; dailies 2026-01-01 … 2026-03-31; weekly notes to 2026-
    growth: 746 created notes ≈ 157.7 KB indented over the quarter → growth/<date>.json per creation day (mean
    ≈ 1.75 KB per day, ≈ 11 KB per week; per-week maxima measured in T2.5).
    weeks (indented bytes, day files + growth): W01 clipped to 01-01…01-04 (4 days); W02…W13 7 days ≈ 50 KB mean
-   (46.7 KB day maximum + growth); W14 clipped to 03-30, 03-31. All ≤ 80 KB expected → 14 units; a week pushed over
+   (46.7 KB day maximum + growth); W14 clipped to 03-30, 03-31. All ≤ 128 KB expected → 14 units; a week pushed over
    by its growth splits by the same rule.
    digest_cap = min(8192, 114688 // 14 = 8192) = 8192.
    children: weekly-2026-W01 … W13 (13), monthly-2026-01, monthly-2026-02. Monthly March absent.
    context.json: growth counts (created_count 746) and MOC lists, open tasks, only_in_monthly_links,
-   dailies_not_in_monthly (1.9 KB), fields per day, sections (3.4 KB); the 30.4 KB compact / 39.5 KB indented read
+   dailies_not_in_monthly (1.9 KB), field aggregates (v1.5; per-day fields were 86 KB in T2.5), sections (3.4 KB); the 30.4 KB compact / 39.5 KB indented read
    report stays in manifest.json. Expected well under 32 KB, no parts (was: growth.created ≈ 157.7 KB, 4× the ceiling).
 3. plan: carryover_state none (no found note) → one round of 14 digesters (≤ 16). Each digester of Wnn gets its
    day files, its growth files + children/weekly-Wnn.json (W14: none); its digest carries the unit's growth candidates.
@@ -1200,17 +1204,18 @@ stateDiagram-v2
   - Status: Accepted
   - Options: (A) new files + a loader returning today's dict (research C2); (B) rewrite `review_doc`, `review_sections`, `review_habits` to read the files directly; (C) keep `read.json` for scripts beside the new files for agents.
   - Choice: A. Rationale: the consumers (`check_items`, `rs.check`, `rs.definitions`, `rh.habits`, `period_of`, the callout) stay untouched, so the baseline e2e compares like with like; B rewrites tested code for no user gain; C keeps the 717 KB file the owner wants gone and doubles what rests on disk.
-  - Additions: `context.json` gains `fields` (per-day tracker values) so the proposer can word analysis rows over the whole period without day files.
+  - Additions: `context.json` gains `field_aggregates` (per field: days, min, max, mean over the period and per unit; days only for a non-numeric field) so the proposer can word analysis rows over the whole period without day files. Amended 2026-11-23 (owner, T2.5 measurement): was raw per-day `fields`, 86,345 B in 4 context files on 2026-Q1; the raw values stay in the day files for the digesters and the habits script, `load` gives them back from there.
   - Amended 2026-11-23 (owner, T1.5 measurement): vault growth is staged per creation day in `growth/<YYYY-MM-DD>.json` (the created notes with their links; `review_period._growth` keeps each entry's `day`), next to `days/` so a unit's growth follows its days with no second packing; `context.json` keeps only `growth.created_count`, `mocs_changed` and `mocs_linked_by_new`; `load` rebuilds today's `growth.created` from `growth/`. The read `report` lives only in `manifest.json`: scripts render the not-read and top lines from it as before, no agent reads it. Why: T1.5 measured `growth.created` (746 notes) at ≈ 157.7 KB indented, 4× the file ceiling, and `report` at 39.5 KB; per-day files beside the units were simpler than a per-unit file that would be rewritten whenever a week splits.
   - Trade-offs: a second representation of the read on disk (files) and in memory (dict) — the loader is the single translation; ~30 test files move with the layout (by design).
   - User confirmed: owner, 2026-11-23
 
-- [x] ADR-2 Size limits: per-file ceiling 32,768 bytes (≈ 17.7k tokens at 1.85 chars/token; ≈ 20k even at the ≈ 1.64 bytes/token of the poorly tokenizing T1.4 file — under the 25k Read limit) for every file an agent reads; per-unit budget 81,920 bytes of day files, a week over it is split into `<week>a`, `<week>b`… in date order; digest cap `min(8,192, 114,688 // units)` bytes (14 units 8 KB, 16 units 7 KB), so the proposer's digests stay ≤ 112 KB; carryover cap 12,288 bytes; previous notes and days keep the per-day reading limit `max_chars_per_day` (default 12,000 chars), cut at a section/heading boundary. A day file over the ceiling (possible when the user raised `max_chars_per_day`) is re-cut from the stored entry: its sections and linked texts are cut with shrinking limits (1.0, 0.8, 0.6 of the room left after the non-text part, each ≥ 1), then the first section alone is hard-cut (shrunk until it fits or the limit is 1); the day is `partly_read` and `partly-read` in the manifest's report; non-text content (tasks, links, fields) is never cut, so a file still over the ceiling after every cut is listed in `manifest.over_ceiling`, never silently over; a child note over it is cut at a heading boundary (`clipped`); context lists overflow into parts — every cut goes through the one cutter `review_day.cut_at_boundary` (review_day.py:261-275 made public). Owner 2026-11-23: every file an agent reads is written line-broken — `indent=1`, UTF-8 (`ensure_ascii=False`), every long text an array of its lines — and the 32,768-byte ceiling and the 81,920-byte unit budget are measured on that indented form (about 15 % more bytes than compact; a 7-day test-vault week ≈ 47 KB indented); `manifest.json` and `condensed.json` stay compact; stdout stays ASCII. A test writes a stage from the scaled 2026-Q1 fixture and asserts every agent-read file's indented bytes ≤ 32,768 and no text line over 2,000 characters; single-value fields (link targets, task texts) are exempt. `--measure` reports every stage file's bytes, the unit bytes and what is over a limit, with no file written.
+- [x] ADR-2 Size limits: per-file ceiling 32,768 bytes (≈ 17.7k tokens at 1.85 chars/token; ≈ 20k even at the ≈ 1.64 bytes/token of the poorly tokenizing T1.4 file — under the 25k Read limit) for every file an agent reads; per-unit budget 131,072 bytes of day files and growth files (v1.5; was 81,920), a week over it is split into `<week>a`, `<week>b`… in date order; digest cap `min(8,192, 114,688 // units)` bytes (14 units 8 KB, 16 units 7 KB), so the proposer's digests stay ≤ 112 KB; carryover cap 12,288 bytes; previous notes and days keep the per-day reading limit `max_chars_per_day` (default 12,000 chars), cut at a section/heading boundary. A day file over the ceiling (possible when the user raised `max_chars_per_day`) is re-cut from the stored entry: its sections and linked texts are cut with shrinking limits (1.0, 0.8, 0.6 of the room left after the non-text part, each ≥ 1), then the first section alone is hard-cut (shrunk until it fits or the limit is 1); the day is `partly_read` and `partly-read` in the manifest's report; non-text content (tasks, links, fields) is never cut, so a file still over the ceiling after every cut is listed in `manifest.over_ceiling`, never silently over; a child note over it is cut at a heading boundary (`clipped`); context lists overflow into parts — every cut goes through the one cutter `review_day.cut_at_boundary` (review_day.py:261-275 made public). Owner 2026-11-23: every file an agent reads is written line-broken — `indent=1`, UTF-8 (`ensure_ascii=False`), every long text an array of its lines — and the 32,768-byte ceiling and the unit budget (131,072 bytes since v1.5) are measured on that indented form (about 15 % more bytes than compact; a 7-day test-vault week ≈ 47 KB indented); `manifest.json` and `condensed.json` stay compact; stdout stays ASCII. A test writes a stage from the scaled 2026-Q1 fixture and asserts every agent-read file's indented bytes ≤ 32,768 and no text line over 2,000 characters; single-value fields (link targets, task texts) are exempt. `--measure` reports every stage file's bytes, the unit bytes and what is over a limit, with no file written.
   - Status: Accepted
   - Options for the week budget: drop days (rejected: hard condition), one digester per day (90 agents for a quarter), split by budget (chosen). For the encoding: ASCII-escaped as spec 046 ADR-7 (an umlaut costs 6 bytes and more tokens) or UTF-8 (chosen); compact one-line JSON (risks the Read tool cutting long lines) or line-broken with text as line arrays (chosen by the owner).
   - Rationale: research §2 numbers; a 7-day week of the test vault is ≈ 41 KB, so splits are rare and only on heavy weeks; the digest cap keeps the opus input bounded for 16 units.
   - Amended 2026-11-23 (owner, T1.4 smoke): `FILE_CEILING` 40,960 → 32,768 bytes. The Read tool returned word-like `indent=1` files of 24,108 / 32,627 / 40,573 bytes whole in one call, but cut a 40,965-byte file of poorly tokenizing text (long character runs) at line 294 of 477, at its 25,000-token cap; 32 KB leaves margin for link- or hash-heavy text, and real files are far below it (days ≤ 8.3 KB, digests ≤ 8 KB). The other limits stay: the 81,920-byte unit budget spans several files (each ≤ the ceiling); the digest cap (≤ 8,192) and the carryover cap (12,288) are single files under the ceiling; the 114,688-byte digest total spans up to 16 files the proposer reads one by one.
   - Amended 2026-11-23 (owner, T1.5 measurement): T1.5 measured days max 8,303 B and ISO-week sums max 46,747 B (indent=1) — the day, week and digest limits hold unchanged. The 81,920-byte unit budget now counts a unit's day files plus its `growth/` files; a week pushed over it by growth splits by the same greedy date-order rule (a day weighs its day file + its growth files; a single day over the budget is a unit alone, named in `over_budget`, never dropped). A day's growth file over the ceiling splits into parts at entry boundaries. With growth and the report out of it, `context.json` meets the ceiling easily (sections 3.4 KB, `dailies_not_in_monthly` 1.9 KB, counts and MOC lists).
+  - Amended 2026-11-23 (owner, T2.5 measurement): `UNIT_BUDGET` 81,920 → 131,072 bytes. On the new stage, the bulk-import day 2026-01-19 (85,912 B growth + 6,978 B day file = 92,890 B) was a unit alone over the old budget (`over_budget: ["2026-W04a"]`); normal weeks measured 16–58 KB. A haiku digester reading ~5 files of a 128 KB unit is ≈ 70k tokens; every file still meets the 32,768-byte ceiling, the digest limits are unchanged.
   - Trade-offs: the numbers are set before the live measurement — the first plan task runs `--measure` on 2026-Q1 (owner go) and may lower them; UTF-8 makes byte counts of German text smaller than the old ASCII numbers in the spec 046 measurement; the line-broken form costs about 15 % of the byte budget.
   - User confirmed: owner, 2026-11-23
 
@@ -1286,7 +1291,7 @@ stateDiagram-v2
 ## Acceptance Criteria
 
 **Main Flow Criteria: PRD F1 — every day reaches the proposals**
-- [ ] WHEN a period is read, THE SYSTEM SHALL write one day file per day of the period and assign every taking-part day to exactly one unit whose day files total ≤ 81,920 bytes (F1-AC1, F1-AC2)
+- [ ] WHEN a period is read, THE SYSTEM SHALL write one day file per day of the period and assign every taking-part day to exactly one unit whose day files and growth files total ≤ 131,072 bytes (F1-AC1, F1-AC2)
 - [ ] WHEN a digest is checked, THE SYSTEM SHALL refuse it unless its `days` equal its unit's taking-part days and every source lies in the unit (F1-AC1)
 - [ ] THE SYSTEM SHALL build a day file of a quarter with the same `read_day` entry as the same day of a weekly review (F1-AC2)
 - [ ] WHEN a week crosses the period's edge, THE SYSTEM SHALL clip its unit to the days inside the period under the configured week rule (F1-AC2)

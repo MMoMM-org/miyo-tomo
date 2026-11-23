@@ -78,8 +78,12 @@ independent of the day entry's shape.
 - `FILE_CEILING` 32,768 bytes — every agent-read file; ≈ 17.7k tokens at 1.85
   chars/token and ≈ 20k at the poorly tokenizing T1.4 file, under the Read
   tool's 25k limit. Owner 2026-11-23 after T1.4 lowered it from 40,960.
-- `UNIT_BUDGET` 81,920 bytes — the indented day + growth bytes of one unit; a
-  7-day test-vault week is ≈ 47 KB indented, so a normal week is one unit.
+- `UNIT_BUDGET` 131,072 bytes — the indented day + growth bytes of one unit; a
+  7-day test-vault week is ≈ 47–58 KB indented, so a normal week is one unit.
+  Owner 2026-11-23 after T2.5 raised it from 81,920: the measured bulk-import
+  day 2026-01-19 (85,912 B growth + 6,978 B day file = 92,890 B) stood alone
+  over the old budget; a haiku digester reading ~5 files of a 128 KB unit is
+  ≈ 70k tokens, within its context, and every file still meets the ceiling.
 - `DIGEST_TOTAL` 114,688 and `DIGEST_MAX` 8,192 bytes — `digest_cap(n) =
   min(DIGEST_MAX, DIGEST_TOTAL // n)`: 14 units → 8 KB each, 16 → 7 KB each,
   so the proposer's digests stay ≤ 112 KB whatever the unit count.

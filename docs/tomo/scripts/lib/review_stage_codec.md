@@ -77,3 +77,14 @@ measure run, a test comparing it to `load`). Marking the re-cut days'
 dailies `partly-read` in place would change the caller's report behind its
 back; the deep copy changes only the manifest's copy. A `failed` daily stays
 `failed`: a failed read is the stronger state.
+
+## WHY `field_aggregates` Lives Here
+
+WHY: the T2.5 follow-up (owner 2026-11-23) moved `context.json` from raw
+per-day fields to per-field aggregates. The aggregation is a pure function
+of the day entries and the `weeks.json` units, like the other per-file
+builders here, and `lib/review_stage.py` is at its ~300-line seam. It
+classifies values through `review_habits.parse_value` rather than a parser
+of its own; what the aggregates hold and why is in
+`docs/tomo/scripts/lib/review_stage.md` ("WHY `context.json` Carries Field
+Aggregates").

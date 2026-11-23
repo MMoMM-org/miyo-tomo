@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.2.0
 """test_review_stage.py — the stage a /review read rests in (lib/review_stage.py; spec 047 T2.3;
 PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; SDD ADR-1, ADR-2, ADR-3, ADR-10, "Data Storage Changes").
 
@@ -18,8 +18,10 @@ Mechanisms each test falsifies:
   is clipped at a heading boundary; context lists overflow into parts;
 - load gives back the read result as written (JSON round trip; month and quarter), plus
   previous / condensed / carryover; a quarter day file is the week read's day file (F1-AC2);
-  context.json holds the link differences, per-day fields (F2-AC3) and growth counts only; load
-  rebuilds growth.created; every created note sits in the growth file of its creation day;
+  context.json holds the link differences, per-field aggregates (F2-AC3; no raw per-day fields:
+  days, min, max, mean per period and per weeks.json unit for a numeric field, days only for any
+  other) and growth counts only, one file on a fields-heavy scaled quarter; load gives back the
+  days' raw fields from the day files; load rebuilds growth.created; every created note sits in the growth file of its creation day;
   the read report is only in manifest.json;
 - load refuses a stale file (read_id) and a pre-047 stage (missing); a manifest or context name that
   leaves the stage (the name string is checked, not its last component) and a name or list of the
@@ -390,13 +392,60 @@ def test_context_holds_link_differences_fields_and_growth_counts_only(tmp_path):
     context = _json(tmp_path / "s" / "context.json")
     assert context["only_in_weekly_links"] == result["only_in_weekly_links"]
     assert context["dailies_not_in_weekly"] == result["dailies_not_in_weekly"]
-    assert context["fields"] == {d["date"]: d["fields"] for d in result["days"] if d["fields"]}
-    assert context["fields"]
+    assert "fields" not in context
+    assert context["field_aggregates"]
     assert context["sections"] == [DEFINITION] and context["period"] == _pdict(MARCH)
     assert set(context["growth"]) == {"created_count", "mocs_changed", "mocs_linked_by_new"}
     assert context["growth"]["created_count"] == len(result["growth"]["created"])
     for key in ("days", "weekly", "report", "not_read"):
         assert key not in context
+
+
+def _fields_month() -> dict:
+    fields = {"2026-03-01": {"Sleep": "7"},                            # unit 2026-W09
+              "2026-03-02": {"Sleep": "8", "Mood": "good", "Steps": "1000"},  # 2026-W10
+              "2026-03-03": {"Sleep": "6", "Steps": "lots"},
+              "2026-03-04": {"Sleep": "-"}, "2026-03-05": {"Sleep": ""},   # no value
+              "2026-03-10": {"Mood": "ok", "Steps": "2000"},              # 2026-W11
+              "2026-03-31": {"Sleep": "9", "Empty": "-"}}                 # 2026-W14
+    return _result(MARCH, days=[_day(d.isoformat(), fields=fields.get(d.isoformat(), {})) for d in MARCH.days()])
+
+
+def test_context_aggregates_each_field_per_period_and_unit(tmp_path):
+    result = _fields_month()
+    _write(tmp_path / "s", result)
+    aggregates = _json(tmp_path / "s" / "context.json")["field_aggregates"]
+    assert set(aggregates) == {"Sleep", "Mood", "Steps"}
+    assert aggregates["Sleep"] == {
+        "period": {"days": 4, "min": 6, "max": 9, "mean": 7.5},
+        "units": {"2026-W09": {"days": 1, "min": 7, "max": 7, "mean": 7},
+                  "2026-W10": {"days": 2, "min": 6, "max": 8, "mean": 7},
+                  "2026-W14": {"days": 1, "min": 9, "max": 9, "mean": 9}}}
+    assert aggregates["Mood"] == {"period": {"days": 2},
+                                  "units": {"2026-W10": {"days": 1}, "2026-W11": {"days": 1}}}
+    assert aggregates["Steps"] == {"period": {"days": 3},
+                                   "units": {"2026-W10": {"days": 2}, "2026-W11": {"days": 1}}}
+    units = {u["unit"] for u in _json(tmp_path / "s" / "weeks.json")["units"]}
+    assert all(set(a["units"]) <= units for a in aggregates.values())
+
+
+def test_load_gives_back_the_raw_fields_of_the_read(tmp_path):
+    result = _fields_month()
+    _write(tmp_path / "s", result)
+    assert [d["fields"] for d in rs.load(tmp_path / "s")["days"]] == [d["fields"] for d in result["days"]]
+    assert _json(tmp_path / "s" / "days" / "2026-03-02.json")["fields"] == {
+        "Sleep": "8", "Mood": "good", "Steps": "1000"}
+
+
+def test_a_fields_heavy_quarter_keeps_context_in_one_file(tmp_path):
+    result = scaled_quarter("children-heavy")
+    for i, day in enumerate(result["days"]):
+        day["fields"] = {f"Tracker {n}": (str(i) if n % 2 else f"note {n} " + "z" * 200) for n in range(12)}
+    expected = [copy.deepcopy(d["fields"]) for d in result["days"]]
+    manifest = _write(tmp_path / "s", result)
+    assert manifest["files"]["context"] == ["context.json"]
+    assert (tmp_path / "s" / "context.json").stat().st_size <= CEILING
+    assert [d["fields"] for d in rs.load(tmp_path / "s")["days"]] == expected
 
 
 def test_load_rebuilds_growth_created_from_the_growth_files(tmp_path):
@@ -448,7 +497,7 @@ def test_weeks_json_names_the_files_and_the_weekly_note_of_each_unit(tmp_path):
     _write(tmp_path / "s", result)
     weeks = _json(tmp_path / "s" / "weeks.json")
     assert weeks["rule"] == {"first_day": 0, "min_days_in_first_week": 4}
-    assert weeks["budget_bytes"] == 81_920 and weeks["digest_cap_bytes"] == 8_192
+    assert weeks["budget_bytes"] == 131_072 and weeks["digest_cap_bytes"] == 8_192
     weekly = {w["week"] for w in result["weekly"]}
     covered = []
     for unit in weeks["units"]:

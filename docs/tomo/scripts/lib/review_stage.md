@@ -134,13 +134,33 @@ The cut helpers (`day_text`, `child_text`) and the report marking
 
 WHY: ADR-2. `context.json` holds the dateless rest of the read: the
 section definitions, open tasks, the link-difference lists over the whole
-period, growth counts and MOC lists, and `fields` — every day's tracker
-values (F2-AC3), so the proposer words analysis rows without day files.
+period, growth counts and MOC lists, and `field_aggregates` (F2-AC3), so
+the proposer words analysis rows without day files.
 It measured well under the ceiling once growth and the report left it, but
 open tasks and link lists grow with the vault. Over the ceiling, every list
-item (and every `fields` day) moves into `context-<n>.json` parts (n = 2, …),
+item (and every `field_aggregates` tracker) moves into `context-<n>.json`
+parts (n = 2, …),
 each ≤ the ceiling and named in `context.json`'s `parts`; `load` merges them
 back in order (lists extended, dicts merged).
+
+## WHY `context.json` Carries Field Aggregates, Not Per-Day Fields
+
+WHY: owner 2026-11-23 after T2.5. The raw per-day `fields` made the
+2026-Q1 `context.json` 86,345 B in four files — the largest thing the opus
+proposer would read, and only to count and average tracker values.
+`field_aggregates` gives per field name `{period: {days, min, max, mean},
+units: {<unit>: {...}}}` — the units being those of `weeks.json`, a unit
+without a value left out — for a field whose every value reads as a number,
+and `{days}` counts only for any other field (a text, a yes/no, a time, or a
+mix). The stage write has no tracker definitions (the read result carries
+none), so it aggregates every field name present and classifies each value
+through `review_habits.parse_value("integer", …)`: one parsing rule, no
+second copy — an empty value or a bare `-` is no value, so a field with no
+value on any day has no aggregate. The habits script owns the type-aware
+numbers (time circular means, durations); the aggregates are only the
+proposer's overview. The raw values stay in the day files: the digesters
+read them there, and `load` gives back `days[*].fields` from the day files
+exactly as the read had them, so the habits group is unchanged.
 
 ## WHY `weeks.json` Names Its Files
 

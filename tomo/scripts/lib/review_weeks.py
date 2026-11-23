@@ -1,5 +1,5 @@
 # review_weeks.py — the units of a /review period: weeks clipped to it, packed under the unit budget.
-# version: 0.1.0
+# version: 0.2.0
 """Units of a period for condensing in ``/review`` (spec 047 T2.2; PRD F1-AC1, F1-AC2; ADR-2).
 
 ``units`` turns a week, month or quarter into units: the weeks of the period
@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Mapping, Set
 from lib.period import WEEK, Period, WeekRule
 
 FILE_CEILING = 32_768
-UNIT_BUDGET = 81_920
+UNIT_BUDGET = 131_072
 DIGEST_TOTAL = 114_688
 DIGEST_MAX = 8_192
 

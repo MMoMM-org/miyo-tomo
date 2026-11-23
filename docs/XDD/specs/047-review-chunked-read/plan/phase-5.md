@@ -67,6 +67,8 @@ Lets a proposal carry an item from a previous note, proves its mark and sources 
   4. Validate: `test_review_doc.py`, `test_review_sections*.py`, `test_review_skill_sections.py` green; full suite green; ruff clean.
   5. Success: carried items are checked and rendered in groups and sections, with both marks in order `[ref: PRD/F4-AC5, F5-AC2]`
 
+  - **Carry-over from the T4.4 review (2026-11-23, orchestrator):** `review-doc.py write` refuses only open UNITS (`condense-incomplete`), not an open carryover. So define `carry_failed` as "at least one previous note was found and the carryover state is not `passed`" (pending, retry and failed all count; `none` stays false). Test: a carryover still `pending` or `retry` at write time renders the carry-failed top line and no carried mark (F6-AC2), making `test_047_t4_4_condense_gate.py::test_an_open_carryover_does_not_hold_the_document_back` consistent with F6-AC2.
+
 - [ ] **T5.5 Pass 2 regression: a carried mark is item text** `[activity: testing]` `[parallel: true]`
 
   1. Prime: `lib/review_doc_parse.py` (`_TRAILING_DONE_MARK` 74, `edited` 94-100), `tests/test_review_doc_parse.py` `[ref: SDD/ADR-9; lines: 1212]` `[ref: SDD/Implementation Examples; lines: 869]`

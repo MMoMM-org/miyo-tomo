@@ -1,5 +1,5 @@
 # review_stage_codec.py — the bytes of a /review stage file: line-broken encoding, the ceiling, cutting and parts.
-# version: 0.1.0
+# version: 0.1.1
 """Encoding and size rules of the agent-read stage files (spec 047 T2.3; ADR-2), split out of ``review_stage``.
 
 ``encode(data)`` is the one written form: ``indent=1``, UTF-8 (``ensure_ascii``
@@ -9,7 +9,11 @@ off), one trailing newline; ``size(text)`` its UTF-8 bytes, the measure of
 ``fit(units, render)`` re-cuts ``(kind, name, text)`` units through
 ``review_day.cut_at_boundary`` until ``render(kept)`` fits the ceiling:
 three tries on a shrinking limit, then the hard cut of the first section
-alone; every limit ≥ 1. ``pack_parts(items, render)`` packs items greedily
+alone, shrunk by the overshoot until it fits or the limit is 1; every limit
+≥ 1. ``day_text(read_id, entry)`` / ``child_text(read_id, entry)`` give a
+day / child file's text and whether it was cut (``partly_read`` /
+``clipped``); ``mark_partly_read(report, dates)`` a copy of the read report
+with the dailies of those dates ``partly-read`` (``failed`` kept). ``pack_parts(items, render)`` packs items greedily
 into rendered parts, each ≤ the ceiling unless one item alone is over it.
 ``spill(doc, keep)`` moves every list item and every entry of a
 dict-of-dicts out of ``doc`` (keys in ``keep`` stay), ``place(items)`` builds
@@ -24,6 +28,7 @@ Design notes: docs/tomo/scripts/lib/review_stage_codec.md
 """
 from __future__ import annotations
 
+import copy
 import json
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -36,9 +41,9 @@ _TRIES = (1.0, 0.8, 0.6)
 Unit = Tuple[str, str, str]
 Item = Tuple[Tuple[str, ...], bool, Any]
 
-__all__ = ["FILE_CEILING", "LINE_PIECE", "child_doc", "child_entry", "compact", "day_doc", "day_entry", "encode",
-           "fit", "growth_files", "join_text", "lines_of", "merge", "pack_parts", "place", "previous_doc",
-           "previous_entry", "size", "spill", "text_key"]
+__all__ = ["FILE_CEILING", "LINE_PIECE", "child_doc", "child_entry", "child_text", "compact", "day_doc", "day_entry",
+           "day_text", "encode", "fit", "growth_files", "join_text", "lines_of", "mark_partly_read", "merge",
+           "pack_parts", "place", "previous_doc", "previous_entry", "size", "spill", "text_key"]
 
 
 def encode(data: Any) -> str:
@@ -69,7 +74,69 @@ def fit(units: Sequence[Unit], render: Callable[[Sequence[Unit]], str]) -> str:
         if size(text) <= FILE_CEILING:
             return text
     first = list(units[:1]) if units and units[0][0] == review_day.SECTION_UNIT else []
-    return render(review_day.cut_at_boundary(first, max(1, int(room * _TRIES[-1]))).kept)
+    base, limit = size(render([])), max(1, int(room * _TRIES[-1]))
+    while True:
+        text = render(review_day.cut_at_boundary(first, limit).kept)
+        over = size(text) - base
+        if not first or size(text) <= FILE_CEILING or limit == 1:
+            return text
+        limit = max(1, min(limit - 1, limit * room // max(1, over)))
+
+
+def day_text(read_id: str, entry: dict) -> Tuple[str, bool]:
+    """``(the day file's text, whether it was re-cut)``; a re-cut day is ``partly_read``, ``has_content`` recomputed."""
+    text = encode(day_doc(read_id, entry))
+    if size(text) <= FILE_CEILING:
+        return text, False
+    sections, linked = entry.get("sections") or {}, entry.get("linked") or []
+    units = [(review_day.SECTION_UNIT, name, t) for name, t in sections.items()]
+    units += [(review_day.LINKED_UNIT, item["path"], item.get("text", "")) for item in linked]
+
+    def render(kept: Sequence[Unit]) -> str:
+        texts = {(kind, name): t for kind, name, t in kept}
+        kept_sections = {n: texts[(review_day.SECTION_UNIT, n)] for n in sections
+                         if (review_day.SECTION_UNIT, n) in texts}
+        kept_linked = [dict(item, text=texts[(review_day.LINKED_UNIT, item["path"])]) for item in linked
+                       if (review_day.LINKED_UNIT, item["path"]) in texts]
+        has = any(review_day.has_content(t) for t in kept_sections.values())
+        return encode(day_doc(read_id, dict(entry, sections=kept_sections, linked=kept_linked,
+                                             partly_read=True, has_content=has)))
+
+    return fit(units, render), True
+
+
+def child_text(read_id: str, entry: dict) -> str:
+    """The child file's text, clipped at a heading boundary (``clipped``) when over the ceiling."""
+    text = encode(child_doc(read_id, entry, False))
+    if size(text) <= FILE_CEILING:
+        return text
+    key = text_key(entry)
+    own = (entry.get(key) or {}) if key else {}
+    blocks = entry.get("day_blocks") or {}
+    units = [(review_day.SECTION_UNIT, f"t:{h}", t) for h, t in own.items()]
+    units += [(review_day.SECTION_UNIT, f"d:{d}", t) for d, t in blocks.items()]
+
+    def render(kept: Sequence[Unit]) -> str:
+        texts = {name: t for _, name, t in kept}
+        clipped = dict(entry, day_blocks={d: texts[f"d:{d}"] for d in blocks if f"d:{d}" in texts})
+        if key:
+            clipped[key] = {h: texts[f"t:{h}"] for h in own if f"t:{h}" in texts}
+        return encode(child_doc(read_id, clipped, True))
+
+    return fit(units, render)
+
+
+def mark_partly_read(report: Any, dates: Sequence[str]) -> Any:
+    """A deep copy of ``report`` with every non-``failed`` daily of ``dates`` set to ``partly-read``."""
+    marked = copy.deepcopy(report)
+    wanted = set(dates)
+    days = marked.get("days") if isinstance(marked, dict) else None
+    for day in days or []:
+        if isinstance(day, dict) and day.get("date") in wanted:
+            for daily in day.get("dailies") or []:
+                if isinstance(daily, dict) and daily.get("state") != "failed":
+                    daily["state"] = "partly-read"
+    return marked
 
 
 def pack_parts(items: Sequence[Any], render: Callable[[int, List[Any]], str], first: int = 1) -> List[str]:

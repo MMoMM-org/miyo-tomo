@@ -90,9 +90,19 @@ the room left after the non-text part (tasks, links, fields), times 1.0, 0.8,
 the characters the cutter counts. Every limit is clamped to ≥ 1: the cutter
 slices `text[:max_chars]`, and a 0 or negative limit would slice wrongly
 (T2.1 review). When three tries still do not fit (the non-text part alone is
-large), the hard cut keeps the first section alone, cut at the last limit.
-The day is named `partly_read` and its `has_content` recomputed from what was
-kept (`review_day.has_content`), so `takes_part` sees the file as written.
+large), the hard cut keeps the first section alone, cut at the last limit;
+when that is still over the ceiling, the hard cut shrinks by the measured
+overshoot until the file fits or the limit is 1, so a day whose bulk is
+section text always ends inside the ceiling. The day is named `partly_read`
+and its `has_content` recomputed from what was kept
+(`review_day.has_content`), so `takes_part` sees the file as written.
+
+A re-cut day is also named partly read in the report (SDD Error Handling,
+F1-AC7): `review_period` sets a daily's state to `partly-read` only for a day
+cut at read time, and the stage cuts later. `write` sets every daily of a
+re-cut day that is not `failed` to `partly-read` in the manifest's copy of
+the report — a deep copy, so the caller's result is never changed — and the
+callout, rendered from that report, names the day.
 The stage does not re-run `read_day`: it holds the entry, not the daily
 texts, and the cut only removes whole trailing units (or the end of the
 first), which is what a smaller `max_chars_per_day` would have kept.
@@ -101,6 +111,24 @@ A child note over the ceiling is clipped the same way at a heading boundary:
 its own-section texts first, then its day blocks, each a unit; the file
 carries `clipped: true`. `load` keeps `clipped` only when true, so an
 unclipped read loads equal to `read_period`'s entry.
+
+## WHY a File Can Still Be Over the Ceiling, and Is Named
+
+WHY: owner/orchestrator decision in the T2.3 review. The cuts remove text
+only: sections, linked-note texts, child-note blocks. A day's non-text part
+(tasks, links, fields) is never cut — a task text or a link target is a
+value scripts match on, and cutting it would change the read, not shorten
+it. So a day whose tasks alone are large (100 tasks × 400 characters wrote
+48,345 B) stays over 32,768 B after every cut. Day files are not split
+either: a unit names its days by file, and a second day file would need a
+second naming scheme for one rare case. Instead `write` measures every file
+it wrote after all cuts and lists the stage-relative names still over the
+ceiling in `manifest.over_ceiling` (`[]` on a normal stage), so `--measure`
+and the report can name such a day — it is named, never silently over.
+
+The cut helpers (`day_text`, `child_text`) and the report marking
+(`mark_partly_read`) live in `lib/review_stage_codec.py`: they are pure, and
+`review_stage.py` stays at its ~300-line seam.
 
 ## WHY Context Lists Overflow Into Parts
 

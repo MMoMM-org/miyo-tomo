@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_stage.py — the stage a /review read rests in (lib/review_stage.py; spec 047 T2.3;
 PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; SDD ADR-1, ADR-2, ADR-3, ADR-10, "Data Storage Changes").
 
@@ -11,7 +11,10 @@ Mechanisms each test falsifies:
 - every agent-read file is indent=1 UTF-8 with long texts as line arrays, ≤ 32,768 B and no line
   over 2,000 characters on the scaled 2026-Q1 fixture;
 - an oversized day is re-cut through review_day.cut_at_boundary (≤ 3 tries, then the hard cut on
-  the first section alone, every limit ≥ 1) and named partly_read; a child note over the ceiling
+  the first section alone, shrunk until a sections-only day fits, every limit ≥ 1) and named
+  partly_read, and partly-read in manifest.json's report (the caller's result unchanged); a file
+  still over the ceiling after every cut (non-text content) is listed in manifest over_ceiling,
+  [] on a normal stage; a child note over the ceiling
   is clipped at a heading boundary; context lists overflow into parts;
 - load gives back what review_read_parts.load gave for the same read (month and quarter), plus
   previous / condensed / carryover; a quarter day file is the week read's day file (F1-AC2);
@@ -277,6 +280,36 @@ def test_a_day_that_three_recuts_cannot_fit_gets_the_hard_cut(tmp_path, monkeypa
     assert len(units) == 1 and units[0][0] == review_day.SECTION_UNIT and units[0][1] == "S0"
     assert all(limit >= 1 for _, limit in calls)
     assert doc["partly_read"] is True and list(doc["sections"]) in ([], ["S0"])
+    calls.clear()
+    path = _one_day_stage(tmp_path / "sections-only", _day("2026-03-23", sections={"S0": "a\n" * 40_000,
+                                                                                    "S1": "b\n" * 100}))
+    assert len(calls) >= 4 and all(len(units) == 1 and units[0][1] == "S0" for units, _ in calls[3:])
+    assert all(limit >= 1 for _, limit in calls)
+    assert path.stat().st_size <= CEILING and _json(path)["partly_read"] is True
+
+
+def _report_day(day: str, state: str) -> dict:
+    return {"date": day, "dailies": [{"path": f"Daily/{day}.md", "state": state}], "duplicate": False, "linked": []}
+
+
+def test_a_recut_day_is_partly_read_in_the_manifest_report_and_the_callers_result_unchanged(tmp_path):
+    days = [_day("2026-03-23", sections=_sections(10, 5_000))] + [_day(d.isoformat()) for d in W13.days()[1:]]
+    report = {"days": [_report_day("2026-03-23", "found"), _report_day("2026-03-24", "found")]}
+    result = _result(days=days, report=report)
+    before = copy.deepcopy(result)
+    _write(tmp_path / "s", result)
+    stored = _json(tmp_path / "s" / "manifest.json")["report"]["days"]
+    assert [d["dailies"][0]["state"] for d in stored] == ["partly-read", "found"]
+    assert result == before
+
+
+def test_a_file_still_over_the_ceiling_after_every_cut_is_named_in_the_manifest(tmp_path):
+    tasks = [{"text": "t" * 400, "done": False, "done_date": None, "source": "x"} for _ in range(100)]
+    path = _one_day_stage(tmp_path, _day("2026-03-23", sections=_sections(4, 3_000), tasks=tasks))
+    assert path.stat().st_size > CEILING
+    manifest = _json(tmp_path / "s" / "manifest.json")
+    assert manifest["over_ceiling"] == ["days/2026-03-23.json"]
+    assert _write(tmp_path / "normal", _result())["over_ceiling"] == []
 
 
 def test_a_single_huge_section_is_cut_hard_inside_the_ceiling(tmp_path):

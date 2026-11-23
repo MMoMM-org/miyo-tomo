@@ -1,5 +1,5 @@
 # review_stage.py — the stage a /review read rests in: day, growth, child and context files, weeks.json, the manifest.
-# version: 0.1.0
+# version: 0.1.1
 """The stage folder of a ``/review`` read (spec 047 T2.3; PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; ADR-1/2/3/10).
 
 ``write(stage, result, *, stem, rule, sections_digest)`` discards the stage's
@@ -10,8 +10,10 @@ overflow parts), ``children/<label>-<name>[-<n>].json``,
 ``previous/<kind>-<name>.json``, ``context.json`` (+ ``context-<n>.json``
 parts), ``weeks.json`` and ``manifest.json`` last; every file is stamped with
 one ``read_id``. Agent-read files are ``review_stage_codec.encode``d and each
-kept ≤ ``FILE_CEILING`` bytes: an oversized day is re-cut and ``partly_read``,
-a child note clipped (``clipped``). Returns the manifest.
+kept ≤ ``FILE_CEILING`` bytes: an oversized day is re-cut and ``partly_read``
+(``partly-read`` in the manifest's copy of the report), a child note clipped
+(``clipped``); a file still over it after every cut is listed in the
+manifest's ``over_ceiling``. Returns the manifest.
 
 ``load(stage)`` gives back the result ``write`` was given, plus ``previous``,
 ``condensed`` (``condensed.json`` or ``None``) and ``carryover``
@@ -35,12 +37,13 @@ from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from lib import review_day, review_weeks
+from lib import review_weeks
 from lib import run_id as run_ids
 from lib.note_io import atomic_write_text
 from lib.period import Period, WeekRule
-from lib.review_stage_codec import (FILE_CEILING, child_doc, child_entry, compact, day_doc, day_entry, encode, fit,
-                                    growth_files, merge, pack_parts, place, previous_doc, previous_entry, size, spill, text_key)
+from lib.review_stage_codec import (FILE_CEILING, child_entry, child_text, compact, day_entry, day_text, encode,
+                                    growth_files, mark_partly_read, merge, pack_parts, place, previous_doc,
+                                    previous_entry, size, spill)
 
 LAYOUT = 1
 MANIFEST, CONTEXT, WEEKS = "manifest.json", "context.json", "weeks.json"
@@ -52,7 +55,6 @@ NO_SECTIONS = "none"
 _NOT_CONTEXT = ("days", "growth", "report", "not_read", "previous") + CHILD_LABELS
 _CONTENT_FILE_RE = re.compile(r"(?:context(?:-\d+)?|read(?:-[\w-]+)?|weeks|carryover|proposals|condensed)\.json")
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.json")
-_SECTION, _LINKED = review_day.SECTION_UNIT, review_day.LINKED_UNIT
 
 
 class StageMissing(Exception):
@@ -77,48 +79,7 @@ def _period_dict(period: Period) -> dict:
             "end": period.end.isoformat()}
 
 
-# ---------------------------------------------------------------- days
-
-def _day_text(read_id: str, entry: dict) -> str:
-    text = encode(day_doc(read_id, entry))
-    if size(text) <= FILE_CEILING:
-        return text
-    sections, linked = entry.get("sections") or {}, entry.get("linked") or []
-    units = [(_SECTION, name, t) for name, t in sections.items()]
-    units += [(_LINKED, item["path"], item.get("text", "")) for item in linked]
-
-    def render(kept: Sequence[Tuple[str, str, str]]) -> str:
-        texts = {(kind, name): t for kind, name, t in kept}
-        kept_sections = {n: texts[(_SECTION, n)] for n in sections if (_SECTION, n) in texts}
-        kept_linked = [dict(item, text=texts[(_LINKED, item["path"])]) for item in linked
-                       if (_LINKED, item["path"]) in texts]
-        has = any(review_day.has_content(t) for t in kept_sections.values())
-        return encode(day_doc(read_id, dict(entry, sections=kept_sections, linked=kept_linked,
-                                             partly_read=True, has_content=has)))
-
-    return fit(units, render)
-
-
-# ---------------------------------------------------------------- children and previous
-
-def _child_text(read_id: str, entry: dict) -> str:
-    text = encode(child_doc(read_id, entry, False))
-    if size(text) <= FILE_CEILING:
-        return text
-    key = text_key(entry)
-    own = (entry.get(key) or {}) if key else {}
-    blocks = entry.get("day_blocks") or {}
-    units = [(_SECTION, f"t:{h}", t) for h, t in own.items()] + [(_SECTION, f"d:{d}", t) for d, t in blocks.items()]
-
-    def render(kept: Sequence[Tuple[str, str, str]]) -> str:
-        texts = {name: t for _, name, t in kept}
-        clipped = dict(entry, day_blocks={d: texts[f"d:{d}"] for d in blocks if f"d:{d}" in texts})
-        if key:
-            clipped[key] = {h: texts[f"t:{h}"] for h in own if f"t:{h}" in texts}
-        return encode(child_doc(read_id, clipped, True))
-
-    return fit(units, render)
-
+# ---------------------------------------------------------------- children
 
 def _child_files(read_id: str, result: dict) -> Tuple[Dict[str, str], List[str]]:
     files: Dict[str, str] = {}
@@ -130,7 +91,7 @@ def _child_files(read_id: str, result: dict) -> Tuple[Dict[str, str], List[str]]
             while name in files:
                 n += 1
                 name = f"{base}-{n}.json"
-            files[name] = _child_text(read_id, entry)
+            files[name] = child_text(read_id, entry)
     return files, labels
 
 
@@ -180,25 +141,27 @@ def write(stage: Path, result: dict, *, stem: str, rule: WeekRule, sections_dige
     read_id = read_id or run_ids.generate()
     read_at = read_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     discard(stage)
-    day_texts = {e["date"]: _day_text(read_id, e) for e in result["days"]}
+    cut = {e["date"]: day_text(read_id, e) for e in result["days"]}
+    day_texts = {d: text for d, (text, _) in cut.items()}
     growth = growth_files(read_id, (result.get("growth") or {}).get("created") or [], result["period"]["start"])
     children, labels = _child_files(read_id, result)
     previous = {f"{e['kind']}-{e['name']}.json": encode(previous_doc(read_id, e)) for e in result.get("previous", [])}
     context = _context_files(read_id, result)
-    for folder, files in ((DAYS, {f"{d}.json": t for d, t in day_texts.items()}),
-                          (GROWTH, {n: t for day in growth.values() for n, t in day.items()}),
-                          (CHILDREN, children), (PREVIOUS, previous)):
-        for name, text in files.items():
-            _put(stage / folder / name, text)
-    for name, text in context.items():
+    written = {**{f"{folder}/{name}": text for folder, files in (
+        (DAYS, {f"{d}.json": t for d, t in day_texts.items()}),
+        (GROWTH, {n: t for day in growth.values() for n, t in day.items()}),
+        (CHILDREN, children), (PREVIOUS, previous)) for name, text in files.items()},
+        **context, WEEKS: _weeks_text(read_id, result, rule, day_texts, growth, children)}
+    for name, text in written.items():
         _put(stage / name, text)
-    _put(stage / WEEKS, _weeks_text(read_id, result, rule, day_texts, growth, children))
+    report = mark_partly_read(result.get("report"), [d for d, (_, recut) in cut.items() if recut])
     manifest = {"layout": LAYOUT, "read_id": read_id, "read_at": read_at, "stem": stem, "period": result["period"],
                 "sections_digest": sections_digest,
                 "files": {"days": [f"{d}.json" for d in day_texts],
                           "growth": [n for day in growth.values() for n in day], "children": list(children),
                           "previous": list(previous), "context": list(context), "weeks": WEEKS},
-                "child_labels": labels, "report": result.get("report"), "not_read": result.get("not_read", [])}
+                "child_labels": labels, "report": report, "not_read": result.get("not_read", []),
+                "over_ceiling": [name for name, text in written.items() if size(text) > FILE_CEILING]}
     _put(stage / MANIFEST, compact(manifest))
     return manifest
 

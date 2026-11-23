@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_digest_schemas.py — spec 047 T4.1: the digest and carryover file contracts.
 
 The two closed schemas under ``tomo/schemas/`` are what ``review-digest.py check``
@@ -9,7 +9,9 @@ every refusal case mutates one field of them, so a test fails exactly when the
 schema stops enforcing that one rule (an unknown field, a nested required key, an empty text, a cap,
 an id or key pattern, a type enum, the growth candidates' notes bounds). A walk over a
 full document (one of every nested object) pins the rest: every value's type, every
-string's non-emptiness, every object's closedness, and every enum member.
+string's non-emptiness, every object's closedness, and every enum member. Each pattern
+is pinned end to end at every place it applies: both anchors, both bounds of every
+quantifier, every literal and every character class.
 """
 from __future__ import annotations
 
@@ -111,8 +113,9 @@ def test_single_day_theme_is_allowed_in_a_digest(digest):
     digest.validate(_with(W14_DIGEST, themes=[theme]))
 
 
-def test_section_with_known_key_pattern_validates(digest):
-    digest.validate(_with(W14_DIGEST, sections=[{"key": "s12", "items": [_entry()]}]))
+@pytest.mark.parametrize("key", ["s1", "s12", "s123"])
+def test_section_with_known_key_pattern_validates(digest, key):
+    digest.validate(_with(W14_DIGEST, sections=[{"key": key, "items": [_entry()]}]))
 
 
 @pytest.mark.parametrize("n_notes", [1, 10])
@@ -171,7 +174,15 @@ def test_digest_refuses_more_than_25_done(digest):
     _refused(digest, _with(W14_DIGEST, done=[_entry(i) for i in range(26)]))
 
 
-@pytest.mark.parametrize("key", ["S1", "s", "s1234", "section 1", "x1"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "S1", "s", "s1234", "section 1", "x1",
+        "xs1", "s1x",  # text before or after the key
+        "s/", "s:",  # a non-digit just below "0", just above "9"
+        "s\uff11",  # a full-width digit
+    ],
+)
 def test_digest_refuses_a_section_key_outside_the_pattern(digest, key):
     _refused(digest, _with(W14_DIGEST, sections=[{"key": key, "items": [_entry()]}]))
 
@@ -218,10 +229,23 @@ def test_carryover_refuses_an_item_without_sources(carryover):
     _refused(carryover, _with(W14_CARRYOVER, items=[item]))
 
 
-@pytest.mark.parametrize("item_id", ["C1", "c", "c1234", "s1", "1"])
+@pytest.mark.parametrize(
+    "item_id",
+    [
+        "C1", "c", "c1234", "s1", "1",
+        "xc1", "c1x",  # text before or after the id
+        "c/", "c:",  # a non-digit just below "0", just above "9"
+        "c\uff11",  # a full-width digit
+    ],
+)
 def test_carryover_refuses_an_id_outside_the_pattern(carryover, item_id):
     item = {**W14_CARRYOVER["items"][0], "id": item_id}
     _refused(carryover, _with(W14_CARRYOVER, items=[item]))
+
+
+@pytest.mark.parametrize("item_id", ["c1", "c123"])
+def test_carryover_accepts_an_id_of_one_to_three_digits(carryover, item_id):
+    carryover.validate(_with(W14_CARRYOVER, items=[{**_carry_item(), "id": item_id}]))
 
 
 @pytest.mark.parametrize("item_type", ["done", "task", ""])
@@ -418,3 +442,58 @@ def test_carryover_accepts_every_note_kind(carryover, kind):
 @pytest.mark.parametrize("item_type", ["open", "intention", "theme"])
 def test_carryover_accepts_every_item_type(carryover, item_type):
     carryover.validate(_with(W14_CARRYOVER, items=[{**_carry_item(), "type": item_type}]))
+
+
+# --- the patterns, at every place they apply ---------------------------------
+# A character class is pinned by a non-digit just below "0" ("/") and just above "9"
+# (":"), and by a full-width digit: jsonschema matches with Python's re, whose \d is any
+# Unicode digit, so "[0-9]" -> "\d" would admit it.
+
+_BAD_DATES = [
+    "x2026-01-01",  # text before the date
+    "2026-01-01x",  # text after the date
+    "26-01-01", "202-01-01", "12026-01-01",  # a year of 2, 3 or 5 digits
+    "2026-1-01", "2026-001-01",  # a month of 1 or 3 digits
+    "2026-01-1", "2026-01-001",  # a day of 1 or 3 digits
+    "2026/01-01", "2026-01/01",  # another separator after the year, after the month
+    "202/-01-01", "2026-0/-01", "2026-01-0/",  # "/" in the year, the month, the day
+    "202:-01-01", "2026-0:-01", "2026-01-0:",  # ":" in the year, the month, the day
+    "\uff12026-01-01", "2026-\uff101-01", "2026-01-\uff101",  # a full-width digit in each
+]
+
+# Every place the digest applies $defs/date: its pointer, and the W14 digest with that one date there.
+_DATE_PLACES = {
+    "days": ("properties/days/items", lambda date: _with(W14_DIGEST, days=[date])),
+    "theme days": (
+        "properties/themes/items/properties/days/items",
+        lambda date: _with(W14_DIGEST, themes=[{**_THEME, "days": [date]}]),
+    ),
+}
+
+
+@pytest.mark.parametrize("place", list(_DATE_PLACES))
+@pytest.mark.parametrize("date", _BAD_DATES)
+def test_digest_refuses_a_date_outside_the_pattern(digest, place, date):
+    with_date = _DATE_PLACES[place][1]
+    digest.validate(with_date("2026-01-01"))
+    _refused(digest, with_date(date))
+
+
+def _pattern_places(schema: dict) -> set:
+    """Pointers of the subschemas a pattern applies at, its own or a patterned $def's by $ref."""
+    patterned = {f"#/$defs/{name}" for name, sub in schema.get("$defs", {}).items() if "pattern" in sub}
+    return {
+        "/".join(map(str, path))
+        for path, node in _walk(schema)
+        if isinstance(node, dict)
+        and path[:1] != ("$defs",)
+        and ("pattern" in node or node.get("$ref") in patterned)
+    }
+
+
+def test_every_place_a_pattern_applies_is_pinned_above():
+    digest_schema = json.loads(DIGEST_SCHEMA.read_text(encoding="utf-8"))
+    carryover_schema = json.loads(CARRYOVER_SCHEMA.read_text(encoding="utf-8"))
+    date_places = {pointer for pointer, _ in _DATE_PLACES.values()}
+    assert _pattern_places(digest_schema) == date_places | {"properties/sections/items/properties/key"}
+    assert _pattern_places(carryover_schema) == {"properties/items/items/properties/id"}

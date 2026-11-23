@@ -66,6 +66,8 @@
 | 2026-11-23 | Model escalation: T4.1 opus → opus@max | Trigger: second review FAIL at opus (pattern anchors `^`/`$` unguarded after the sweep) |
 | 2026-11-23 | Known limitation accepted: the digest/carryover schema patterns use `$`, which in Python's `re` also matches before a final newline, so `"2026-03-30\n"`, `"s1\n"`, `"c1\n"` validate; dates and section keys are refused downstream (`days-mismatch`, `unknown-section`), carryover ids are only compared with each other | Orchestrator; no schema change |
 | 2026-11-23 | An open carryover (pending/retry) at document write is not refused; it renders as carry-failed (`carry_failed` = found previous notes and carryover state not `passed`), wired in T5.4 | Orchestrator, after the T4.4 spec review: the SDD gate names units only; no silent drop of the top line (F6-AC2) |
+| 2026-11-23 | T5.2 deviation (owner, choice A): `Sources`, `Resolved`, `resolve_sources`, `note_stem` and the child-mark constants move to new `lib/review_sources.py` 0.1.0; `review_doc` re-exports them | `lib/review_doc.py` reached 493 lines against the ≈ 470 cap (CON-5) before T5.4's carried branch; the resolver is the natural seam and `review_carried` imports it from a small module. `review_doc` 412 lines |
+| 2026-11-23 | Owner: the German top-line wording proposed in T5.2 is kept ("Letzter Rückblick · …: gefunden, n übernommen", "keine Notiz für X gefunden", "…notizen sind nicht eingerichtet", "nicht gelesen: Kado hat sie verweigert / nicht geliefert", "Nicht verdichtet", "Die letzten Rückblicke konnten nicht berücksichtigt werden.") | Top lines follow `review.language` like every fixed line (spec 045: DE/EN, English otherwise); only shown in German reviews; may be revised in the Phase 9 walk |
 
 ## Context
 

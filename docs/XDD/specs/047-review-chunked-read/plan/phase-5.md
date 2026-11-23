@@ -35,7 +35,7 @@ phase: 5
 
 Lets a proposal carry an item from a previous note, proves its mark and sources by script, and shows the previous notes at the top of the document.
 
-- [ ] **T5.1 `carried` and `carried_ids` in the proposals schema** `[activity: data-architecture]` `[parallel: true]`
+- [x] **T5.1 `carried` and `carried_ids` in the proposals schema** `[activity: data-architecture]` `[parallel: true]`
 
   1. Prime: `tomo/schemas/review-proposals.schema.json` (group items, `sectionItem.mark` enum), its tests `[ref: SDD/Application Data Models; lines: 654-662]` `[ref: SDD/ADR-6]`
   2. Test: `tests/test_review_proposals_carried_schema.py` (new; validates against the schema file directly, without `review-doc.py`) — a group item and a section item with `carried` and `carried_ids` validate; `carried` without `carried_ids` and the reverse are refused (dependentRequired both ways); a value outside `done | still_open | not_mentioned` and an id outside `^c[0-9]{1,3}$` are refused; every existing proposals fixture of specs 045/046 still validates (glob over the fixtures, untruncated).

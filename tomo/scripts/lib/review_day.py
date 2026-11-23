@@ -1,5 +1,5 @@
 # review_day.py — one day of /review: the daily's kept sections, fields, tasks and same-day notes.
-# version: 0.3.2
+# version: 0.3.3
 """Reading one day for ``/review`` (spec 045, T3.2; PRD F3-AC1..4, F3-AC8).
 
 ``read_day(day, dailies, settings, read_note)`` turns the daily text(s) of
@@ -12,7 +12,8 @@ queries dropped, never executed; a thematic break and the navigation block
 behind it dropped, the words after a break kept; a same-day note without
 its embeds, other-day sections, METADATA callout and navigation-only
 lines; raw ``Name:: v`` fields, tasks with their ✅ date, the
-``max_chars_per_day`` cap on a section boundary, ``has_content`` beyond the
+``max_chars_per_day`` cap on a section boundary (``cut_at_boundary``, the one
+cutter every size limit of ``/review`` goes through), ``has_content`` beyond the
 template skeleton. The yesterday-named fields go to ``previous_day_fields``;
 ``attribute_yesterday`` moves them onto the entry dated D-1 and
 ``yesterday_fields`` reads only those of one text. ``task_note_tasks`` and
@@ -28,7 +29,7 @@ import copy
 import posixpath
 import re
 from datetime import date, timedelta
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 from lib.review_config import DEFAULT_MAX_CHARS, ReviewSetup
 from lib.review_md import (DONE_MARK_RE, EMBED_LINE_RE, FIELD_RE, HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE,
@@ -51,6 +52,18 @@ _PLACEHOLDER_RES = (_TEMPLATER_RE, _INPUT_RE, INLINE_QUERY_RE)
 _DAY_TOKEN_RE = re.compile(r"\[([^\]]*)\]|YYYY|YY|MM|M|DD|D")
 
 ReadNote = Callable[[str], Optional[str]]
+Unit = Tuple[str, str, str]
+SECTION_UNIT = "section"
+LINKED_UNIT = "linked"
+
+
+class Cut(NamedTuple):
+    """What ``cut_at_boundary`` kept: the units in order, whether any was dropped or shortened,
+    whether the first section was cut hard."""
+
+    kept: List[Unit]
+    partly_read: bool
+    hard_cut: bool
 
 
 # --- settings -----------------------------------------------------------------------------
@@ -148,7 +161,8 @@ def _is_content(line: str) -> bool:
     return re.search(r"\w", s) is not None
 
 
-def _has_content(text: str) -> bool:
+def has_content(text: str) -> bool:
+    """Whether ``text`` holds a written line beyond the template skeleton (outside fences)."""
     fence: Optional[str] = None
     for line in text.splitlines():
         before = fence
@@ -189,6 +203,23 @@ def _kind(target: str, text: str) -> str:
         if any(mark in haystack for mark in marks):
             return kind
     return "other"
+
+
+# --- the one cutter -----------------------------------------------------------------------
+
+def cut_at_boundary(units: Sequence[Unit], max_chars: int) -> Cut:
+    """Whole ``(kind, name, text)`` units in order while their total fits ``max_chars``;
+    a first ``section`` unit over the limit is kept cut hard at ``max_chars``."""
+    kept: List[Unit] = []
+    total = 0
+    for kind, name, text in units:
+        if total + len(text) > max_chars:
+            if not kept and kind == SECTION_UNIT:
+                return Cut([(kind, name, text[:max_chars].rstrip())], True, True)
+            return Cut(kept, True, False)
+        total += len(text)
+        kept.append((kind, name, text))
+    return Cut(kept, False, False)
 
 
 # --- one daily ------------------------------------------------------------------------------
@@ -262,22 +293,12 @@ def read_day(day: date, dailies: Dict[str, str], settings: dict, read_note: Read
             continue
         linked.append({"path": target, "kind": _kind(target, text), "text": _linked_text(text, day, token)})
 
-    units: List[Tuple[str, str, str]] = [("section", n, t) for n, t in merged.items()]
-    units += [("linked", item["path"], item["text"]) for item in linked]
-    kept_sections: Dict[str, str] = {}
-    kept_linked: List[dict] = []
-    total, partly, hard_cut = 0, False, False
-    for kind, name, text in units:
-        if total + len(text) > max_chars:
-            partly = True
-            if not kept_sections and not kept_linked and kind == "section":
-                kept_sections[name], hard_cut = text[:max_chars].rstrip(), True
-            break
-        total += len(text)
-        if kind == "section":
-            kept_sections[name] = text
-        else:
-            kept_linked.append(next(item for item in linked if item["path"] == name))
+    units: List[Unit] = [(SECTION_UNIT, n, t) for n, t in merged.items()]
+    units += [(LINKED_UNIT, item["path"], item["text"]) for item in linked]
+    kept, partly, hard_cut = cut_at_boundary(units, max_chars)
+    kept_sections = {name: text for kind, name, text in kept if kind == SECTION_UNIT}
+    kept_linked = [next(item for item in linked if item["path"] == name) for kind, name, _ in kept
+                   if kind == LINKED_UNIT]
 
     section_lines = [line for text in kept_sections.values() for line in text.splitlines()]
     fields = _fields(section_lines)
@@ -301,7 +322,7 @@ def read_day(day: date, dailies: Dict[str, str], settings: dict, read_note: Read
         "fields": {k: v for k, v in fields.items() if k not in yesterday},
         "previous_day_fields": {k: v for k, v in fields.items() if k in yesterday},
         "partly_read": partly,
-        "has_content": any(_has_content(t) for t in kept_sections.values()),
+        "has_content": any(has_content(t) for t in kept_sections.values()),
         "links": links,
         "problems": problems,
         "tasks": tasks,

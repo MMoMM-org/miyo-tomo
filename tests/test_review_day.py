@@ -35,6 +35,8 @@ Covers one day's reading:
 - a bare `-` field value passes through unchanged
 - a day over max_chars_per_day is cut at a section boundary, partly_read;
   a day that fits the cap exactly is read whole
+- the one cutter cut_at_boundary keeps whole units, hard-cuts only a first
+  section, never a linked note; has_content is public (spec 047 T2.1)
 - done_in_period includes ticks dated exactly on the period's first and last day
 - a missing or unreadable linked note is a problem of that day, the day read
 
@@ -912,6 +914,59 @@ def test_linked_notes_count_toward_the_cap_after_the_sections():
     assert entry["partly_read"] is True
     assert entry["linked"] == []
     assert len(asked) == 2, "the notes are still read; only their text is dropped"
+
+
+# --- the one cutter and has_content (spec 047 T2.1, ADR-2) -------------------------------
+
+def _section_units(entry):
+    return [("section", name, text) for name, text in entry["sections"].items()]
+
+
+def test_cut_at_boundary_keeps_whole_units_and_reports_partly_read_as_read_day_did():
+    log = "## Daily Log\n" + "".join(f"- {i:02d}:00 a line of the log\n" for i in range(40))
+    daily = "## Habit\n- Sleep:: 7h\n\n" + log + "\n## End of the Day\n- **Highlights**:: the one that matters\n"
+    full, _ = read(daily=daily, notes={})
+    units = _section_units(full)
+    cap = len(full["sections"]["Habit"]) + len(full["sections"]["Daily Log"]) // 2
+    cut = rd.cut_at_boundary(units, cap)
+    assert cut.kept == [units[0]]
+    assert cut.partly_read is True and cut.hard_cut is False
+    via_day, _ = read(daily=daily, settings=dict(SETTINGS, max_chars_per_day=cap), notes={})
+    assert via_day["partly_read"] is cut.partly_read
+    assert list(via_day["sections"]) == [name for _, name, _ in cut.kept]
+
+
+def test_cut_at_boundary_reads_units_that_fit_exactly_whole():
+    units = [("section", "Habit", "- Sleep:: 7h"), ("section", "Daily Log", "- the log line")]
+    cut = rd.cut_at_boundary(units, sum(len(t) for _, _, t in units))
+    assert cut.kept == units and cut.partly_read is False and cut.hard_cut is False
+
+
+def test_cut_at_boundary_hard_cuts_a_single_section_over_the_limit():
+    units = [("section", "Daily Log", ("- a line\n" * 100).rstrip("\n")), ("section", "Habit", "- Sleep:: 7h")]
+    cut = rd.cut_at_boundary(units, 45)
+    assert cut.partly_read is True and cut.hard_cut is True
+    assert cut.kept == [("section", "Daily Log", "- a line\n" * 4 + "- a line")]
+
+
+def test_cut_at_boundary_never_hard_cuts_a_linked_unit():
+    cut = rd.cut_at_boundary([("linked", "DP-2026-03-26", "x" * 100)], 45)
+    assert cut.kept == [] and cut.partly_read is True and cut.hard_cut is False
+
+
+def test_cut_at_boundary_drops_a_linked_note_that_does_not_fit_after_the_sections():
+    units = [("section", "Habit", "- Sleep:: 7h"), ("linked", "DP-2026-03-26", "y" * 50)]
+    cut = rd.cut_at_boundary(units, len("- Sleep:: 7h") + 10)
+    assert cut.kept == units[:1] and cut.partly_read is True and cut.hard_cut is False
+
+
+def test_has_content_is_public_and_gives_the_entrys_result_for_the_fixtures():
+    for daily, expected in ((DAILY, True), (SKELETON, False), (PLAIN_TITLED, True)):
+        entry, _ = read(daily=daily, notes={})
+        assert any(rd.has_content(t) for t in entry["sections"].values()) is expected
+        assert entry["has_content"] is expected
+    assert rd.has_content("```dataview\nLIST\n```\n- **Mood**::") is False
+    assert rd.has_content("- 09:00 wrote the plan") is True
 
 
 # --- the entry shape --------------------------------------------------------------------

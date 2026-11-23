@@ -264,7 +264,38 @@ body; a section boundary keeps every kept unit whole; a day whose units add up t
 exactly the cap is read whole and is not `partly_read`. When the first
 section alone exceeds the cap it is kept and cut hard at the cap (trailing
 whitespace of the cut stripped, so the text does not end mid-indent), so a
-day is never read as empty because of the cap.
+day is never read as empty because of the cap. A same-day note is never cut
+hard: it is either kept whole or left out, the note is still read and
+asked for, only its text is dropped.
+
+## WHY There Is One Cutter, `cut_at_boundary`
+
+Spec 047 (ADR-2) has three places that must shorten a text to a limit:
+`read_day` (the `max_chars_per_day` cap above), `review_stage` (a day file
+whose line-broken form is over the 32,768-byte per-file ceiling is re-cut
+with a smaller limit) and `review_previous` (the text of a previous review
+note, cut at a heading boundary at `max_chars_per_day`). They all mean the
+same thing by "cut": whole units in order while the running total fits,
+`partly_read` at the first unit that does not, a hard cut of the first
+section only when nothing else would be kept. Three cutters would drift —
+one would cut inside a section, another would forget the hard cut and read
+an oversized day as empty — and the report's "partly read" would mean
+three different things. So the cap loop of `read_day` is the public
+`cut_at_boundary(units, max_chars)`, and every caller goes through it.
+
+A unit is `(kind, name, text)`. `kind` is `"section"` or `"linked"`; only a
+first unit of kind `"section"` is ever hard-cut, which is the rule `read_day`
+had (a same-day note is kept whole or dropped). A caller cutting a note at
+its headings passes each heading's block as a `"section"` unit. The result
+is `Cut(kept, partly_read, hard_cut)`: `kept` the units in input order (the
+hard-cut one with its shortened text), `partly_read` whether anything was
+dropped or shortened, `hard_cut` whether the first section was shortened —
+`read_day` needs that flag because a hard-cut section's tasks can no longer
+be told apart per daily, so they all go to the first daily's path.
+
+`has_content` is public for the same reason: `review_stage` decides from it
+whether a day takes part in a unit (SDD `takes_part`), and a second copy of
+the skeleton rule would drift from the one `read_day` writes into the entry.
 
 ## Output Shape
 

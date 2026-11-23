@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_digest_schemas.py — spec 047 T4.1: the digest and carryover file contracts.
 
 The two closed schemas under ``tomo/schemas/`` are what ``review-digest.py check``
 validates the agents' files against first (SDD ADR-4, Application Data Models).
 The positive fixtures are the W14 digest and carryover of the SDD's walkthrough (b);
 every refusal case mutates one field of them, so a test fails exactly when the
-schema stops enforcing that one rule (an unknown field, an empty text, a cap,
+schema stops enforcing that one rule (an unknown field, a nested required key, an empty text, a cap,
 an id or key pattern, a type enum, the growth candidates' notes bounds).
 """
 from __future__ import annotations
@@ -254,6 +254,56 @@ def test_digest_refuses_a_missing_required_key(digest, key):
     doc = copy.deepcopy(W14_DIGEST)
     del doc[key]
     _refused(digest, doc)
+
+
+_SECTION = {"key": "s1", "items": [_entry()]}
+
+
+def _nested_doc(owner: str, obj: dict) -> tuple[str, dict]:
+    """The W14 fixture with ``obj`` as the one nested object of ``owner``."""
+    if owner == "note":
+        return "carryover", _with(W14_CARRYOVER, notes=[obj])
+    if owner == "item":
+        return "carryover", _with(W14_CARRYOVER, items=[obj])
+    field = {"entry": "done", "theme": "themes", "section": "sections", "growth": "growth"}[owner]
+    return "digest", _with(W14_DIGEST, **{field: [obj]})
+
+
+_NESTED_OBJECTS = {
+    "note": W14_CARRYOVER["notes"][0],
+    "item": _carry_item(),
+    "entry": _entry(),
+    "theme": _THEME,
+    "section": _SECTION,
+    "growth": _growth(),
+}
+
+
+@pytest.mark.parametrize(
+    "owner, key",
+    [(owner, key) for owner, obj in _NESTED_OBJECTS.items() for key in obj],
+    ids=lambda v: v,
+)
+def test_refuses_a_nested_object_missing_a_required_key(request, owner, key):
+    obj = copy.deepcopy(_NESTED_OBJECTS[owner])
+    schema, intact = _nested_doc(owner, obj)
+    validator = request.getfixturevalue(schema)
+    validator.validate(intact)
+    del obj[key]
+    _refused(validator, _nested_doc(owner, obj)[1])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"read_id": ""},
+        {"notes": [{**W14_CARRYOVER["notes"][0], "path": ""}]},
+        {"notes": [{**W14_CARRYOVER["notes"][0], "name": ""}]},
+    ],
+    ids=["read_id-empty", "note-path-empty", "note-name-empty"],
+)
+def test_carryover_refuses_an_empty_string(carryover, mutation):
+    _refused(carryover, _with(W14_CARRYOVER, **mutation))
 
 
 @pytest.mark.parametrize(

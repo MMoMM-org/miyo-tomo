@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Behaviour baseline and early smoke checks"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---

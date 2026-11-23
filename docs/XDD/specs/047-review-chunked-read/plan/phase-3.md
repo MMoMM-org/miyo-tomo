@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Previous notes"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 3
 ---
@@ -59,6 +59,9 @@ Reads the review notes of the period before inside the same paced pass and recor
 
   - **Carry-over from the T2.4 review (2026-11-23):** in `review-read.py` `_units` reads `weeks.json["units"]` outside `_stored`'s try, so a stamped `weeks.json` without `units` exits 1 instead of discarding as `stage-invalid`; move the call inside the try (or catch KeyError) with a test, while this task edits `review-read.py`.
 
-- [ ] **T3.3 Phase Validation** `[activity: validate]`
+- [x] **T3.3 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean. Trace F2-AC6, F3-AC1 … F3-AC5, F3-AC7 … F3-AC10, F4-AC9, F6-AC7 to node ids. RED proofs: revert the year-subfolder lookup, the per-call `FORBIDDEN` `KadoToolError` catch and the skeleton check one at a time and record which test fails. WHY docs before code; no eval-gated file changed; `lib/review_period.py` within CON-5.
+
+  - **Outcome (2026-11-23):** full suite in ONE invocation at the phase-3 head: 11,243 passed, 18 skipped, 1 failed — `tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists`, the baseline failure (failing ⊆ baseline); baseline e2e green, goldens unchanged. `ruff check tomo/scripts scripts tests` clean. No file under `tomo/dot_claude/` changed in this phase; `lib/review_period.py` changed by call sites, `quarterly_folder` and `previous_notes` only (CON-5; reviewer-checked). WHY docs edited before code in each commit (implementer reports). RED proofs (T3.1 implementer and reviewers, isolated copies): year-subfolder lookup off → `tests/test_review_previous.py::test_found_in_the_year_subfolder`; per-call FORBIDDEN catch off → `::test_forbidden_read_is_not_read_refused`, `::test_forbidden_listing_is_not_read_refused`; skeleton check off → `::test_skeleton_only_note_is_empty`; resolve before `finish()` → `tests/test_review_period_previous.py::test_a_previous_note_turned_away_is_retried_by_the_end_pass`. Trace: F2-AC6 `tests/test_review_period_previous.py::test_one_summary_covers_the_period_and_the_previous_notes`, `tests/test_review_read_previous.py::test_one_summary_covers_the_period_and_the_previous_notes`; F3-AC1/AC2/AC3 `tests/test_review_previous.py::test_previous_periods_per_kind[*]`, `::test_previous_periods_week_under_sunday_one_day_rule`, `::test_week_previous_month_is_decided_by_the_week_start`, `tests/test_review_read_previous.py::test_the_month_reads_its_previous_month_and_quarter`, `::test_the_quarter_reads_its_previous_quarter`; F3-AC4 `tests/test_review_previous.py::test_found_flat`, `::test_found_in_the_year_subfolder`, `::test_note_under_another_name_is_missing_and_never_searched`; F3-AC5 `::test_each_state_once_per_note_and_review_continues[*]`; F3-AC7 `::test_skeleton_only_note_is_empty`, `::test_any_user_text_is_found`, `::test_only_a_tomo_block_is_found`; F3-AC8 `::test_no_folder_or_format_is_not_set_up_without_a_call`, `tests/test_review_period_previous.py::test_a_kind_not_set_up_costs_no_call`; F3-AC9 (amended v1.2) `tests/test_review_previous.py::test_forbidden_read_is_not_read_refused`, `::test_still_pending_after_the_end_pass_is_failed`, `::test_empty_listing_is_missing[*]`, `tests/test_review_period_previous.py::test_a_refused_previous_note_does_not_stop_the_read`, `::test_refused_dailies_still_stop_the_read[*]`; F3-AC10 `tests/test_review_previous.py::test_note_over_the_limit_cut_at_a_heading_boundary`, `tests/test_review_period_previous.py::test_previous_rows_use_the_day_settings_limit`; F4-AC9 `tests/test_review_previous.py::test_note_is_read_as_it_stands_now`; F6-AC7 `::test_target_note_is_never_a_previous_note[*]`.
+

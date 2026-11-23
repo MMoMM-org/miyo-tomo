@@ -52,7 +52,7 @@ Replaces `read.json` with a stage every agent can read in one call, and a loader
   4. Validate: tests green; module ≤ 300 lines; ruff clean.
   5. Success: every day of a week, month or quarter belongs to exactly one unit inside the period `[ref: PRD/F1-AC1, F1-AC2]`
 
-- [ ] **T2.3 The stage (`lib/review_stage.py`)** `[activity: data-architecture]`
+- [x] **T2.3 The stage (`lib/review_stage.py`)** `[activity: data-architecture]`
 
   1. Prime: `tomo/scripts/lib/review_read_parts.py` (`files_of`/`write`/`load`/`stage_files` 110-188 — the dict contract to reproduce), `lib/review_period.py` result keys 400-427, `lib/review_children.py` entries 58-106, `lib/run_id.py`, `lib/note_io.atomic_write_text`; T2.1 and T2.2 outputs; SDD loader example `[ref: SDD/Data Storage Changes; lines: 535-587]` `[ref: SDD/Implementation Examples; lines: 697-720]` `[ref: SDD/ADR-1, ADR-3, ADR-10]`
   2. Test: `tests/test_review_stage.py`:

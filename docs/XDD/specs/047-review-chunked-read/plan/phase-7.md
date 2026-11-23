@@ -66,6 +66,8 @@ Makes the privacy contract and the user documentation match the new flow, and gi
   4. Validate: both tests green; ruff clean.
   5. Success: the map and the WHY layer cover exactly the files that exist `[ref: SDD/Directory Map]`
 
+  - **Carry-over from the T2.4 review (2026-11-23):** `docs/tomo/dot_claude/skills/periodic-review.md` (~553, ~597) still describes the removed "quarter part → read-invalid" mechanism; `docs/tomo/scripts/review-read.md` should say that a stored read discarded and then stopped by Kado leaves no stage and reports no `discarded` key, and that `--fresh` over an unreadable manifest reports `stage-invalid`.
+
 - [ ] **T7.5 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean. Trace F7-AC1 … F7-AC5 and F8-AC1 to node ids. Read PRIVACY.md and setup.md once against ADR-10's list. No eval-gated file changed.

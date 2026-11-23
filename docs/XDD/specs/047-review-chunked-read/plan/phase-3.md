@@ -55,6 +55,8 @@ Reads the review notes of the period before inside the same paced pass and recor
   4. Validate: `test_review_period*.py`, `test_review_read.py`, `test_review_stage.py` green; full suite green; ruff clean.
   5. Success: the period and its previous notes are read in one paced pass with one report `[ref: PRD/F2-AC6, F3-AC1, F3-AC2, F3-AC3]`
 
+  - **Carry-over from the T2.4 review (2026-11-23):** in `review-read.py` `_units` reads `weeks.json["units"]` outside `_stored`'s try, so a stamped `weeks.json` without `units` exits 1 instead of discarding as `stage-invalid`; move the call inside the try (or catch KeyError) with a test, while this task edits `review-read.py`.
+
 - [ ] **T3.3 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean. Trace F2-AC6, F3-AC1 … F3-AC5, F3-AC7 … F3-AC10, F4-AC9, F6-AC7 to node ids. RED proofs: revert the year-subfolder lookup, the per-call `FORBIDDEN` `KadoToolError` catch and the skeleton check one at a time and record which test fails. WHY docs before code; no eval-gated file changed; `lib/review_period.py` within CON-5.

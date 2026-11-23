@@ -58,6 +58,8 @@ Puts the three agents in place and makes the skill drive them, with the main ses
   4. Validate: skill tests green; full suite green; ruff clean; `settings.json` and every eval-gated file byte-identical.
   5. Success: the skill continues or reads anew, dispatches every job from the main session, and aborts Pass 1 cleanly `[ref: PRD/F6-AC3, F6-AC6]`
 
+  - **Carry-over from the T2.4 review (2026-11-23):** SKILL.md's refused-problems list (~164) does not name `read-stale`; add it with the step 4/5 rewrite.
+
 - [ ] **T6.4 Plugin eval case `review-no-stage-read`** `[activity: testing]`
 
   1. Prime: `evals/README.md` (adding a case, graders' limits), an existing case folder (`evals/pass1-suggest-pipeline/`), memory notes on plugin eval (sees subagent calls; no AskUserQuestion; traces and `input_match`) `[ref: SDD/Quality Requirements/Performance (hard); lines: 1234]` `[ref: SDD/Error Handling; lines: 961]`

@@ -67,7 +67,7 @@ Replaces `read.json` with a stage every agent can read in one call, and a loader
   4. Validate: tests green; module ≤ 300 lines (split encoding helpers out if not, as a recorded deviation); ruff clean.
   5. Success: the read rests in files an agent reads in one call, and is loaded back unchanged `[ref: PRD/F2-AC3, F6-AC5, F7-AC1]` `[ref: SDD/ADR-1, ADR-2, ADR-3]`
 
-- [ ] **T2.4 Switch to the stage: `review-read.py` writes it, `review-doc.py` and the walk load it** `[activity: backend-api]`
+- [x] **T2.4 Switch to the stage: `review-read.py` writes it, `review-doc.py` and the walk load it** `[activity: backend-api]`
 
   One task and one commit (owner 2026-11-23): the read side and the load side change together, so the suite is GREEN before and after the commit and never sees a stage nobody reads or a loader with no stage.
 

@@ -36,7 +36,7 @@ phase: 2
 
 Replaces `read.json` with a stage every agent can read in one call, and a loader that hands `review-doc.py` exactly what it consumes today.
 
-- [ ] **T2.1 One cutter and a public `has_content` (`lib/review_day.py`)** `[activity: domain-modeling]` `[parallel: true]`
+- [x] **T2.1 One cutter and a public `has_content` (`lib/review_day.py`)** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/lib/review_day.py` (`_has_content` 151, the cap loop 261-275, the entry keys 297-309), `tests/test_review_day.py`, `docs/tomo/scripts/lib/review_day.md` `[ref: SDD/ADR-2; lines: 1168]` `[ref: SDD/Building Block View; lines: 397]`
   2. Test: `cut_at_boundary(units, max_chars)` cuts at a section boundary and reports partly read exactly as `read_day` did (existing cases re-pointed); a single section over the limit is hard-cut as today; `has_content` is importable and equals the old private result for the existing fixtures; `read_day` output byte-identical for every existing `test_review_day.py` case.

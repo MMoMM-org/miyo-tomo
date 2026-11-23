@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Condensing — units, digests, carryover, plan and check"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 4
 ---

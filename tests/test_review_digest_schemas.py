@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_digest_schemas.py — spec 047 T4.1: the digest and carryover file contracts.
 
 The two closed schemas under ``tomo/schemas/`` are what ``review-digest.py check``
@@ -7,7 +7,9 @@ validates the agents' files against first (SDD ADR-4, Application Data Models).
 The positive fixtures are the W14 digest and carryover of the SDD's walkthrough (b);
 every refusal case mutates one field of them, so a test fails exactly when the
 schema stops enforcing that one rule (an unknown field, a nested required key, an empty text, a cap,
-an id or key pattern, a type enum, the growth candidates' notes bounds).
+an id or key pattern, a type enum, the growth candidates' notes bounds). A walk over a
+full document (one of every nested object) pins the rest: every value's type, every
+string's non-emptiness, every object's closedness, and every enum member.
 """
 from __future__ import annotations
 
@@ -327,3 +329,92 @@ def test_carryover_refuses_an_empty_string(carryover, mutation):
 )
 def test_digest_refuses_one_mutation_of_the_w14_digest(digest, mutation):
     _refused(digest, _with(W14_DIGEST, **mutation))
+
+
+# --- every field of a full document ------------------------------------------
+# One of every nested object, so a walk over the fixture reaches every keyword of both
+# schemas: each value of the wrong type, each string emptied, each object given an
+# unknown key must be refused, and each enum member must be accepted.
+
+FULL_DIGEST = _with(
+    W14_DIGEST,
+    open=[_entry(1)],
+    notable=[_entry(2)],
+    themes=[copy.deepcopy(_THEME)],
+    sections=[copy.deepcopy(_SECTION)],
+    child_notes=[{"text": "weekly note says", "sources": ["2026-W14"]}],
+    growth=[_growth()],
+)
+_FULL = {"digest": FULL_DIGEST, "carryover": W14_CARRYOVER}
+
+
+def _walk(node, path=()):
+    yield path, node
+    children = node.items() if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else ()
+    for key, child in children:
+        yield from _walk(child, (*path, key))
+
+
+def _replaced(doc, path, value):
+    doc = copy.deepcopy(doc)
+    if not path:
+        return value
+    parent = doc
+    for key in path[:-1]:
+        parent = parent[key]
+    parent[path[-1]] = value
+    return doc
+
+
+def _wrong_types(value) -> list:
+    if isinstance(value, dict):
+        return [[], "x"]
+    if isinstance(value, list):
+        return ["x", {}]
+    if isinstance(value, str):
+        return [1, None]
+    if isinstance(value, int):
+        return [1.5, "2"]
+    raise TypeError(value)
+
+
+def _cases(predicate, make):
+    return [
+        pytest.param(schema, path, bad, id=f"{schema}:{'/'.join(map(str, path)) or '<root>'}:{bad!r}")
+        for schema, doc in _FULL.items()
+        for path, value in _walk(doc)
+        if predicate(value)
+        for bad in make(value)
+    ]
+
+
+@pytest.mark.parametrize("schema", list(_FULL))
+def test_full_document_validates(request, schema):
+    request.getfixturevalue(schema).validate(_FULL[schema])
+
+
+@pytest.mark.parametrize("schema, path, bad", _cases(lambda v: True, _wrong_types))
+def test_refuses_a_value_of_the_wrong_type(request, schema, path, bad):
+    _refused(request.getfixturevalue(schema), _replaced(_FULL[schema], path, bad))
+
+
+@pytest.mark.parametrize("schema, path, bad", _cases(lambda v: isinstance(v, str), lambda v: [""]))
+def test_refuses_an_empty_string_anywhere(request, schema, path, bad):
+    _refused(request.getfixturevalue(schema), _replaced(_FULL[schema], path, bad))
+
+
+@pytest.mark.parametrize(
+    "schema, path, bad", _cases(lambda v: isinstance(v, dict), lambda v: [{**v, "unknown_key": 1}])
+)
+def test_refuses_an_unknown_key_on_any_object(request, schema, path, bad):
+    _refused(request.getfixturevalue(schema), _replaced(_FULL[schema], path, bad))
+
+
+@pytest.mark.parametrize("kind", ["week", "month", "quarter"])
+def test_carryover_accepts_every_note_kind(carryover, kind):
+    carryover.validate(_with(W14_CARRYOVER, notes=[{**W14_CARRYOVER["notes"][0], "kind": kind}]))
+
+
+@pytest.mark.parametrize("item_type", ["open", "intention", "theme"])
+def test_carryover_accepts_every_item_type(carryover, item_type):
+    carryover.validate(_with(W14_CARRYOVER, items=[{**_carry_item(), "type": item_type}]))

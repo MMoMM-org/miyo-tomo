@@ -56,7 +56,7 @@ Pins what the review document and Pass 2 look like today for a week, a month and
   4. Validate: GREEN on the old flow; full suite green; ruff clean.
   5. Success: the before-state of the document and of Pass 2 is pinned for all three kinds `[ref: PRD/F2-AC1, F2-AC2]`
 
-- [ ] **T1.4 Smoke checks in the test instance (owner go)** `[activity: validate]`
+- [x] **T1.4 Smoke checks in the test instance (owner go)** `[activity: validate]`
 
   1. Prime: `tomo/dot_claude/agents/inbox-analyst.md:1-12` (frontmatter pattern), `tomo/dot_claude/settings.json:33` (`Edit(tomo-tmp/*)`, read only — never edited); `_inbox/from-kado/` (check first for the per-path denial shape), `tomo/scripts/lib/kado_client.py:51-52, 761` `[ref: SDD/Implementation Gotchas; lines: 1302-1303]` `[ref: SDD/ADR-7; lines: 1201]`
   2. Test, as explicit owner-gated steps (announce, wait for the go, report at once):
@@ -66,6 +66,8 @@ Pins what the review document and Pass 2 look like today for a week, a month and
   3. Implement: record the three outcomes as notes under this task. If (1) fails without pre-creation, T4.3 makes `review-digest.py plan` pre-create `digests/`; if it fails in both forms, stop and bring it to the owner (a `settings.json` change needs the full eval suite, CON-6). If (2) fails, lower `FILE_CEILING` in T2.2 to the largest size that passed, as a recorded deviation.
   4. Validate: outcomes recorded; nothing under `tomo/` changed; `tomo-privat` untouched.
   5. Success: the agents' file writes and one-call reads are proven before the agents are built `[ref: SDD/ADR-2, ADR-7; SDD/Implementation Gotchas]`
+
+  - **Outcome (2026-11-23, owner go, headless `claude -p` 2.1.316 via `docker exec` in `tomo-tomo-instance`; `tomo-privat` untouched):** (1) a throwaway haiku agent (`tools: Read, Write`, `permissionMode: acceptEdits`) wrote `tomo-tmp/review/smoke/digests/x.json` with `digests/` NOT pre-created — no permission prompt, the folder was created; the pre-created form (`digests2/y.json`) also worked → no pre-creation needed in T4.3. (2) Read in one call, no offset: a 40,965-byte indent=1 file of `x`-runs stopped at line 294 of 477 (25,000-token cap); word-like DE/EN files of 24,108, 32,627 and 40,573 bytes each returned whole (last line, end marker present, not partial). Owner decision: `FILE_CEILING` = 32,768 bytes (margin for link- or hash-heavy text; real days ≤ 8.3 KB, digests ≤ 8 KB) — a recorded deviation for T2.2. (3) Kado per-path denial (from `_inbox/from-kado/2026-11-11_kado-to-tomo_tag-access-rules.md` and `kado_client.py:51-52, 761`): a denied note answers a tool error `FORBIDDEN` (`KadoToolError`), not HTTP 403; 401/403 (`KadoAuthError`) means a wrong token → ADR-5 catches `KadoToolError` FORBIDDEN per previous-note call (cause `refused`), never `KadoAuthError`. Throwaway agent and smoke folder removed; nothing under `tomo/` changed.
 
 - [x] **T1.5 Size measurement of 2026-Q1 on the old flow (owner go)** `[activity: validate]`
 

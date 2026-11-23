@@ -56,6 +56,8 @@
 | 2026-11-23 | T1.3: the quarter baseline runs with one mapped section (mark suffixes render only in mapped sections, so the mark-suffix RED proof can fail); week and month stay unmapped | Orchestrator; both layouts pinned |
 | 2026-11-23 | T1.5 measured 2026-Q1 (454 calls, 0 retries, day max 8.3 KB, week max 46.7 KB indented — ADR-2 day/week limits hold); `growth.created` (746 notes, ~158 KB indented) is 4× the context ceiling | Measurement (owner go) |
 | 2026-11-23 | Deviation from ADR-1/2/4: vault growth (created notes) goes per week unit to the digesters; `context.json` keeps growth counts and MOC changes only; the read report stays in `manifest.json`, not proposer input | Owner (recommended): fewest tokens for the opus proposer |
+| 2026-11-23 | T1.4 smoke (headless in tomo-instance): nested agent write works under acceptEdits without pre-creation; Read returns 24–40.5 KB of word-like text whole but cuts a 41 KB poorly-tokenizing file at the 25k-token cap; Kado per-path denial is a FORBIDDEN tool error (KadoToolError), not 403 | Smoke checks (owner go) |
+| 2026-11-23 | Deviation from ADR-2: FILE_CEILING = 32,768 bytes (was 40,960); ADR-5 catches KadoToolError FORBIDDEN for previous notes (not KadoAuthError) | Owner (recommended) / fact correction |
 
 ## Context
 

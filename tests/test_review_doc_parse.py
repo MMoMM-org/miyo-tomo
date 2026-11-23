@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.5
+# version: 0.3.6
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -34,7 +34,11 @@ needs --confirm (no Kado call before), --confirm writes over Tomo's document
 from the kept files, resets meta.json and clears the stage, a non-Tomo file
 is still doc-name-taken, --abort deletes the stage content and proposals.json only;
 write records only link-stem lists per Tomo item in meta.json — nothing
-text-derived, a low-entropy habit line is not recoverable from it. All
+text-derived, a low-entropy habit line is not recoverable from it. Spec 047
+T5.5 (ADR-9, F5-AC4, F5-AC5): a carried mark (` · done (previous review)`,
+a child mark after it) is item text — kept as rendered or as the user left
+it, never an edit, never a done tick; an unticked or deleted carried item is
+absent; a trailing done marker is cut and nothing before it. All
 data is synthetic.
 """
 from __future__ import annotations
@@ -529,6 +533,149 @@ def test_approved_review_record_keeps_only_kept_items_in_rendering_order():
                                 {"id": "t4", "origin": "tomo", "kept": True, "edited": False}]
     assert public["done"][0] == {"id": "t1", "origin": "tomo", "kept": False, "edited": False}
     assert "text" not in json.dumps(public) and "Ganz neu" not in json.dumps(public)
+
+
+# ---------------------------------------------------------------- carried items (spec 047 T5.5, ADR-9, F5-AC4, F5-AC5)
+# The lines are written literally in the rendered shape of SDD "Example: The rendered line" (labels from ADR-6),
+# so this regression does not depend on the renderer: a carried mark is text of the item line, nothing more.
+
+CARRIED_FRONT = ["---", "tomo:", "  doc_type: review", "review_period: 2026-W14", "review_kind: week",
+                 "review_language: en", "---"]
+CARRIED_T1 = ("- [x] Started running again: 5 km run ([[2026-W13]], [[2026-02]], [[2026-03-31]])"
+              " · done (previous review) %%t1%%")
+CARRIED_T2 = "- [x] Call Jana about the trip ([[2026-W13]]) · not mentioned again (previous review) %%t2%%"
+CARRIED_T3 = "- [x] Fix the bike ([[2026-W13]], [[2026-03-30]]) · still open (previous review) %%t3%%"
+CARRIED_T4 = "- [x] Book the dentist ([[2026-W13]], [[2026-03-31]]) · still open (previous review) %%t4%%"
+CARRIED_T5 = "- [x] Sleep before midnight ([[2026-W13]]) · not mentioned again (previous review) %%t5%%"
+CARRIED_LINKS = {"t1": ["2026-W13", "2026-02", "2026-03-31"], "t2": ["2026-W13"], "t3": ["2026-W13", "2026-03-30"],
+                 "t4": ["2026-W13", "2026-03-31"], "t5": ["2026-W13"]}
+
+
+def carried_document() -> str:
+    return "\n".join(CARRIED_FRONT + [
+        "# 2026-W14 Review",
+        "> [!info] Target: [[2026-W14]] (exists)",
+        "> Previous review · week 2026-W13: found, 5 carried",
+        "- [x] Approved",
+        "",
+        "## Done", CARRIED_T1,
+        "",
+        "## Open", CARRIED_T2, CARRIED_T3, CARRIED_T4,
+        "",
+        "## Recurring themes", CARRIED_T5,
+    ]) + "\n"
+
+
+def item_text(line: str) -> str:
+    """What the parser reads as the item's text: everything between the box and the id."""
+    return line[len("- [x] "):line.rindex(" %%t")]
+
+
+# a month review whose section s1 holds a carried item with a child mark too (ADR-6 suffix order: carried, child)
+CARRIED_T7 = ("- [x] Weniger Bildschirm am Abend ([[2026-02]], [[2026-03-12]]) · noch offen (letzter Rückblick)"
+              " · in keinem Wochenrückblick %%t7%%")
+CARRIED_SECTIONS = [{"key": "s1", "count": 1, "empty": False}]
+
+
+def carried_section_document(t7: str = CARRIED_T7) -> str:
+    return "\n".join(["---", "tomo:", "  doc_type: review", "review_period: 2026-03", "review_kind: month",
+                      "review_language: de", "---",
+                      "# 2026-03 Review",
+                      "> [!info] Ziel: [[2026-03]] (vorhanden)",
+                      "> Letzter Rückblick · Monat 2026-02: gefunden, 1 übernommen",
+                      "- [x] Approved",
+                      "",
+                      "## Gewohnheiten %%s1%%",
+                      "- [x] Abschnitt übernehmen %%s1%%",
+                      "*Landet: direkt unter „Gewohnheiten“ (Ebene 2)*",
+                      t7,
+                      ""]) + "\n"
+
+
+def test_a_ticked_carried_line_keeps_its_mark_as_item_text():
+    # falsifies M1 (text after " · " stripped on parse): the mark would be cut from every text below
+    text = carried_document()
+    reference = rdp.link_stems(text)
+    assert reference == CARRIED_LINKS                   # the mark adds no link stem
+    doc = parse(text, reference)
+    assert doc.warnings == [] and doc.approved is True  # the info callout's continuation line is no structure
+    items = by_id(doc)
+    assert [it.id for it in doc.items] == ["t1", "t2", "t3", "t4", "t5"]
+    for item_id, line in zip(["t1", "t2", "t3", "t4", "t5"], [CARRIED_T1, CARRIED_T2, CARRIED_T3, CARRIED_T4, CARRIED_T5]):
+        item = items[item_id]
+        assert (item.origin, item.kept, item.edited, item.text, item.lines) == \
+            ("tomo", True, False, item_text(line), []), item_id
+    assert items["t1"].text.endswith(" · done (previous review)")
+    assert doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 0}
+    record = doc.approved_review()
+    assert [it["text"] for it in record["groups"]["done"]] == [item_text(CARRIED_T1)]
+    assert [it["text"] for it in record["groups"]["open"]] == [item_text(x) for x in (CARRIED_T2, CARRIED_T3, CARRIED_T4)]
+    assert [it["text"] for it in record["groups"]["themes"]] == [item_text(CARRIED_T5)]
+
+
+def test_a_carried_mark_the_user_edited_or_deleted_is_kept_as_left_and_is_no_edit():
+    # falsifies M1 (the user's words after " · " cut) and M4 (a changed mark read as an edit)
+    text = carried_document()
+    reference = rdp.link_stems(text)
+    reworded = CARRIED_T1.replace(" · done (previous review)", " · done, ran twice")
+    no_mark = CARRIED_T3.replace(" · still open (previous review)", "")
+    retagged = CARRIED_T4.replace("still open (previous review)", "done (previous review)")
+    edited_doc = replace_line(replace_line(replace_line(text, CARRIED_T1, reworded), CARRIED_T3, no_mark),
+                              CARRIED_T4, retagged)
+    doc = parse(edited_doc, reference)
+    items = by_id(doc)
+    assert (items["t1"].text, items["t1"].edited, items["t1"].kept) == (
+        "Started running again: 5 km run ([[2026-W13]], [[2026-02]], [[2026-03-31]]) · done, ran twice", False, True)
+    assert (items["t3"].text, items["t3"].edited, items["t3"].kept) == (
+        "Fix the bike ([[2026-W13]], [[2026-03-30]])", False, True)
+    assert (items["t4"].text, items["t4"].edited, items["t4"].kept) == (
+        "Book the dentist ([[2026-W13]], [[2026-03-31]]) · done (previous review)", False, True)
+    assert rdp.link_stems(edited_doc) == reference      # link stems unchanged by any mark edit
+    assert doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 0}
+    # a dropped link next to the mark is an edit, as for any item
+    dropped = replace_line(text, CARRIED_T1, CARRIED_T1.replace(", [[2026-02]]", ""))
+    assert by_id(parse(dropped, reference))["t1"].edited is True
+
+
+def test_an_unticked_or_deleted_carried_item_is_absent():
+    # falsifies M3 (a carried "done" mark read as a done tick): the unticked t1 would land
+    text = carried_document()
+    reference = rdp.link_stems(text)
+    edited_doc = replace_line(text, CARRIED_T1, "- [ ]" + CARRIED_T1[5:])
+    edited_doc = replace_line(edited_doc, CARRIED_T2, "- [ ]" + CARRIED_T2[5:])
+    edited_doc = replace_line(edited_doc, CARRIED_T4, None)
+    doc = parse(edited_doc, reference)
+    items = by_id(doc)
+    assert items["t1"].kept is False and items["t2"].kept is False and "t4" not in items
+    assert doc.counts() == {"kept": 2, "unticked": 2, "deleted": 1, "added": 0}
+    record = doc.approved_review()
+    landed = [it["id"] for group in record["groups"].values() for it in group]
+    assert landed == ["t3", "t5"]
+    assert "done (previous review)" not in json.dumps(record, ensure_ascii=False)
+    # every carried item unticked: nothing to deliver
+    for line in (CARRIED_T3, CARRIED_T5):
+        edited_doc = replace_line(edited_doc, line, "- [ ]" + line[5:])
+    assert parse(edited_doc, reference).nothing_to_deliver() is True
+
+
+def test_both_marks_and_a_trailing_done_date_read_the_date_only_as_the_done_mark():
+    # falsifies M1 (both marks cut) and M2 (the done mark swallowing the " · " suffix before it)
+    plain = item_text(CARRIED_T7)
+    assert plain.endswith(" · noch offen (letzter Rückblick) · in keinem Wochenrückblick")
+    reference = rdp.link_stems(carried_section_document())
+    assert reference == {"t7": ["2026-02", "2026-03-12"]}
+    for marked in (CARRIED_T7 + DONE_MARK, CARRIED_T7 + " ✅️ 2026-11-12",
+                   CARRIED_T7[:-len(" %%t7%%")] + DONE_MARK + " %%t7%%"):
+        doc = rdp.parse_document(carried_section_document(marked), pass1_links=reference,
+                                 pass1_sections=CARRIED_SECTIONS)
+        item = by_id(doc)["t7"]
+        assert (item.group, item.kept, item.edited, item.text) == ("s1", True, False, plain), marked
+        assert doc.warnings == [] and doc.sections == {"s1": True} and doc.lands(item)
+        assert "✅" not in json.dumps(doc.approved_review(), ensure_ascii=False)
+    # the same holds for a group item with one carried mark
+    text = carried_document()
+    doc = parse(replace_line(text, CARRIED_T1, CARRIED_T1 + DONE_MARK), rdp.link_stems(text))
+    assert (by_id(doc)["t1"].text, by_id(doc)["t1"].edited) == (item_text(CARRIED_T1), False)
 
 
 # ---------------------------------------------------------------- the script

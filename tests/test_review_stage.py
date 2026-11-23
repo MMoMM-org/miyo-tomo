@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_stage.py — the stage a /review read rests in (lib/review_stage.py; spec 047 T2.3;
 PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; SDD ADR-1, ADR-2, ADR-3, ADR-10, "Data Storage Changes").
 
@@ -21,10 +21,12 @@ Mechanisms each test falsifies:
   context.json holds the link differences, per-day fields (F2-AC3) and growth counts only; load
   rebuilds growth.created; every created note sits in the growth file of its creation day;
   the read report is only in manifest.json;
-- load refuses a stale file (read_id) and a pre-047 stage (missing);
+- load refuses a stale file (read_id) and a pre-047 stage (missing); a manifest or context name that
+  leaves the stage (the name string is checked, not its last component) and a name or list of the
+  wrong type are invalid; a stamped file missing a key is invalid, not a KeyError;
 - sections_digest is stable and follows a mapping row; can_continue needs layout, period, kind
   and digest equal;
-- discard keeps only meta.json and payloads.json (F7-AC1); a new read discards first (F6-AC5).
+- discard keeps only meta.json and payloads.json (F7-AC1), temp leftovers <name>.json.tmp removed; a new read discards first (F6-AC5).
 
 All data is synthetic.
 """
@@ -505,13 +507,62 @@ def test_load_refuses_a_stage_without_a_manifest_as_missing(tmp_path, legacy):
         rs.load(stage)
 
 
-def test_load_refuses_an_unsafe_file_name_in_the_manifest(tmp_path):
-    _write(tmp_path / "s", _result())
-    manifest = _json(tmp_path / "s" / "manifest.json")
-    manifest["files"]["days"][0] = "../../x.json"
-    (tmp_path / "s" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+def _every_kind_result() -> dict:
+    tasks = [{"text": f"open task {i} " + "y" * 300, "done": False, "source": "T.md"} for i in range(300)]
+    return _result(growth={"created": [{"path": "Notes/A.md", "links": ["B"], "day": "2026-03-24"}],
+                           "mocs_changed": [], "mocs_linked_by_new": []},
+                   previous=[{"kind": "week", "name": "2026-W12", "sections": {"Wins": "a win"}}],
+                   weekly=[{"week": "2026-W13", "path": "Weekly/2026-W13.md", "day_blocks": {"2026-03-24": "x"}}],
+                   open_tasks=tasks)
+
+
+@pytest.mark.parametrize("kind", ["days", "growth", "children", "previous", "context", "parts", "weeks"])
+def test_load_refuses_an_unsafe_file_name_in_the_manifest(tmp_path, kind):
+    stage = tmp_path / "s"
+    _write(stage, _every_kind_result())
+    manifest = _json(stage / "manifest.json")
+    files = manifest["files"]
+    outside = tmp_path / "x.json"
+    if kind == "parts":
+        context = _json(stage / "context.json")
+        (stage / context["parts"][0]).replace(outside)
+        context["parts"][0] = "../x.json"
+        (stage / "context.json").write_text(json.dumps(context), encoding="utf-8")
+    elif kind == "weeks":
+        (stage / files["weeks"]).replace(outside)
+        files["weeks"] = "../x.json"
+    elif kind == "context":
+        (stage / files["context"][0]).replace(outside)
+        files["context"][0] = "../x.json"
+    else:
+        (stage / kind / files[kind][0]).replace(outside)
+        files[kind][0] = "../../x.json"
+    (stage / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(rs.StageInvalid):
-        rs.load(tmp_path / "s")
+        rs.load(stage)
+
+
+@pytest.mark.parametrize("change", [("days", "2026-03-23.json"), ("days", [5]), ("growth", {"a": 1}),
+                                    ("weeks", 5), ("context", "context.json"), ("parts", "context-2.json")])
+def test_load_refuses_a_name_or_list_of_the_wrong_type(tmp_path, change):
+    stage = tmp_path / "s"
+    _write(stage, _every_kind_result())
+    kind, value = change
+    target = "context.json" if kind == "parts" else "manifest.json"
+    doc = _json(stage / target)
+    (doc if kind == "parts" else doc["files"])[kind] = value
+    (stage / target).write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(rs.StageInvalid):
+        rs.load(stage)
+
+
+def test_load_refuses_a_stamped_file_missing_a_key_as_invalid(tmp_path):
+    stage = tmp_path / "s"
+    manifest = _write(stage, _every_kind_result())
+    path = stage / "growth" / manifest["files"]["growth"][0]
+    path.write_text(json.dumps({"read_id": manifest["read_id"], "date": "2026-03-24"}), encoding="utf-8")
+    with pytest.raises(rs.StageInvalid):
+        rs.load(stage)
 
 
 # ---------------------------------------------------------------- continue and the digest
@@ -567,6 +618,17 @@ def test_discard_leaves_only_meta_and_payloads(tmp_path):
     rs.discard(stage)
     assert sorted(p.name for p in stage.iterdir()) == ["meta.json", "payloads.json"]
     rs.discard(tmp_path / "absent")
+
+
+def test_discard_removes_temp_leftovers_of_content_files(tmp_path):
+    stage = tmp_path / "s"
+    _write(stage, _result())
+    for name in ("context.json.tmp", "weeks.json.tmp", "context-2.json.tmp", "manifest.json.tmp"):
+        (stage / name).write_text("{}\n", encoding="utf-8")
+    (stage / "meta.json").write_text("{}\n", encoding="utf-8")
+    (stage / "payloads.json").write_text("{}\n", encoding="utf-8")
+    rs.discard(stage)
+    assert sorted(p.name for p in stage.iterdir()) == ["meta.json", "payloads.json"]
 
 
 def test_a_new_read_discards_all_earlier_material_first(tmp_path):

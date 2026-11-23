@@ -151,6 +151,27 @@ that; each unit then names its `day_files`, `growth_files` and its
 one), so `review-digest.py plan` hands a digester exactly its files.
 `takes_part` is `review_weeks.takes_part` with the day's created count.
 
+## WHY Every Name From a Stage File Is Checked Whole
+
+WHY: code review of T2.3. `load` opens the files the manifest and
+`context.json` name: `days`, `growth`, `children`, `previous`, the `context`
+list, `weeks`, and the context `parts`. Checking only the last path component
+of `stage / folder / name` let a manifest entry `../../x.json` open a
+read_id-stamped file outside the stage. So the name string itself must
+`fullmatch` `[A-Za-z0-9][A-Za-z0-9._-]*\.json` before it is joined to a
+path: no `/`, no `\`, no leading dot, so no `..` segment can be formed. A
+list that is not a list, or a name that is not a string, is `StageInvalid`
+too, never a `TypeError`.
+
+## WHY `load` Raises Only Its Three Errors
+
+WHY: code review of T2.3. A file can be valid JSON, stamped with this read's
+`read_id`, and still miss a key (`growth/<date>.json` without `created`) or
+carry a wrong type. The callers (`review-digest.py`, `review-doc.py`) handle
+`StageMissing`, `StageInvalid` and `StageStale`; a stray `KeyError`,
+`TypeError`, `ValueError` or `AttributeError` from a malformed file would end
+them with a traceback. `load` re-raises those as `StageInvalid`.
+
 ## WHY `sections_digest` and the Continue Check
 
 WHY: ADR-3. A stored read is continued only when nothing it depends on
@@ -170,6 +191,11 @@ WHY: ADR-10, F7-AC1. Every other file of the stage may hold note content:
 first, so a discard that dies half-way leaves a stage `load` calls missing.
 `meta.json` and `payloads.json` belong to the written document
 (`review-doc.py`, `review-instructions.py`).
+
+A temp leftover `<name>.json.tmp` of any of those files is removed too:
+`note_io.atomic_write_text` writes the temp sibling (`note_io.temp_sibling`,
+suffix `note_io.TEMP_SUFFIX`) beside the target and renames it, so a run that
+died mid-write leaves the temp file, and it holds the same note content.
 
 ## History: `lib/review_read_parts.py` (spec 046 T3.4, ADR-7)
 

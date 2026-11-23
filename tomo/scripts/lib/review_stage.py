@@ -1,5 +1,5 @@
 # review_stage.py — the stage a /review read rests in: day, growth, child and context files, weeks.json, the manifest.
-# version: 0.1.1
+# version: 0.1.2
 """The stage folder of a ``/review`` read (spec 047 T2.3; PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; ADR-1/2/3/10).
 
 ``write(stage, result, *, stem, rule, sections_digest)`` discards the stage's
@@ -19,8 +19,10 @@ manifest's ``over_ceiling``. Returns the manifest.
 ``condensed`` (``condensed.json`` or ``None``) and ``carryover``
 (``carryover.json`` when the condensed carryover passed, else ``None``).
 ``StageMissing``: no manifest (also a pre-047 stage); ``StageInvalid``: an
-unreadable file or unsafe name; ``StageStale``: a file of another read.
-``discard(stage)`` keeps only ``meta.json`` and ``payloads.json``.
+unreadable or malformed file, or a file name that is not one safe stage name;
+``StageStale``: a file of another read. ``load`` raises nothing else.
+``discard(stage)`` keeps only ``meta.json`` and ``payloads.json`` (temp
+leftovers ``<name>.json.tmp`` included in what it removes).
 ``can_continue(stage, period, digest)`` and ``sections_digest(definitions)``
 are the continue check.
 
@@ -39,7 +41,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from lib import review_weeks
 from lib import run_id as run_ids
-from lib.note_io import atomic_write_text
+from lib.note_io import TEMP_SUFFIX, atomic_write_text
 from lib.period import Period, WeekRule
 from lib.review_stage_codec import (FILE_CEILING, child_entry, child_text, compact, day_entry, day_text, encode,
                                     growth_files, mark_partly_read, merge, pack_parts, place, previous_doc,
@@ -53,7 +55,8 @@ CHILD_LABELS = ("weekly", "monthly")
 KEPT = ("meta.json", "payloads.json")
 NO_SECTIONS = "none"
 _NOT_CONTEXT = ("days", "growth", "report", "not_read", "previous") + CHILD_LABELS
-_CONTENT_FILE_RE = re.compile(r"(?:context(?:-\d+)?|read(?:-[\w-]+)?|weeks|carryover|proposals|condensed)\.json")
+_CONTENT_FILE_RE = re.compile(r"(?:context(?:-\d+)?|read(?:-[\w-]+)?|weeks|carryover|proposals|condensed|manifest)"
+                              r"\.json(?:" + re.escape(TEMP_SUFFIX) + r")?")
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.json")
 
 
@@ -168,9 +171,19 @@ def write(stage: Path, result: dict, *, stem: str, rule: WeekRule, sections_dige
 
 # ---------------------------------------------------------------- load
 
+def _name(value: object) -> str:
+    if not isinstance(value, str) or not _NAME_RE.fullmatch(value):
+        raise StageInvalid(f"unsafe stage file name: {value!r}")
+    return value
+
+
+def _names(value: object) -> List[str]:
+    if not isinstance(value, list):
+        raise StageInvalid(f"stage file list is not a list: {value!r}")
+    return [_name(v) for v in value]
+
+
 def _object(path: Path) -> dict:
-    if not _NAME_RE.fullmatch(path.name):
-        raise StageInvalid(f"unsafe stage file name: {path.name!r}")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except OSError:
@@ -182,10 +195,10 @@ def _object(path: Path) -> dict:
     return data
 
 
-def _stamped(path: Path, read_id: str) -> dict:
-    data = _object(path)
+def _stamped(folder: Path, name: object, read_id: str) -> dict:
+    data = _object(folder / _name(name))
     if data.get("read_id") != read_id:
-        raise StageStale(f"{path.name} belongs to another read")
+        raise StageStale(f"{name} belongs to another read")
     return data
 
 
@@ -201,16 +214,23 @@ def _manifest(stage: Path) -> dict:
 def load(stage: Path) -> dict:
     """The read result of the stage plus ``previous``, ``condensed`` and ``carryover``."""
     manifest = _manifest(stage)
+    try:
+        return _load(stage, manifest)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise StageInvalid(f"malformed stage file: {type(exc).__name__}") from None
+
+
+def _load(stage: Path, manifest: dict) -> dict:
     read_id, files = manifest["read_id"], manifest["files"]
-    names = files.get("context") or [CONTEXT]
-    context = _stamped(stage / names[0], read_id)
-    for name in context.get("parts") or []:
-        part = _stamped(stage / name, read_id)
+    names = _names(files.get("context") or [CONTEXT])
+    context = _stamped(stage, names[0], read_id)
+    for name in _names(context.get("parts") or []):
+        part = _stamped(stage, name, read_id)
         merge(context, {k: v for k, v in part.items() if k not in ("read_id", "part")})
-    _stamped(stage / files.get("weeks", WEEKS), read_id)
+    _stamped(stage, files.get("weeks", WEEKS), read_id)
     created: List[dict] = []
-    for name in files.get("growth", []):
-        doc = _stamped(stage / GROWTH / name, read_id)
+    for name in _names(files.get("growth", [])):
+        doc = _stamped(stage / GROWTH, name, read_id)
         created += [dict(c, day=doc["date"]) for c in doc["created"]]
     growth = context.get("growth") or {}
     result = {k: v for k, v in context.items() if k not in ("read_id", "parts", "fields", "growth")}
@@ -218,16 +238,17 @@ def load(stage: Path) -> dict:
                         "mocs_changed": growth.get("mocs_changed", []),
                         "mocs_linked_by_new": growth.get("mocs_linked_by_new", [])}
     result.update(period=manifest["period"], report=manifest.get("report"), not_read=manifest.get("not_read", []),
-                  days=[day_entry(_stamped(stage / DAYS / n, read_id)) for n in files.get("days", [])])
+                  days=[day_entry(_stamped(stage / DAYS, n, read_id)) for n in _names(files.get("days", []))])
     for label in manifest.get("child_labels", []):
         result[label] = []
-    for name in files.get("children", []):
-        result.setdefault(name.split("-", 1)[0], []).append(child_entry(_stamped(stage / CHILDREN / name, read_id)))
-    result["previous"] = [previous_entry(_stamped(stage / PREVIOUS / n, read_id)) for n in files.get("previous", [])]
-    condensed = _stamped(stage / CONDENSED, read_id) if (stage / CONDENSED).exists() else None
+    for name in _names(files.get("children", [])):
+        result.setdefault(name.split("-", 1)[0], []).append(child_entry(_stamped(stage / CHILDREN, name, read_id)))
+    result["previous"] = [previous_entry(_stamped(stage / PREVIOUS, n, read_id))
+                          for n in _names(files.get("previous", []))]
+    condensed = _stamped(stage, CONDENSED, read_id) if (stage / CONDENSED).exists() else None
     result["condensed"] = condensed
     passed = ((condensed or {}).get("carryover") or {}).get("state") == "passed"
-    result["carryover"] = _stamped(stage / CARRYOVER, read_id) if passed else None
+    result["carryover"] = _stamped(stage, CARRYOVER, read_id) if passed else None
     return result
 
 

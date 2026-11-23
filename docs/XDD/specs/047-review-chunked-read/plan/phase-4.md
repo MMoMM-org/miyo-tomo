@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Condensing — units, digests, carryover, plan and check"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 4
 ---
@@ -73,6 +73,9 @@ Turns the stage into dispatchable jobs, checks every agent file before anything 
   4. Validate: full suite green; ruff clean.
   5. Success: no document is written before every unit is passed or named as not condensed `[ref: PRD/F6-AC1; SDD/ADR-4]`
 
-- [ ] **T4.5 Phase Validation** `[activity: validate]`
+- [x] **T4.5 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN (baseline e2e unchanged); ruff clean. Trace F6-AC1, F6-AC2, F6-AC8 and the F1-AC1 / F1-AC6 / F6-AC4 collaborations to node ids. RED proofs: revert the `days-mismatch` check, the second-attempt `failed` transition, the per-note item removal and the `growth-note-outside-unit` check one at a time. WHY docs before code; no eval-gated file changed.
+
+  - **Outcome (2026-11-23):** full suite in ONE invocation at the phase-4 head: 11,702 passed, 17 skipped, 1 failed — `tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists`, the baseline failure (failing ⊆ baseline); baseline e2e green with `tests/fixtures/047-baseline/*` unchanged (the walk now condenses with fixture agents). `ruff check tomo/scripts scripts tests` clean. No file under `tomo/dot_claude/` changed in this phase (eval-gated files untouched). WHY docs edited before code (implementer reports). RED proofs (T4.2 implementer and reviewers, isolated copies): `days-mismatch` off → `tests/test_review_digest.py::test_each_digest_fixture_produces_exactly_its_error[days-mismatch-left-out]` (+2 days cases); second-attempt `failed` → always `retry` → `::test_pending_retry_failed` (+3 carryover tests); per-note item removal dropped → `::test_settle_removes_only_the_failed_notes_items`; `growth-note-outside-unit` off → `::test_each_digest_fixture_produces_exactly_its_error[growth-note-outside-unit-w14]`, `[...-not-created]`. Schema contracts: 190 pattern + 228 keyword mutations, 0 green (`tests/test_review_digest_schemas.py`, T4.1 round 4). Trace: F6-AC1 `tests/test_review_digest.py::test_digest_naming_a_day_outside_its_unit_is_retried_then_failed`, `tests/test_047_t4_4_condense_gate.py::test_a_failed_unit_is_not_waited_for`, `::test_an_item_on_a_failed_units_day_is_rejected_as_spec_045_rejects_one`, `::test_write_refuses_a_unit_still_open[pending]`, `[retry]`; F6-AC2 `tests/test_review_digest.py::test_a_carryover_failing_as_a_whole_after_the_retry_is_carry_failed`, `::test_one_notes_invalid_items_fail_that_note_only_and_leave_carryover_json`, `::test_a_crash_between_the_two_writes_keeps_the_failed_note`; F6-AC8 `::test_every_unit_failed_stops_nothing_condensed_and_keeps_the_stage`; collaborations — F1-AC1 `::test_each_digest_fixture_produces_exactly_its_error[days-mismatch-*]`; F1-AC6 `::test_plan_march_dispatches_six_digesters_and_the_carryover_of_the_found_note`, `::test_a_unit_without_a_taking_part_day_is_not_dispatched`; F6-AC4 `::test_plan_on_a_continued_read_validates_present_files_without_an_attempt`, `::test_plan_offers_a_unit_failed_in_an_earlier_session_again`.
+

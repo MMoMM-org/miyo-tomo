@@ -166,7 +166,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 1: Behaviour baseline and early smoke checks](phase-1.md)
 - [x] [Phase 2: Stage layout, limits and the loader](phase-2.md)
 - [x] [Phase 3: Previous notes](phase-3.md)
-- [ ] [Phase 4: Condensing — units, digests, carryover, plan and check](phase-4.md)
+- [x] [Phase 4: Condensing — units, digests, carryover, plan and check](phase-4.md)
 - [ ] [Phase 5: Carried items, their checks and the top lines](phase-5.md)
 - [ ] [Phase 6: Agents, skill dispatch and STRICT rules](phase-6.md)
 - [ ] [Phase 7: Privacy, deletion, measurement and documentation](phase-7.md)

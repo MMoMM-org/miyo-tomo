@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_proposals_carried_schema.py — spec 047 T5.1: `carried` and `carried_ids` in the proposals schema.
 
 Validates against ``tomo/schemas/review-proposals.schema.json`` directly, without ``review-doc.py``
@@ -16,12 +16,13 @@ Pinned here:
 - a tree walk over a full proposals document refuses, for every node carrying the fields, a wrong
   type, an empty string / empty array and an unknown key;
 - a guard on the schema itself: the places carrying ``pattern``, the new fields and ``dependentRequired``;
-- every proposals fixture of specs 045/046 (module constants and builders, globbed) still validates.
+- every proposals fixture of specs 045/046 (module constants and builders of a pinned module list) still validates.
 
 Known limit, accepted by the spec: jsonschema evaluates ``pattern`` with Python ``re.search``, where
 ``$`` also matches before a trailing ``\\n`` — ``"c1\\n"`` passes the schema. Such an id matches no
 carryover id and is refused by the document check (``carried-unknown``), so it is not tested here.
 """
+
 from __future__ import annotations
 
 import copy
@@ -55,7 +56,11 @@ def validator() -> jsonschema.Draft202012Validator:
 
 
 def _item(**extra) -> dict:
-    return {"text": "Call Jana about the trip", "sources": ["2026-03-31", "2026-W13"], **extra}
+    return {
+        "text": "Call Jana about the trip",
+        "sources": ["2026-03-31", "2026-W13"],
+        **extra,
+    }
 
 
 # One of every nested object that carries the new fields: a group item, a section item, a section item with a mark.
@@ -66,10 +71,15 @@ FULL = {
         "open": [_item(carried="still_open", carried_ids=["c2", "c3"]), _item()],
         "themes": [_item(carried="not_mentioned", carried_ids=["c4"])],
     },
-    "sections": [{"key": "s1", "items": [
-        _item(carried="still_open", carried_ids=["c5"]),
-        _item(mark="not_in_weekly", carried="done", carried_ids=["c6"]),
-    ]}],
+    "sections": [
+        {
+            "key": "s1",
+            "items": [
+                _item(carried="still_open", carried_ids=["c5"]),
+                _item(mark="not_in_weekly", carried="done", carried_ids=["c6"]),
+            ],
+        }
+    ],
 }
 # JSON-pointer-like paths of the carrying nodes in FULL
 CARRYING = {
@@ -98,14 +108,20 @@ def _group_doc(item: dict) -> dict:
 
 
 def _section_doc(item: dict) -> dict:
-    return {"language": "en", "groups": {}, "sections": [{"key": "s1", "items": [item]}]}
+    return {
+        "language": "en",
+        "groups": {},
+        "sections": [{"key": "s1", "items": [item]}],
+    }
 
 
 NODES = {"group": _group_doc, "section": _section_doc}
 
 
 def _refused(validator, doc) -> None:
-    assert not validator.is_valid(doc), f"schema accepted a document it must refuse: {doc}"
+    assert not validator.is_valid(doc), (
+        f"schema accepted a document it must refuse: {doc}"
+    )
 
 
 # ── accepted ──
@@ -146,7 +162,9 @@ def test_an_id_of_one_to_three_digits_validates(validator, node, cid):
 
 @pytest.mark.parametrize("node", NODES)
 def test_several_ids_validate(validator, node):
-    validator.validate(NODES[node](_item(carried="still_open", carried_ids=["c1", "c2", "c30"])))
+    validator.validate(
+        NODES[node](_item(carried="still_open", carried_ids=["c1", "c2", "c30"]))
+    )
 
 
 @pytest.mark.parametrize("node", NODES)
@@ -154,9 +172,13 @@ def test_an_item_without_either_field_still_validates(validator, node):
     validator.validate(NODES[node](_item()))
 
 
-@pytest.mark.parametrize("mark", ["weekly_only", "not_in_weekly", "monthly_only", "not_in_monthly"])
+@pytest.mark.parametrize(
+    "mark", ["weekly_only", "not_in_weekly", "monthly_only", "not_in_monthly"]
+)
 def test_a_section_item_may_carry_a_child_mark_and_a_carried_mark(validator, mark):
-    validator.validate(_section_doc(_item(mark=mark, carried="done", carried_ids=["c1"])))
+    validator.validate(
+        _section_doc(_item(mark=mark, carried="done", carried_ids=["c1"]))
+    )
 
 
 # ── refused: the pair ──
@@ -176,7 +198,9 @@ def test_carried_ids_without_carried_is_refused(validator, node):
 
 
 @pytest.mark.parametrize("node", NODES)
-@pytest.mark.parametrize("value", ["open", "Done", "still open", "notmentioned", "done ", "", "weekly_only"])
+@pytest.mark.parametrize(
+    "value", ["open", "Done", "still open", "notmentioned", "done ", "", "weekly_only"]
+)
 def test_a_carried_value_outside_the_enum_is_refused(validator, node, value):
     _refused(validator, NODES[node](_item(carried=value, carried_ids=["c1"])))
 
@@ -185,14 +209,21 @@ def test_a_carried_value_outside_the_enum_is_refused(validator, node, value):
 @pytest.mark.parametrize(
     "cid",
     [
-        "c",            # {1,3}: the lower bound
-        "c1234",        # {1,3}: the upper bound
-        "C1", "d1", "1", "11",  # the literal c
-        "xc1", " c1",   # ^: text before the id
-        "c1x", "c1 ",   # $: text after the id
-        "c/", "c:",     # [0-9]: a non-digit just below "0", just above "9" (kills `.`)
-        "c１",      # [0-9]: a full-width digit (kills `\d`)
-        "c-1", "",
+        "c",  # {1,3}: the lower bound
+        "c1234",  # {1,3}: the upper bound
+        "C1",
+        "d1",
+        "1",
+        "11",  # the literal c
+        "xc1",
+        " c1",  # ^: text before the id
+        "c1x",
+        "c1 ",  # $: text after the id
+        "c/",
+        "c:",  # [0-9]: a non-digit just below "0", just above "9" (kills `.`)
+        "c１",  # [0-9]: a full-width digit (kills `\d`)
+        "c-1",
+        "",
     ],
 )
 def test_an_id_outside_the_pattern_is_refused(validator, node, cid):
@@ -226,7 +257,9 @@ _NODE_MUTATIONS = {
 
 
 @pytest.mark.parametrize("mutation", _NODE_MUTATIONS)
-@pytest.mark.parametrize("path", CARRYING, ids=[f"{v}@{'/'.join(map(str, k))}" for k, v in CARRYING.items()])
+@pytest.mark.parametrize(
+    "path", CARRYING, ids=[f"{v}@{'/'.join(map(str, k))}" for k, v in CARRYING.items()]
+)
 def test_every_carrying_node_refuses_each_mutation(validator, path, mutation):
     _refused(validator, _with_node(path, _NODE_MUTATIONS[mutation]))
 
@@ -246,7 +279,11 @@ def _walk_schema(node, pointer=""):
 
 def test_the_places_with_a_pattern_are_pinned():
     schema = _schema()
-    found = {p: n["pattern"] for p, n in _walk_schema(schema) if isinstance(n.get("pattern"), str)}
+    found = {
+        p: n["pattern"]
+        for p, n in _walk_schema(schema)
+        if isinstance(n.get("pattern"), str)
+    }
     assert found == {
         "/properties/sections/items/properties/key": "^s[0-9]{1,3}$",
         "/$defs/carriedIds/items": "^c[0-9]{1,3}$",
@@ -260,28 +297,81 @@ def test_the_places_with_the_new_fields_are_pinned():
         props = node.get("properties")
         if isinstance(props, dict) and any(f in props for f in NEW_FIELDS):
             carrying[pointer] = {f: props.get(f) for f in NEW_FIELDS}
-    expected = {"carried": {"$ref": "#/$defs/carried"}, "carried_ids": {"$ref": "#/$defs/carriedIds"}}
-    assert carrying == {"/$defs/items/items": expected, "/$defs/sectionItem": expected}, carrying
-    carried = {k: v for k, v in schema["$defs"]["carried"].items() if k != "description"}
+    expected = {
+        "carried": {"$ref": "#/$defs/carried"},
+        "carried_ids": {"$ref": "#/$defs/carriedIds"},
+    }
+    assert carrying == {
+        "/$defs/items/items": expected,
+        "/$defs/sectionItem": expected,
+    }, carrying
+    carried = {
+        k: v for k, v in schema["$defs"]["carried"].items() if k != "description"
+    }
     assert carried == {"enum": list(CARRIED_VALUES)}, carried
     ids = {k: v for k, v in schema["$defs"]["carriedIds"].items() if k != "description"}
-    assert ids == {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^c[0-9]{1,3}$"}}, ids
+    assert ids == {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "pattern": "^c[0-9]{1,3}$"},
+    }, ids
 
 
 def test_dependent_required_sits_on_both_nodes_both_ways():
     schema = _schema()
-    found = {p: n["dependentRequired"] for p, n in _walk_schema(schema) if "dependentRequired" in n}
+    nodes = dict(_walk_schema(schema))
+    found = {
+        p: n["dependentRequired"] for p, n in nodes.items() if "dependentRequired" in n
+    }
     both = {"carried": ["carried_ids"], "carried_ids": ["carried"]}
     assert found == {"/$defs/items/items": both, "/$defs/sectionItem": both}, found
     for pointer in found:
-        node = dict(_walk_schema(schema))[pointer]
-        assert node["additionalProperties"] is False, pointer
-        assert node["required"] == ["text", "sources"], pointer
+        assert nodes[pointer]["additionalProperties"] is False, pointer
+        assert nodes[pointer]["required"] == ["text", "sources"], pointer
 
 
 # ── every proposals fixture of specs 045/046 still validates ──
 
-FIXTURE_GLOBS = ("review_*.py", "e2e_04[56]_*.py", "test_045_*.py", "test_046_*.py", "test_review_*.py")
+# The pinned sources of the spec 045/046 fixtures: an explicit list, never an open glob, so a later
+# module holding deliberately invalid proposals (e.g. tests/test_review_carried.py) is never collected.
+FIXTURE_MODULES = (
+    "e2e_046_sections_walk",
+    "review_deliver_helpers",
+    "review_privacy_fixture",
+    "test_045_close_out_gaps",
+    "test_046_close_out_gaps",
+    "test_046_t4_2_doc_sections",
+    "test_046_t4_3_section_parse",
+    "test_046_t4_4_section_stop",
+    "test_046_t4_5_quarter_read",
+    "test_046_t5_5_delivery_choices",
+    "test_review_doc",
+    "test_review_doc_parse",
+    "test_review_e2e_edges",
+    "test_review_sections",
+)
+# Every fixture collected today; a renamed, dropped or added fixture fails loudly.
+EXPECTED_FIXTURES = {
+    "e2e_046_sections_walk.proposals(week, 'v1')",
+    "e2e_046_sections_walk.proposals(month, 'v1')",
+    "e2e_046_sections_walk.proposals(quarter, 'v1')",
+    "review_deliver_helpers.PROPS",
+    "review_privacy_fixture.proposals('week')",
+    "review_privacy_fixture.proposals('month')",
+    "review_privacy_fixture.proposals('quarter')",
+    "test_046_close_out_gaps.WEEK_PROPS",
+    "test_046_close_out_gaps.PROPS",
+    "test_046_t4_2_doc_sections.WEEK_PROPS",
+    "test_046_t4_3_section_parse.WEEK_PROPS",
+    "test_046_t4_4_section_stop.WEEK_PROPS",
+    "test_046_t4_5_quarter_read.PROPS",
+    "test_046_t5_5_delivery_choices.WEEK_PROPS",
+    "test_review_doc.proposals()",
+    "test_review_doc.GOOD",
+    "test_review_doc_parse.GOOD",
+    "test_review_e2e_edges.SPARSE_PROPOSALS",
+    "test_review_sections.DOUBLED",
+}
 _KINDS = ("week", "month", "quarter")
 
 
@@ -291,8 +381,12 @@ def _looks_like_proposals(value) -> bool:
 
 def _builder_calls(module, fn):
     """Every call of a ``proposals`` builder over its kinds; an unknown signature fails, never skips."""
-    params = [p for p in inspect.signature(fn).parameters.values()
-              if p.default is inspect.Parameter.empty and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    params = [
+        p
+        for p in inspect.signature(fn).parameters.values()
+        if p.default is inspect.Parameter.empty
+        and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
     names = [p.name for p in params]
     if not names:
         return [("()", fn())]
@@ -300,29 +394,41 @@ def _builder_calls(module, fn):
         return [(f"({k!r})", fn(k)) for k in _KINDS]
     if names == ["k", "version"] and hasattr(module, "KINDS"):
         return [(f"({k.kind}, 'v1')", fn(k, "v1")) for k in module.KINDS.values()]
-    raise AssertionError(f"{module.__name__}.proposals has an unknown signature {names}: add its kinds here")
+    raise AssertionError(
+        f"{module.__name__}.proposals has an unknown signature {names}: add its kinds here"
+    )
 
 
 def _fixtures() -> list[tuple[str, dict]]:
     found = []
-    files = sorted({f for g in FIXTURE_GLOBS for f in TESTS_DIR.glob(g)} - {Path(__file__).resolve()})
-    for path in files:
-        module = importlib.import_module(path.stem)
+    for stem in FIXTURE_MODULES:
+        module = importlib.import_module(stem)
         for name, value in vars(module).items():
             if _looks_like_proposals(value):
-                found.append((f"{path.stem}.{name}", value))
-            elif name == "proposals" and callable(value) and getattr(value, "__module__", None) == path.stem:
-                found += [(f"{path.stem}.proposals{args}", doc) for args, doc in _builder_calls(module, value)]
+                found.append((f"{stem}.{name}", value))
+            elif (
+                name == "proposals"
+                and callable(value)
+                and getattr(value, "__module__", None) == stem
+            ):
+                found += [
+                    (f"{stem}.proposals{args}", doc)
+                    for args, doc in _builder_calls(module, value)
+                ]
     return found
 
 
 def test_every_spec_045_046_proposals_fixture_still_validates(validator):
     fixtures = _fixtures()
     names = [n for n, _ in fixtures]
-    assert len(fixtures) > 0, f"the glob {FIXTURE_GLOBS} found no proposals fixture"
-    failures = {n: [e.message for e in validator.iter_errors(doc)] for n, doc in fixtures if not validator.is_valid(doc)}
+    assert len(fixtures) > 0, f"the modules {FIXTURE_MODULES} hold no proposals fixture"
+    assert set(names) == EXPECTED_FIXTURES and len(names) == len(EXPECTED_FIXTURES), (
+        f"missing: {sorted(EXPECTED_FIXTURES - set(names))}\nunexpected: {sorted(set(names) - EXPECTED_FIXTURES)}\n"
+        f"all {len(names)} found: {names}"
+    )
+    failures = {
+        n: [e.message for e in validator.iter_errors(doc)]
+        for n, doc in fixtures
+        if not validator.is_valid(doc)
+    }
     assert not failures, f"invalid: {failures}\nall {len(names)} found: {names}"
-    # the builders of both fake vaults are among them, so a renamed builder cannot drop out silently
-    for expected in ("review_privacy_fixture.proposals('quarter')", "e2e_046_sections_walk.proposals(quarter, 'v1')",
-                     "review_deliver_helpers.PROPS"):
-        assert expected in names, f"{expected} missing from all {len(names)} found: {names}"

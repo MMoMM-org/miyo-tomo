@@ -52,6 +52,7 @@
 | 2026-11-23 | T2.4 and T2.5 merged into one task (read + loader switch in one commit); new test_review_*.py files go into spec 047's Directory Map by the task that creates them; code review = the per-task review chain of /implement, no extra phase review | Owner (recommended) |
 | 2026-11-23 | Cost KPIs are a token-volume proxy for optimising, not real spend (owner on a subscription); goal: as few tokens as possible at the best quality | Owner |
 | 2026-11-23 | Specification ready: PRD v1.1, SDD v1.1 (12 confirmed ADRs), plan v1.1 (9 phases, 44 tasks); readiness HIGH | Owner approved each phase |
+| 2026-11-23 | T1.2 deviation accepted: the March content days for ISO W10/W12 exist only in the quarter vault (`build_vault(quarter=True)`), so the month 2026-03 read report stays unchanged; the quarter vault is the same for the old and the new flow | Orchestrator; keeps T1.2's "week/month outputs unchanged" rule |
 
 ## Context
 

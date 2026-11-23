@@ -32,7 +32,7 @@ phase: 1
 
 Pins what the review document and Pass 2 look like today for a week, a month and a quarter, and settles the two platform unknowns and the size numbers before the rebuild.
 
-- [ ] **T1.1 Structural fingerprint of a review document** `[activity: testing]` `[parallel: true]`
+- [x] **T1.1 Structural fingerprint of a review document** `[activity: testing]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/lib/review_doc_parse.py` (how a document's parts, items, ids and links are read), `tomo/scripts/lib/review_doc.py` (`_LABELS`, `_callout`, the part order), `tests/test_review_sdd_map.py` (how it reads the 045 and 046 Directory Maps, lines 1-60) `[ref: SDD/ADR-11; lines: 1222-1225]` `[ref: SDD/Directory Map; lines: 485-505]`
   2. Test: `tests/test_review_doc_fingerprint.py` — two documents differing only in item wording give equal fingerprints; a moved part, an unticked section checkbox, a missing group, one item more, a changed mark suffix, a changed link kind (daily → weekly) and a changed callout field each give unequal fingerprints (each RED-proven by mutating the fingerprint to ignore that field); the fingerprint holds no item text (asserted on a fixture whose items carry a sentinel string); `test_review_sdd_map.py` accepts a review file named in spec 047's Directory Map (fixture: `tests/review_doc_fingerprint.py`), keeps refusing an unmapped file, and keeps reading spec 045's and 046's maps.

@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Previous notes"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 3
 ---

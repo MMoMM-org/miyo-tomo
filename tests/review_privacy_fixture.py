@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """review_privacy_fixture.py — the marked vault of the /review privacy walk
 (tests/test_review_privacy.py; spec 045 T5.4).
 
@@ -13,8 +13,18 @@ journal content (`MARKERS`, with `MARKER_RE` and `KIND_OF` to find them
 again), one readable tracker value (`READABLE`), the vault-config the scripts
 read (`CONFIG`), the fake vault whose dailies, journal note, planner, task
 note, weekly notes and templates each carry their markers (`build_vault()`),
-and the model's proposals for a week and a month (`proposals(kind)`). All
-text is synthetic; it shares only the structure of the owner's notes.
+and the model's proposals for a week, a month and a quarter (`proposals(kind)`).
+All text is synthetic; it shares only the structure of the owner's notes.
+
+The quarter (spec 047 T1.2): `CONFIG` names the quarterly folder and pattern;
+`QUARTER_CONFIG` is `CONFIG` plus the quarter's setup (`review.quarterly`, the
+quarterly template), kept apart so the week and month walks still start with
+the quarter `missing`. The vault holds the previous notes the rebuilt read
+takes (weekly 2026-W12, monthly 2026-01 and 2026-02; no 2025-Q4 note, the
+quarterly folder empty) and one synthetic daily per ISO week of 2026-Q1 from
+2026-01-01 on. Two of those days fall in March (W10, W12): they would join the
+month 2026-03's read and change its report, so only `build_vault(quarter=True)`
+adds them (`QUARTER_MARCH_DAYS`); the quarter walk uses that vault.
 """
 from __future__ import annotations
 
@@ -44,6 +54,7 @@ INBOX = "100 Inbox/"
 DAILY = "Calendar/301 Daily/"
 WEEKLY = "Calendar/302 Weekly/"
 MONTHLY = "Calendar/303 Monthly/"
+QUARTERLY = "Calendar/304 Quarterly/"
 MOCS = "100 MOCs/"
 JOURNAL = "Journal/"
 PLANNER = "Efforts/300 Planner/"
@@ -55,10 +66,12 @@ CONFIG = {
         "inbox": INBOX,
         "calendar": {"granularities": {"daily": {"enabled": True, "path": DAILY},
                                        "weekly": {"enabled": True, "path": WEEKLY},
-                                       "monthly": {"enabled": True, "path": MONTHLY}}},
+                                       "monthly": {"enabled": True, "path": MONTHLY},
+                                       "quarterly": {"enabled": True, "path": QUARTERLY}}},
         "map_note": {"paths": [MOCS]},
     },
-    "naming": {"calendar_patterns": {"daily": "YYYY-MM-DD", "weekly": "GGGG-[W]WW", "monthly": "YYYY-MM"}},
+    "naming": {"calendar_patterns": {"daily": "YYYY-MM-DD", "weekly": "GGGG-[W]WW", "monthly": "YYYY-MM",
+                                    "quarterly": "YYYY-[Q]Q"}},
     "templates": {"base_path": "Templates/",
                   "mapping": {"weekly": "t_week.md", "monthly": "t_month.md", "daily": "t_day.md"}},
     "review": {
@@ -74,6 +87,19 @@ CONFIG = {
                                                           {"name": "Sleep", "type": "integer"},
                                                           {"name": "Energy", "type": "integer"}]}},
 }
+# CONFIG plus the quarter's setup: the quarter walk's config (spec 047 T1.2)
+QUARTER_CONFIG = {
+    **CONFIG,
+    "templates": {**CONFIG["templates"], "mapping": {**CONFIG["templates"]["mapping"], "quarterly": "t_quarter.md"}},
+    "review": {**CONFIG["review"],
+               "quarterly": {"heading": "Tomo Review", "place": {"anchor": "Reflections", "placement": "before"},
+                             "own_sections": ["Reflections"]}},
+}
+# one day per ISO week of 2026-Q1 that the spec 045 days leave empty: W01 from the quarter's first day, W02-W09
+# on their Mondays (default vault); W10 and W12 inside March (quarter vault only, see the module docstring)
+QUARTER_DAYS = ("2026-01-01", "2026-01-05", "2026-01-12", "2026-01-19", "2026-01-26", "2026-02-02",
+                "2026-02-09", "2026-02-16", "2026-02-23")
+QUARTER_MARCH_DAYS = ("2026-03-04", "2026-03-18")
 
 
 def _daily(day: str, text: str) -> tuple[str, str]:
@@ -91,7 +117,16 @@ def _weekly(name: str, start: date, *, target_without_anchor: bool = False) -> s
     return "\n".join(lines) + "\n"
 
 
-def build_vault() -> ReviewFakeVault:
+def _quarter_daily(day: str) -> tuple[str, str]:
+    year, week, _ = date.fromisoformat(day).isocalendar()
+    return _daily(day, f"quarter day {day} {year}-W{week:02d} {DAY}")
+
+
+def _monthly(name: str, first_day: str) -> str:
+    return f"# {name}\n\n## Theme\nmonth text [[{first_day}]]\n\n## Reflections\nown reflections\n"
+
+
+def build_vault(*, quarter: bool = False) -> ReviewFakeVault:
     files = dict([
         _daily("2026-03-01", f"first of march {DAY}\nSport:: yes\nSleep:: 6"),
         _daily("2026-03-10", f"{DAY} mid march\nSport:: no"),
@@ -105,6 +140,7 @@ def build_vault() -> ReviewFakeVault:
         _daily("2026-03-31", f"last {DAY}\nSport:: no"),
         _daily("2026-04-01", f"april {DAY}"),
     ])
+    files.update(_quarter_daily(d) for d in QUARTER_DAYS + (QUARTER_MARCH_DAYS if quarter else ()))
     files[f"{JOURNAL}5J-2026-03-25.md"] = f"# 5J-2026-03-25\nWhat made today good?\nAnswer {ANS} in journal\n"
     files[f"{PLANNER}DP-2026-03-25.md"] = f"# Plan\n- planned {DAY}\n"
     files[TASK_NOTE] = f"- [x] done {DAY} ✅ 2026-03-24\n- [ ] open {DAY}\n"
@@ -114,10 +150,13 @@ def build_vault() -> ReviewFakeVault:
                         ("2026-W14", date(2026, 3, 30))):
         files[f"{WEEKLY}{name}.md"] = _weekly(name, start)
     files[f"{WEEKLY}2026-W13.md"] = _weekly("2026-W13", date(2026, 3, 23), target_without_anchor=True)
+    files[f"{MONTHLY}2026-01.md"] = _monthly("2026-01", "2026-01-05")
+    files[f"{MONTHLY}2026-02.md"] = _monthly("2026-02", "2026-02-02")
     files["Templates/t_week.md"] = "---\ntags: weekly\n---\n# <% tp.file.title %>\n\n## Woche\n\n## In my own words\n\n"
     files["Templates/t_month.md"] = "# <% tp.file.title %>\n\n## Theme\n\n## Reflections\n\n"
+    files["Templates/t_quarter.md"] = "# <% tp.file.title %>\n\n## Theme\n\n## Reflections\n\n"
     files["Templates/t_day.md"] = "## Daily Log\n\n## Habits\n"
-    return ReviewFakeVault(files, folders=[DAILY, WEEKLY, MONTHLY, MOCS, INBOX])
+    return ReviewFakeVault(files, folders=[DAILY, WEEKLY, MONTHLY, QUARTERLY, MOCS, INBOX])
 
 
 def proposals(kind: str) -> dict:
@@ -125,6 +164,9 @@ def proposals(kind: str) -> dict:
         groups = {"done": [{"text": f"Cleaned up {PRP}", "sources": ["2026-03-23", "2026-03-24"]}],
                   "open": [{"text": f"Taxes {PRP}", "sources": ["2026-03-26"]}],
                   "themes": [{"text": f"Sleep {PRP}", "sources": ["2026-03-23", "2026-03-25"]}]}
+    elif kind == "quarter":
+        groups = {"done": [{"text": f"Quarter done {PRP}", "sources": ["2026-01-05", "2026-03-23"]}],
+                  "monthly_only": [{"text": f"only monthly {PRP}", "sources": ["2026-02"]}]}
     else:
         groups = {"done": [{"text": f"March done {PRP}", "sources": ["2026-03-01", "2026-03-23"]}],
                   "weekly_only": [{"text": f"only weekly {PRP}", "sources": ["2026-W13"]}]}

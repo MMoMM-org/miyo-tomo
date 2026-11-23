@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.3
+# version: 0.3.0
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -31,6 +31,11 @@ over whatever `WRITES` holds when it runs (any order, any subset), so a write
 outside the inbox fails in the test that attempted it and in every sweep
 that runs after it. Shared by test_review_e2e.py, test_review_e2e_failures.py
 and test_review_e2e_edges.py.
+
+The quarter (spec 047 T1.2): `QUARTER` / `QUARTER_PERIOD` (2026-Q1) and its
+stem, target and document paths; `Walk(..., quarter=True)` builds the vault
+with the quarter's March days (`build_vault(quarter=True)`), and the quarter
+walk passes `config=QUARTER_CONFIG`.
 """
 from __future__ import annotations
 
@@ -49,7 +54,9 @@ for entry in (str(SCRIPTS_DIR), str(TESTS_DIR)):
         sys.path.insert(0, entry)
 
 from review_fake_vault import _folder_key, split_frontmatter  # noqa: E402
-from review_privacy_fixture import CONFIG, DAILY, INBOX, MOCS, MONTHLY, WEEKLY, build_vault, proposals  # noqa: E402
+from review_privacy_fixture import (  # noqa: E402
+    CONFIG, DAILY, INBOX, MOCS, MONTHLY, QUARTERLY, WEEKLY, build_vault, proposals,
+)
 from review_deliver_helpers import GuardedVault  # noqa: E402
 
 TODAY = "2026-11-11"
@@ -60,10 +67,13 @@ WEEK_PERIOD, MONTH_PERIOD = "2026-W13", "2026-03"
 WEEK_STEM, MONTH_STEM = f"{WEEK_PERIOD}_review", f"{MONTH_PERIOD}_review"
 WEEK_TARGET, MONTH_TARGET = f"{WEEKLY}{WEEK_PERIOD}.md", f"{MONTHLY}{MONTH_PERIOD}.md"
 WEEK_DOC, MONTH_DOC = f"{INBOX}{WEEK_PERIOD} Review.md", f"{INBOX}{MONTH_PERIOD} Review.md"
+QUARTER, QUARTER_PERIOD = "quarter", "2026-Q1"
+QUARTER_STEM, QUARTER_TARGET = f"{QUARTER_PERIOD}_review", f"{QUARTERLY}{QUARTER_PERIOD}.md"
+QUARTER_DOC = f"{INBOX}{QUARTER_PERIOD} Review.md"
 APPROVED, TICKED = "- [ ] Approved", "- [x] Approved"
 MARKER_RE = re.compile(r"^%% tomo-review \S+ %%$", re.M)
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
-_FOLDERS = (DAILY, WEEKLY, MONTHLY, MOCS, INBOX)
+_FOLDERS = (DAILY, WEEKLY, MONTHLY, QUARTERLY, MOCS, INBOX)
 # the week's target with the configured anchor ("In my own words") in place, no Tomo section yet
 WEEK_TARGET_TEXT = ("---\njournal-start-date: 2026-03-23\n---\n# 2026-W13\n\nweek text\n\n"
                     "## Review of the Week\n### [[2026-03-23|2026-03-23 Mon]]\n- day block [[Alpha]]\n\n"
@@ -132,13 +142,14 @@ def _load(name: str):
 class Walk:
     """One instance root in `root` (cwd), the scripts loaded in-process against `vault`."""
 
-    def __init__(self, root: Path, monkeypatch, capsys, test_id: str, *, config: dict | None = None):
+    def __init__(self, root: Path, monkeypatch, capsys, test_id: str, *, config: dict | None = None,
+                 quarter: bool = False):
         self.root, self.monkeypatch, self.capsys = root, monkeypatch, capsys
         monkeypatch.chdir(root)
         (root / "config").mkdir()
         (root / "config" / "vault-config.yaml").write_text(
             yaml.safe_dump(config if config is not None else config_without_setup()), encoding="utf-8")
-        files = build_vault().files
+        files = build_vault(quarter=quarter).files
         files[WEEK_TARGET] = WEEK_TARGET_TEXT
         self.vault = RecordingVault(files, test_id=test_id)
         self.mods = {name: _load(name) for name in SCRIPTS}

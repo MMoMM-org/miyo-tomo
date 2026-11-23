@@ -29,6 +29,8 @@ phase: 3
 
 ---
 
+> **Amended 2026-11-23 (owner, during T3.2):** an empty previous-note listing is `missing` ("no note found"), not `not-read` / `kado-none`; the cause `kado-none` was removed (PRD v1.2 F3-AC9, SDD v1.6 ADR-5/ADR-12, README Decisions Log). Mentions of `kado-none` below are the original plan text.
+
 ## Tasks
 
 Reads the review notes of the period before inside the same paced pass and records each one's state.

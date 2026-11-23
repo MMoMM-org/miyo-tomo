@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/review-digest.schema.json",
+  "title": "Review digest (model output of a review-digester, one unit)",
+  "description": "digests/<unit>.json, written by the review-digester agent for one unit of the period (spec 047 ADR-4). Every entry names its sources. The stage-dependent checks (read_id, unit = file name, days = the unit's taking-part days, every source inside the unit, theme days inside the unit, section keys known, growth notes among the unit's created notes, the byte cap) are lib/review_digest.py's.",
+  "type": "object",
+  "required": ["read_id", "unit", "days", "done", "open", "notable", "themes", "sections", "child_notes", "growth"],
+  "additionalProperties": false,
+  "properties": {
+    "read_id": {"type": "string", "minLength": 1, "description": "The read id the digester was given; must equal the read's."},
+    "unit": {"type": "string", "minLength": 1, "description": "The unit name (a week, or <week>a, <week>b … of a split week); must equal the file name."},
+    "days": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/date"},
+      "description": "The unit's taking-part days, every one of them."
+    },
+    "done": {"type": "array", "maxItems": 25, "items": {"$ref": "#/$defs/entry"}},
+    "open": {"type": "array", "maxItems": 25, "items": {"$ref": "#/$defs/entry"}},
+    "notable": {"type": "array", "maxItems": 15, "items": {"$ref": "#/$defs/entry"}},
+    "themes": {
+      "type": "array",
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "required": ["text", "days", "sources"],
+        "additionalProperties": false,
+        "properties": {
+          "text": {"$ref": "#/$defs/text"},
+          "days": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "#/$defs/date"},
+            "description": "The days of the unit the theme shows on; a single day is allowed here (the two-day rule applies to the proposer's themes)."
+          },
+          "sources": {"$ref": "#/$defs/sources"}
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "description": "Items per mapped section of the user's note: key is a row id of context.sections.",
+      "items": {
+        "type": "object",
+        "required": ["key", "items"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {"type": "string", "pattern": "^s[0-9]{1,3}$"},
+          "items": {"type": "array", "maxItems": 30, "items": {"$ref": "#/$defs/entry"}}
+        }
+      }
+    },
+    "child_notes": {
+      "type": "array",
+      "maxItems": 15,
+      "items": {"$ref": "#/$defs/entry"},
+      "description": "What the unit's weekly note says; its source is the weekly note's stem."
+    },
+    "growth": {
+      "type": "array",
+      "maxItems": 15,
+      "description": "Candidates for the Vault growth group, condensed from the unit's growth/ files.",
+      "items": {
+        "type": "object",
+        "required": ["text", "sources", "notes"],
+        "additionalProperties": false,
+        "properties": {
+          "text": {"$ref": "#/$defs/text"},
+          "sources": {"$ref": "#/$defs/sources"},
+          "notes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {"type": "string", "minLength": 1},
+            "description": "Vault paths of notes created on the unit's days, as the growth/ files list them."
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "text": {"type": "string", "minLength": 1, "description": "The condensed statement in the review language."},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "description": "Day stems or paths of the unit, or the unit's weekly note stem (child_notes)."
+    },
+    "entry": {
+      "type": "object",
+      "required": ["text", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {"$ref": "#/$defs/text"},
+        "sources": {"$ref": "#/$defs/sources"}
+      }
+    }
+  }
+}

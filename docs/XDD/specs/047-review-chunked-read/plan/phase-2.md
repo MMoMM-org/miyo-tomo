@@ -85,13 +85,15 @@ Replaces `read.json` with a stage every agent can read in one call, and a loader
   4. Validate: full suite green in ONE invocation before and after the commit; `test_review_sdd_map.py` green; ruff clean.
   5. Success: a read is stored as a stage, an interrupted Pass 1 continues on it without Kado, and the document is built from it exactly as from `read.json` with no material left after write or abort `[ref: PRD/F1-AC6, F2-AC4, F2-AC5, F6-AC4, F7-AC1]` `[ref: SDD/ADR-1, ADR-3]`
 
-- [ ] **T2.5 Size measurement of 2026-Q1 on the new stage (owner go)** `[activity: validate]`
+- [x] **T2.5 Size measurement of 2026-Q1 on the new stage (owner go)** `[activity: validate]`
 
   1. Prime: T2.4 `--measure` output; T1.5 notes `[ref: SDD/ADR-2; lines: 1172]` `[ref: SDD/Quality Requirements/Performance (hard); lines: 1234]`
   2. Test, owner-gated: announce, wait for the go, run `python3 tomo/scripts/review-read.py --kind quarter --period 2026-Q1 --stem 2026-Q1_review --measure` against the test instance (never `tomo-privat`), report at once.
   3. Implement: record counts only under this task: per-file bytes (max day, max growth file and its parts, max child, context and parts), growth bytes per unit, unit bytes (day files + growth) for all 14 units, `over_ceiling`, `over_budget`. If any limit fails or is far off, bring the change to the owner as a deviation before Phase 4 (constants only).
   4. Validate: `over_budget` empty; no file written; no journal text recorded.
   5. Success: the real quarter fits the limits with no day and no created note left out `[ref: PRD/F1-AC1; SDD/Quality Requirements; SDD/ADR-2 amended]`
+
+  - **Outcome (2026-11-23, owner go):** `--measure` 2026-Q1 on the new stage (host source at `f7620705`, test-vault Kado, tomo-instance key): 454 calls, 0 retried, 104.9 s waited, 0 not read, no file written. Stage files: days n=90 max 9,081 B; growth n=67 files, max 32,745 B (2026-01-19 spills into parts, 85,912 B growth that day; next largest day 4,563 B; total 163,273 B); children n=16 max 4,255 B; context 4 files (context.json 429 + parts 32,569 / 31,926 / 21,421 = 86,345 B, mostly per-day `fields`); weeks.json 8,463 B; manifest.json 31,962 B; total 941,673 B. `over_ceiling: []`. Units n=15 (W04 split): 16,438 … 58,481 B, except `2026-W04a` = the bulk-import day 2026-01-19 alone at 92,890 B → `over_budget: ["2026-W04a"]`. Deviations (owner, 2026-11-23): `UNIT_BUDGET` = 131,072 B (was 81,920; haiku reads ~5 files ≈ 70k tokens; normal weeks 46–58 KB stay unsplit); `context.json` carries per-tracker aggregates instead of raw per-day `fields` (raw values stay in the day files for the digesters and the habits script). Applied in the T2.5 follow-up commit; SDD v1.5.
 
 - [ ] **T2.6 Phase Validation** `[activity: validate]`
 

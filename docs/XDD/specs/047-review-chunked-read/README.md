@@ -58,6 +58,8 @@
 | 2026-11-23 | Deviation from ADR-1/2/4: vault growth (created notes) goes per week unit to the digesters; `context.json` keeps growth counts and MOC changes only; the read report stays in `manifest.json`, not proposer input | Owner (recommended): fewest tokens for the opus proposer |
 | 2026-11-23 | T1.4 smoke (headless in tomo-instance): nested agent write works under acceptEdits without pre-creation; Read returns 24–40.5 KB of word-like text whole but cuts a 41 KB poorly-tokenizing file at the 25k-token cap; Kado per-path denial is a FORBIDDEN tool error (KadoToolError), not 403 | Smoke checks (owner go) |
 | 2026-11-23 | Deviation from ADR-2: FILE_CEILING = 32,768 bytes (was 40,960); ADR-5 catches KadoToolError FORBIDDEN for previous notes (not KadoAuthError) | Owner (recommended) / fact correction |
+| 2026-11-23 | T2.5 measured 2026-Q1 on the new stage: 0 over the ceiling; the bulk-import day 2026-01-19 (86 KB growth) makes `2026-W04a` 92.9 KB, over the 80 KB unit budget; context.json 86 KB in 4 files, mostly per-day `fields` | Measurement (owner go) |
+| 2026-11-23 | Deviation from ADR-2: `UNIT_BUDGET` = 131,072 B (128 KB); `context.json` carries per-tracker aggregates (days with a value, min/max/mean, per unit) instead of raw per-day `fields` | Owner (recommended): fewest opus tokens, no special case for bulk days |
 
 ## Context
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_047_t4_4_condense_gate.py — the document waits for the condensing; the walk condenses (spec 047 T4.4).
 
 PRD F6-AC1, SDD ADR-4, Internal API Changes (`condense-incomplete`), Application Data Models (`Sources`),
@@ -123,6 +123,19 @@ def test_an_open_carryover_does_not_hold_the_document_back(script, inst, monkeyp
     (path.parent / CONDENSED).write_text(json.dumps(doc), encoding="utf-8")
     code, out, _ = _write(script, monkeypatch, capsys, inst, stem, path, ReviewFakeVault(dict(W13_TARGET)))
     assert out["status"] == "written", out
+
+
+
+def test_write_refuses_read_invalid_when_weeks_json_holds_no_units(script, inst, monkeypatch, capsys):
+    stem, path = trd.stage(inst, trd.week_read(), trd.proposals(done=[trd.item("x", "2026-03-23")]))
+    weeks_path = path.parent / "weeks.json"
+    weeks = json.loads(weeks_path.read_text(encoding="utf-8"))
+    del weeks["units"]
+    weeks_path.write_text(json.dumps(weeks), encoding="utf-8")
+    fake = ReviewFakeVault(dict(W13_TARGET))
+    code, out, _ = _write(script, monkeypatch, capsys, inst, stem, path, fake)
+    assert code == 0 and out == {"status": "refused", "stem": stem, "problems": ["read-invalid"]}, out
+    assert fake.writes == []
 
 
 # ---------------------------------------------------------------- load and units

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -62,7 +62,7 @@ for entry in (str(SCRIPTS_DIR), str(TESTS_DIR)):
 
 from review_fake_vault import _folder_key, split_frontmatter  # noqa: E402
 from review_privacy_fixture import (  # noqa: E402
-    CONFIG, DAILY, INBOX, MOCS, MONTHLY, QUARTERLY, WEEKLY, build_vault, condense_files, proposals, put_files,
+    CONFIG, DAILY, INBOX, MOCS, MONTHLY, QUARTERLY, WEEKLY, build_vault, condense_with, proposals,
 )
 from review_deliver_helpers import GuardedVault  # noqa: E402
 
@@ -183,13 +183,7 @@ class Walk:
 
     def condense(self, stem: str) -> dict:
         """Step 5 before the proposer: plan, the agents' files, check; ``plan``'s refusal as it stands."""
-        plan = self.run("review-digest", "plan", "--stem", stem)
-        if plan["status"] != "ok":
-            return plan
-        put_files(self.stage(stem), condense_files(plan, self.stage(stem)))
-        out = self.run("review-digest", "check", "--stem", stem)
-        assert out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
-        return out
+        return condense_with(lambda command: self.run("review-digest", command, "--stem", stem), self.stage(stem))
 
     def write(self, stem: str, kind: str, props: dict | None = None, *, condense: bool = True) -> dict:
         if condense:

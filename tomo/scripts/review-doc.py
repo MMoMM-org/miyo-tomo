@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.9.0
+# version: 0.9.1
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
@@ -32,8 +32,9 @@ Usage (cwd = instance root):
 Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
            counts {group or section key: n}, rejected [{group | section, index, reason}], calls
-         | status refused, problems [condense-incomplete | proposals-invalid | doc-name-taken | review-exists | read-missing |
-           read-stale | read-invalid | setup-missing | setup-invalid | inbox-not-configured | sections-changed],
+         | status refused, problems [condense-incomplete | proposals-invalid | doc-name-taken | review-exists |
+           read-missing | read-stale | read-invalid | setup-missing | setup-invalid | inbox-not-configured |
+           sections-changed],
            errors? [pointers, or "<pointer>: <error>" for a section check]
          | status stopped, problems [kado-write-failed] or error {kind kado-unreachable|kado-auth, detail}
     parse: status ok, stem, doc_path, approved, nothing_to_deliver,

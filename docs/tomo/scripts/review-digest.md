@@ -186,10 +186,13 @@ WHY: crash safety (T4.3 code-review leftover). `check` used to rewrite
 writes left the cleaned file and no record of the failed note: the next
 `check` validated the cleaned file as fully passed and the note-failed marker
 was lost. Now `condensed.json` (the settled job state, with `notes {path:
-failed}`) is written first, then `carryover.json` is settled from it: the
-items of every note the state records as failed (and any item that is still
-invalid) are removed. A `check` after a crash between the writes finds the
-job already passed with its failed note recorded and settles the file again —
-the settling is idempotent, a settled file is left as it is. The rewritten
+failed}`) is written first, then `carryover.json` is settled: the invalid
+items and every item of the notes they belong to are removed. A `check` after
+a crash between the writes finds the job already passed with its failed note
+recorded and the uncleaned file still holding that note's invalid items, so
+it settles the file again from the same check — the settling is idempotent, a
+settled file has no invalid item and is left as it is. The settling reads
+only the file's own check, not the recorded `notes`: a file with no invalid
+item holds no failed note's items, so the record adds nothing. The rewritten
 `carryover.json` goes through `review_stage_codec.encode` like every other
 agent-read stage file (indented, UTF-8, one encoder).

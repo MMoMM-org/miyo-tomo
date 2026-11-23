@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """review_privacy_fixture.py — the marked vault of the /review privacy walk
 (tests/test_review_privacy.py; spec 045 T5.4).
 
@@ -31,9 +31,10 @@ files the agents would write for every job of a `review-digest.py plan`
 answer — a digest per unit (one `done` entry on the unit's first day with a
 daily, growth candidates from the unit's `growth/` files sourced by their
 creation day's daily, at most 10 notes each) and the carryover (one `open`
-item per found previous note, sourced by its stem). `condense(stage)` runs
-plan → those files → check in-process, without printing, for the tests that
-stage a read directly. The one builder for the privacy walk, the e2e walk and
+item per found previous note, sourced by its stem). `condense_with(run, stage)`
+runs plan → those files → check through a caller's runner (the e2e walk's
+script calls); `condense(stage)` runs it in-process, without printing, for the
+tests that stage a read directly. The one builder for the privacy walk, the e2e walk and
 the review-doc tests.
 """
 from __future__ import annotations
@@ -44,6 +45,7 @@ import re
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Callable
 
 from review_fake_vault import ReviewFakeVault
 
@@ -259,16 +261,25 @@ def _digest_script():
     return _DIGEST_MOD[0]
 
 
+def condense_with(run: Callable[[str], dict], stage: Path, text: str = "condensed") -> dict:
+    """plan → the agents' files → check on ``stage``, ``run(subcommand)`` calling review-digest.py; returns
+    check's answer, or plan's refusal as it stands."""
+    plan = run("plan")
+    if plan["status"] != "ok":
+        return plan
+    put_files(stage, condense_files(plan, stage, text))
+    out = run("check")
+    assert out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
+    return out
+
+
 def condense(stage: Path, text: str = "condensed") -> dict:
-    """plan → the agents' files → check on ``stage``, in-process and silent; returns check's answer."""
+    """``condense_with`` in-process and silent; a refused plan fails the test."""
     mod = _digest_script()
 
     def call(command: str) -> dict:
         return mod.run(mod.build_parser().parse_args([command, "--stem", stage.name, "--tmp", str(stage.parent)]))
 
-    plan = call("plan")
-    assert plan["status"] == "ok", plan
-    put_files(stage, condense_files(plan, stage, text))
-    out = call("check")
-    assert out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
+    out = condense_with(call, stage, text)
+    assert out["status"] == "ok", out
     return out

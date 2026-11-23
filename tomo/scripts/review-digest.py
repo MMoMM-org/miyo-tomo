@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-digest.py — Plan and check the condensing jobs of a /review read: digesters, carryover, the proposer's inputs.
-# version: 0.1.1
+# version: 0.1.2
 """The condensing step of /review (spec 047 T4.3; PRD F1-AC6, F6-AC1, F6-AC2, F6-AC4, F6-AC8; ADR-4, ADR-8).
 
 After ``review-read.py`` wrote the stage ``tomo-tmp/review/<stem>/``, ``plan``
@@ -28,7 +28,7 @@ Rules:
     checked without counting an attempt; a proposals.json is deleted. check: every open job spends one
     attempt — 1st failure retry, 2nd failed; a carryover passing with one note's items invalid has those
     items removed from carryover.json, after condensed.json recorded the failed note; a passed carryover
-    whose file still holds a recorded failed note's items is settled again. Only taking-part units and
+    whose file still holds invalid items is settled again. Only taking-part units and
     their taking-part days are dispatched.
 
 Exit codes:
@@ -231,18 +231,15 @@ def _check_carryover(stage: Stage, retry: List[dict]) -> List[str]:
 
 
 def _settle_carryover(stage: Stage) -> None:
-    """A passed carryover.json without its invalid items and the items of every note condensed.json records
-    as failed; written only when that changes it, so it runs again after a crash at no cost."""
-    job = stage.state["carryover"]
-    failed = [path for path, state in (job.get("notes") or {}).items() if state == rd.FAILED]
-    if job["state"] != rd.PASSED or stage.text(review_stage.CARRYOVER) is None:
+    """A passed carryover.json without its invalid items and the other items of their notes; written only
+    when that changes it, so it runs again after a crash at no cost."""
+    if stage.state["carryover"]["state"] != rd.PASSED or stage.text(review_stage.CARRYOVER) is None:
         return
     check = stage.carry_check()
-    if not failed and not check.bad_items:
+    if not check.bad_items:
         return
     data = json.loads(stage.text(review_stage.CARRYOVER) or "")
-    settled = rd.settle_carryover(data, rd.CarryoverCheck(bad_items=check.bad_items,
-                                                          failed_notes=sorted(set(failed) | set(check.failed_notes))))
+    settled = rd.settle_carryover(data, check)
     if settled != data:
         atomic_write_text(stage.path / review_stage.CARRYOVER, encode(settled))
 

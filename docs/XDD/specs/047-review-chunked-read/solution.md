@@ -1039,8 +1039,8 @@ INPUT: /review 2026-W14 (Mon 2026-03-30 … Sun 2026-04-05); dailies only 03-30,
    Not April's previous month (2026-03): the month the week STARTS in decides (F3-AC1, Rule 3).
    Kado: +1 listing of Calendar/302 Weekly/, +1 read of 2026-W13.md, +1 listing of Calendar/303 Monthly/,
    +1 read of 2026-02.md = 4 calls.
-   previous/week-2026-W13.json  {state found, sections {"What should I start doing?": "- start running again\n- call Jana about the trip"}}
-   previous/month-2026-02.json  {state found, sections {"Goals": "- start running again"}}
+   previous/week-2026-W13.json  {state found, sections {"What should I start doing?": ["- start running again", "- call Jana about the trip"]}}
+   previous/month-2026-02.json  {state found, sections {"Goals": ["- start running again"]}}
 2. weeks: one unit 2026-W14, days 03-30 … 04-05 (a week review is not clipped; 04-01 … 04-05 empty), takes_part.
 3. plan: one round = [digester 2026-W14, carryover]. One message, two Agent() calls.
    digests/2026-W14.json: {"read_id":"R","unit":"2026-W14","days":["2026-03-30","2026-03-31"],

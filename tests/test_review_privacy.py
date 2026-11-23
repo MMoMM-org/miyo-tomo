@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -49,6 +49,10 @@ which marker kinds it may carry and why. The walk then asserts:
 - (spec 046 T4.2, amended CON-3) a mapped write's meta.json is a closed key set: spec 045's keys
   plus `pass1_sections` with entries exactly {key, count, empty}; section headings, parents,
   descriptions and keywords carrying a marker never reach it.
+- (spec 047 T4.3) `review-digest.py plan` and `check` run on the month's stage after each month read, with
+  digests and a carryover whose text carries the daily marker; `digests/` and `carryover.json` are content files
+  like the stage's, `condensed.json` stays under the guard; a `plan` on a stem without a stage is refused;
+  one forced exception and one bad invocation of `review-digest.py` join the lists.
 - (spec 046 T5.7) the mapped walk (`_mapped`, its own instance): a mapped heading, the note's text,
   the section's items and a user-added item carry markers through `review-doc.py write` and `parse`,
   a clean `preview`, a renamed heading (`preview`, refused `deliver`), a moved block (`preview`,
@@ -124,7 +128,8 @@ TODAY = "2026-11-11"
 WEEK_STEM, MONTH_STEM = "2026-W13_review", "2026-03_review"
 WEEK_DOC, MONTH_DOC = f"{INBOX}2026-W13 Review.md", f"{INBOX}2026-03 Review.md"
 WEEK_SET_MD, MONTH_SET_MD = f"{INBOX}{WEEK_STEM}_instructions.md", f"{INBOX}{MONTH_STEM}_instructions.md"
-SCRIPTS = ("review-session", "review-read", "review-doc", "review-instructions")
+SCRIPTS = ("review-session", "review-read", "review-doc", "review-instructions", "review-digest")
+NO_PROFILES = ("review-digest",)   # reads only the stage: no --profiles-dir
 
 
 # ── loading and running ──────────────────────────────────────────────────
@@ -182,14 +187,14 @@ def _patched(obj, name: str, value):
         setattr(obj, name, original)
 
 
-CONTENT_DIRS = ("days", "growth", "children", "previous")
+CONTENT_DIRS = ("days", "growth", "children", "previous", "digests")
 
 
 def _content_file(path: Path) -> bool:
     """A file that holds note or proposal text by design (the stage content, proposals.json, payloads.json)."""
     if path.parent.name in CONTENT_DIRS and path.parent.parent.parent.name == "review":
         return True
-    return path.name in ("proposals.json", "payloads.json") or (
+    return path.name in ("proposals.json", "payloads.json", "carryover.json") or (
         path.name.startswith("context") and path.name.endswith(".json"))
 
 
@@ -228,7 +233,7 @@ class Walk:
         return leaks
 
     def _record(self, bucket: list, script: str, sub: str, argv: list[str]) -> dict:
-        call = self._call(script, ["--profiles-dir", "profiles", *argv])
+        call = self._call(script, argv if script in NO_PROFILES else ["--profiles-dir", "profiles", *argv])
         call["sub"] = sub
         bucket.append(call)
         return call
@@ -292,7 +297,7 @@ def walk(tmp_path, monkeypatch, capsys):
     vault = build_vault()
     mods = {name: _load(name) for name in SCRIPTS}
     for mod in mods.values():
-        monkeypatch.setattr(mod, "KadoClient", vault)
+        monkeypatch.setattr(mod, "KadoClient", vault, raising=False)   # review-digest has none
     w = Walk(capsys, mods, tmp_path, vault)
     _session(w)
     _week(w)
@@ -406,7 +411,34 @@ def _month_read(w: Walk) -> Path:
     rc, out = w.run("review-read", "-", ["--period", "2026-03", "--kind", "month", "--today", TODAY])
     assert rc == 0 and out["status"] == "ok" and out["report"]["weekly_status"] == "found", out
     w.keep_read_file("month", out["stage"])
+    _condense(w)
     return w.write_proposals(MONTH_STEM, "month")
+
+
+def _condense(w: Walk) -> None:
+    """spec 047 T4.3: plan, the agents' files with the daily marker in their text, check — no marker reaches
+    stdout or stderr, condensed.json stays content-free (the tmp-leak check of every call)."""
+    rc, out = w.run("review-digest", "plan", ["plan", "--stem", MONTH_STEM])
+    assert rc == 0 and out["status"] == "ok" and out["rounds"], out
+    stage = w.stage(MONTH_STEM)
+    for job in out["rounds"][0]:
+        if job["agent"] == "review-digester":
+            data = {"read_id": out["read_id"], "unit": job["unit"], "days": job["days"],
+                    "done": [{"text": f"run {DAY}", "sources": [job["days"][0]]}], "open": [], "notable": [],
+                    "themes": [], "sections": [], "child_notes": [], "growth": []}
+        else:
+            notes = [json.loads((stage / name).read_text(encoding="utf-8")) for name in job["previous_files"]]
+            data = {"read_id": out["read_id"],
+                    "notes": [{"path": n["path"], "kind": n["kind"], "name": n["name"], "items": 1} for n in notes],
+                    "items": [{"id": f"c{i}", "type": "open", "text": f"carry {DAY}", "sources": [n["name"]]}
+                              for i, n in enumerate(notes, 1)]}
+        (stage / job["out"]).parent.mkdir(parents=True, exist_ok=True)
+        (stage / job["out"]).write_text(json.dumps(data), encoding="utf-8")
+    rc, out = w.run("review-digest", "check", ["check", "--stem", MONTH_STEM])
+    assert rc == 0 and out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
+    assert out["proposer"]["carried"] is True, "the month's previous note was carried"
+    rc, out = w.run("review-digest", "plan", ["plan", "--stem", "2026-02_review"])
+    assert rc == 0 and out["problems"] == ["stage-missing"], out
 
 
 def _month(w: Walk) -> None:
@@ -483,6 +515,10 @@ def _forced_exceptions(w: Walk) -> None:
     with _patched(w.mods["review-session"], "open_reviews",
                   _raise_with(lambda docs, *a, **kw: f"{DAY} {ANS} {TRK} {PRP} {WKL} {docs}")):
         w.run_forced("review-session", "start", ["start", "--args=", "--today", TODAY])
+    _month_read(w)
+    (w.stage(MONTH_STEM) / "condensed.json").unlink()     # every job open again: check reads the marker digests
+    with _patched(w.mods["review-digest"].rd, "check_digest", _raise_with(lambda text, *a, **kw: text)):
+        w.run_forced("review-digest", "check", ["check", "--stem", MONTH_STEM])
 
 
 def _bad_invocations(w: Walk) -> None:
@@ -493,6 +529,7 @@ def _bad_invocations(w: Walk) -> None:
         ("review-read", "-", ["--period", DAY, "--kind", "week", "--today", TODAY]),
         ("review-session", "setup-input", ["setup-input", "--kind", "week", "--confirmed", f"{ANS}.json"]),
         ("review-session", "match", ["match", "--kind", "week", "--format", WKL, "--first-day", "monday"]),
+        ("review-digest", "plan", ["plan", "--stem", f"../{DAY}"]),
     ]
     for script, sub, argv in bad:
         assert w.run_bad(script, sub, argv) == 2, (script, sub, argv)
@@ -521,7 +558,7 @@ def _mapped(root: Path, monkeypatch, capsys, mods) -> Walk:
     target = f"{tds.WEEKLY}2026-W13.md"
     vault = GuardedVault({target: MAPPED_NOTE})
     for mod in mods.values():
-        monkeypatch.setattr(mod, "KadoClient", vault)
+        monkeypatch.setattr(mod, "KadoClient", vault, raising=False)   # review-digest has none
     w = Walk(capsys, mods, root, vault)
     props = {"language": "de", "sections": [tds.section("s4", tds.item(f"Notiz {PRP}", "2026-03-24"))],
              "groups": {"done": [tds.item(f"erledigt {PRP}", "2026-03-28")]}}
@@ -581,7 +618,7 @@ def test_no_marker_on_stderr_of_any_script(walk):
 def test_a_forced_exception_leaves_only_its_class_name_on_stderr(walk):
     assert {(c["script"], c["sub"]) for c in walk.forced_calls} == {
         ("review-read", "-"), ("review-doc", "parse"), ("review-doc", "write"),
-        ("review-instructions", "preview"), ("review-session", "start")}
+        ("review-instructions", "preview"), ("review-session", "start"), ("review-digest", "check")}
     for call in walk.forced_calls:
         assert call["rc"] == 1 and call["stdout"] == "", _label(call)
         assert call["stderr"] in ("ValueError\n", "RuntimeError\n"), (_label(call), call["stderr"])
@@ -590,7 +627,7 @@ def test_a_forced_exception_leaves_only_its_class_name_on_stderr(walk):
 def test_bad_invocations_echo_no_marker(walk):
     assert {(c["script"], c["sub"]) for c in walk.bad_calls} == {
         ("review-doc", "parse"), ("review-instructions", "preview"), ("review-read", "-"),
-        ("review-session", "setup-input"), ("review-session", "match")}
+        ("review-session", "setup-input"), ("review-session", "match"), ("review-digest", "plan")}
     leaks = [(_label(c), c["argv"], sorted(_kinds(c["stdout"] + c["stderr"])))
              for c in walk.bad_calls if _kinds(c["stdout"] + c["stderr"])]
     assert leaks == []

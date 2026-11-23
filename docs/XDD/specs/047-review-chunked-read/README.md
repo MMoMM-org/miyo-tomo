@@ -5,17 +5,17 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-22 |
-| **Current Phase** | SDD |
+| **Current Phase** | PLAN |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Model tier** | {{MODEL_TIER}} |
-| **Last Updated** | 2026-11-22 |
+| **Last Updated** | 2026-11-23 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.1 (2026-11-22): 8 features (F1–F7 Must, F8 Should), 56 criteria; validation fixes worked in |
-| solution.md | in_progress | |
+| solution.md | completed | v1.1 (2026-11-23): 12 ADRs, all confirmed; validation fixes worked in; 56/56 criteria owned |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -44,6 +44,8 @@
 | 2026-11-22 | PRD v1.0 written (opus), validated (sonnet): NEEDS FIXES, 15 fixes (046 F6-AC5 uncovered, resume ambiguity, cap overflow, partial carry failure, leakage, open questions settled from existing decisions) | Validation pass |
 | 2026-11-22 | Rerun of an interrupted Pass 1 continues on the stored read (no new Kado read), says so in one line with the read's time, condenses only what is missing; "start over" or a changed section mapping reads anew | Owner (recommended) |
 | 2026-11-22 | PRD v1.1 approved; section-full rule: a carried item moves to the group of its mark, never dropped (F4-AC10) | Owner |
+| 2026-11-23 | SDD v1.0 drafted (opus, 12 ADRs), validated (sonnet): NEEDS FIXES, 13 non-structural fixes (carried failures must not land in `rejected`, carried+child mark rule, ids vs sources subset, one cutter in review_day, shared source resolver, nested-write smoke test, opus rates $15/$75 in tomo-token-usage.py) | Validation pass |
+| 2026-11-23 | ADR-1..ADR-12 confirmed with the fixes worked in; a full section: the script moves a carried item into the group of its mark; stage files written line-broken (indent=1, texts as line arrays), the 40 KB ceiling on that form; ADR-12 top-line wording accepted | Owner |
 
 ## Context
 

@@ -67,13 +67,15 @@ Pins what the review document and Pass 2 look like today for a week, a month and
   4. Validate: outcomes recorded; nothing under `tomo/` changed; `tomo-privat` untouched.
   5. Success: the agents' file writes and one-call reads are proven before the agents are built `[ref: SDD/ADR-2, ADR-7; SDD/Implementation Gotchas]`
 
-- [ ] **T1.5 Size measurement of 2026-Q1 on the old flow (owner go)** `[activity: validate]`
+- [x] **T1.5 Size measurement of 2026-Q1 on the old flow (owner go)** `[activity: validate]`
 
   1. Prime: `tomo/scripts/review-read.py` `--measure` (docstring lines 21-55, `_measure` 200-209); spec 046 close-out (717 KB, `read-index.json` ≈ 82.5k tokens); research §2 `[ref: SDD/ADR-2; lines: 1168-1173]` `[ref: SDD/Project Commands; lines: 317-330]`
   2. Test, owner-gated: announce, wait for the go, then run `python3 tomo/scripts/review-read.py --kind quarter --period 2026-Q1 --stem 2026-Q1_review --measure` against the test instance's config and key (never `tomo-privat`); report at once.
   3. Implement: record counts only — calls, retries, waited seconds, bytes per read file, and from the per-month parts the per-day average and maximum bytes — as notes under this task; derive the expected indented size per day and per 7-day week (≈ 15 % over compact) and compare with ADR-2's 40,960 / 81,920 / 8,192 numbers. A number that does not hold is brought to the owner as a deviation before T2.2.
   4. Validate: the measure wrote no file; no journal text in the notes.
   5. Success: the ADR-2 limits are checked against the real quarter before they are coded `[ref: SDD/ADR-2; PRD/Constraints]`
+
+  - **Outcome (2026-11-23, owner go):** `--measure` 2026-Q1 on the old flow, host source against the test-vault Kado (tomo-instance key): 454 calls, 0 retried, 101.7 s waited, 0 not read, no file written. Read files: `read-index.json` 150,718 B; `read-2026-01/02/03.json` 193,079 / 176,710 / 196,357 B; day bytes per month 179,969 / 164,293 / 181,763. Size breakdown (a second read into a deleted temp dir, sizes only): days n=90, indent=1 mean 6,008 B, max 8,303 B, 0 partly read; ISO-week sums (indent=1) max 46,747 B, mean 38,621 B, 14 weeks, none over 81,920; weekly notes n=13, max 3,889 B; monthly notes n=3, max 161 B; index keys: `growth` 124,582 / 157,722 B (`growth.created` n=746), `report` 30,361 / 39,481 B, `sections` 3,357 B, `dailies_not_in_monthly` 1,873 B. Day, week and digest limits of ADR-2 hold. Deviation (owner, 2026-11-23): `growth.created` goes per unit to the digesters (each unit's created notes, condensed like the days); `context.json` keeps only growth counts and the MOC changes; the read report stays in `manifest.json` and is not proposer input. SDD ADR-1/2/4 and the Phase 2/4 tasks are amended accordingly.
 
 - [ ] **T1.6 Phase Validation** `[activity: validate]`
 

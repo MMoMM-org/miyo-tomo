@@ -188,6 +188,23 @@ recognised as a MOC; filtering that listing by `modifiedAfter` would lose
 exactly the MOCs the new notes link to. No configured MOC folder means no
 MOC query and `moc_folders: 0` in the report.
 
+### WHY Each Created Note Keeps Its `day`
+
+WHY: spec 047 ADR-1 (amended 2026-11-23, T1.5 measurement: 746 created notes
+≈ 157.7 KB indented, 4× the stage's file ceiling). The stage files the created
+notes per creation day in `growth/<YYYY-MM-DD>.json`, beside the day files,
+so a unit's growth follows its days with no second packing; the day must come
+from the read, because only the read sees Kado's item. `created_day` is the
+local date of Kado's `created` ms — the local-day convention of
+`period_bounds_ms` (below), so a note created at the period's last millisecond
+lands on the period's last day, not the next one. `created` is a base field of
+every Kado search item, not gated by `fields: ["links"]` (Kado
+`src/types/canonical.ts` `CoreSearchItem`, `src/obsidian/search-adapter.ts`).
+An entry without a usable `created` (missing, not a number, or a date outside
+the period — the created query already bounds it to the period, so only a
+malformed stamp lands there) goes to the period's first day: never dropped,
+and the day it sits on is still a day of the period.
+
 ### WHY an Empty Growth Part Is Not an Access Problem
 
 WHY: review of T3.3. A week in which nothing was created is the normal

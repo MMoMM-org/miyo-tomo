@@ -1,5 +1,5 @@
 # review_period.py — reads a period for /review: dailies, the day after, child-review notes, link differences, growth.
-# version: 0.5.1
+# version: 0.5.2
 """Reading a period for ``/review`` (spec 045, T3.3; PRD F3-AC5..7, F3-AC9).
 
 Owns what lies between one day and the report: finding the dailies of every
@@ -11,8 +11,9 @@ each living task note once for the period, the child-review notes by the
 quarter reads its weekly notes as sources and marks against its monthly
 notes; finding and reading them is ``lib/review_children.py``'s), the two
 link differences per marked level (``only_in_<label>_links``,
-``dailies_not_in_<label>``), vault growth from the created-notes query and
-the MOC listings, and the per-source report. ``kado_empty`` and the
+``dailies_not_in_<label>``), vault growth from the created-notes query (each
+entry with its local creation ``day``, ``created_day``) and the MOC
+listings, and the per-source report. ``kado_empty`` and the
 ``check-key-access`` advice come from the daily and child folder listings
 only; a growth query Kado answered with nothing is named in
 ``report.growth.kado_none``. Every level read carries a ``<label>_status``
@@ -141,6 +142,18 @@ def period_bounds_ms(period: Period) -> Tuple[int, int]:
     start = datetime.combine(period.start, time.min).timestamp()
     end = datetime.combine(period.end + timedelta(days=1), time.min).timestamp()
     return int(round(start * 1000)), int(round(end * 1000)) - 1
+
+
+def created_day(created: Any, period: Period) -> str:
+    """The local ISO date of Kado's ``created`` ms inside ``period``; else the period's first day."""
+    if isinstance(created, (int, float)) and not isinstance(created, bool):
+        try:
+            day = datetime.fromtimestamp(created / 1000).date()
+        except (OverflowError, OSError, ValueError):
+            day = None
+        if day is not None and period.start <= day <= period.end:
+            return day.isoformat()
+    return period.start.isoformat()
 
 
 # --- the period ---------------------------------------------------------------------
@@ -316,7 +329,8 @@ class _PeriodRead:
             self._growth_none(self.reader.notes_key(ROOT, **self._created_query(start_ms, end_ms)), GROWTH_CREATED)
         created = [{"path": str(item.get("path")),
                     "links": unique_targets([str(link.get("target") or "") for link in item.get("links") or []
-                                             if isinstance(link, dict)])}
+                                             if isinstance(link, dict)]),
+                    "day": created_day(item.get("created"), self.period)}
                    for item in created_items or [] if item.get("path")]
         created.sort(key=lambda c: c["path"])
         mocs: List[dict] = []

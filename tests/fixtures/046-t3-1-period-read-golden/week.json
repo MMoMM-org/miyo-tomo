@@ -152,10 +152,12 @@
   "growth": {
     "created": [
       {
+        "day": "2026-03-29",
         "links": [],
         "path": "Notes/Edge.md"
       },
       {
+        "day": "2026-03-23",
         "links": [
           "Topic MOC",
           "Alpha"
@@ -163,6 +165,7 @@
         "path": "Notes/New One.md"
       },
       {
+        "day": "2026-03-23",
         "links": [
           "Other MOC"
         ],

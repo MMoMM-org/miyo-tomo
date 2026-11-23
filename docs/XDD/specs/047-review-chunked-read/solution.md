@@ -451,6 +451,7 @@ tomo/
     ├── review-doc.py                         # MODIFY 0.7.2 → 0.8.0
     └── lib/
         ├── review_stage.py                   # NEW 0.1.0
+        ├── review_stage_codec.py             # NEW 0.1.0 (T2.3 deviation: encoding, cut and packing helpers split out so review_stage.py stays ≤ 300 lines)
         ├── review_weeks.py                   # NEW 0.1.0
         ├── review_previous.py                # NEW 0.1.0
         ├── review_digest.py                  # NEW 0.1.0
@@ -473,6 +474,7 @@ docs/
 ├── tomo/scripts/review-digest.md               # NEW
 ├── tomo/scripts/review-doc.md                  # MODIFY: loader, new refusals, top lines
 ├── tomo/scripts/lib/review_stage.md            # NEW
+├── tomo/scripts/lib/review_stage_codec.md      # NEW (T2.3 deviation: the split; the encoding WHY stays in review_stage.md)
 ├── tomo/scripts/lib/review_weeks.md            # NEW
 ├── tomo/scripts/lib/review_previous.md         # NEW
 ├── tomo/scripts/lib/review_digest.md           # NEW

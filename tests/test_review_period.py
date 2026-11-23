@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.2
+# version: 0.4.3
 """test_review_period.py — reading a period for /review: dailies flat and in
 year folders, the day after the period, duplicates, link stems resolved to
 vault paths, task notes read once, the weekly notes of a month with their
@@ -339,9 +339,9 @@ def test_growth_lists_created_notes_with_links_mocs_changed_and_mocs_linked_acro
     result = run(vault, W13, week_sources(moc_folders=[MOCS]))
     growth = result["growth"]
     assert growth["created"] == [
-        {"path": "Notes/Edge.md", "links": []},
-        {"path": "Notes/New One.md", "links": ["Topic MOC", "Alpha"]},
-        {"path": "Notes/New Two.md", "links": ["Other MOC"]},
+        {"path": "Notes/Edge.md", "links": [], "day": "2026-03-29"},
+        {"path": "Notes/New One.md", "links": ["Topic MOC", "Alpha"], "day": "2026-03-23"},
+        {"path": "Notes/New Two.md", "links": ["Other MOC"], "day": "2026-03-23"},
     ]
     assert growth["mocs_changed"] == [f"{MOCS}Other MOC.md", f"{MOCS}Quiet MOC.md"]
     assert growth["mocs_linked_by_new"] == [f"{MOCS}Other MOC.md", f"{MOCS}Topic MOC.md"]

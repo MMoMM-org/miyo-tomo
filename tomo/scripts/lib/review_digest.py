@@ -1,5 +1,5 @@
 # review_digest.py — file checks of a /review unit digest and the carryover; the condensed.json job state.
-# version: 0.1.0
+# version: 0.1.1
 """Digest and carryover checks for ``/review`` condensing (spec 047 T4.2; PRD F1-AC1, F6-AC1, F6-AC2; ADR-4).
 
 ``check_digest(text, unit, read, *, read_id, cap_bytes)`` gives the errors of
@@ -232,7 +232,8 @@ def check_carryover(text: Optional[str], read: Mapping[str, Any], *, read_id: st
 
 
 def settle_carryover(data: Mapping[str, Any], check: CarryoverCheck) -> dict:
-    """``data`` without its invalid items and the items of the failed notes; each note's ``items`` recounted."""
+    """``data`` without its invalid items and the failed notes' items, ``items`` recounted.
+    Apply once, on the checked data: ``bad_items`` index its original ``items`` list."""
     note_of = _note_of(data["notes"])
 
     def rests_on(item: dict, paths: Set[str]) -> bool:
@@ -269,13 +270,14 @@ def advance(job: Mapping[str, Any], errors: Sequence[str], *, count: bool) -> di
 def advance_carryover(job: Mapping[str, Any], check: CarryoverCheck, *, count: bool) -> dict:
     """``advance`` for the carryover; after the last counted attempt an item failure fails only its notes."""
     nxt = advance(job, check.errors, count=count)
-    if job["state"] in _FINAL or nxt["state"] == job["state"] and not count:
+    if job["state"] in _FINAL or (nxt["state"] == job["state"] and not count):
         return nxt
     if nxt["state"] == PASSED:
         return dict(nxt, notes={p: PASSED for p in check.notes})
     if nxt["state"] != FAILED or check.whole:
         return dict(nxt, notes={})
     notes = {p: FAILED if p in check.failed_notes else PASSED for p in check.notes}
+    # notes == {} cannot reach here: without a found note new_state sets the job to none.
     return dict(nxt, state=FAILED if all(s == FAILED for s in notes.values()) else PASSED, notes=notes)
 
 

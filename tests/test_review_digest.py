@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_digest.py — spec 047 T4.2: digest and carryover file checks, the condensed.json job state.
 
 Lib part (``lib/review_digest.py``; PRD F1-AC1, F6-AC1, F6-AC2; SDD ADR-4). The
@@ -16,7 +16,8 @@ Mechanisms a mutation of ``lib/review_digest.py`` falsifies:
 - the unit's weekly-note stem accepted in ``child_notes`` only;
 - theme days and section keys inside the unit / the mapping;
 - growth ``notes`` ⊆ the unit's created notes and each growth source a day on
-  which one of its notes was created;
+  which one of its notes was created — a growth source outside the unit is
+  refused as outside, not as a day without a created note;
 - the byte caps (digest ``cap_bytes``, carryover ``CARRYOVER_CAP``);
 - carryover notes == the found previous notes, sources among them, ids unique;
 - the state model: 1st counted failure ``retry``, 2nd ``failed``; a valid file
@@ -177,6 +178,8 @@ DIGEST_CASES = [
      ["/growth/0/notes/2: growth-note-outside-unit"]),
     ("growth-source-not-created-day", lambda d: d["growth"][0]["sources"].append("2026-03-24"),
      ["/growth/0/sources/2: growth-source-not-created-day"]),
+    ("growth-source-outside-unit", lambda d: d["growth"][0]["sources"].__setitem__(0, "2026-03-30"),
+     ["/growth/0/sources/0: source-outside-unit"]),
 ]
 
 

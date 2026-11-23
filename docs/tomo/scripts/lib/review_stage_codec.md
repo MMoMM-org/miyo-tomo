@@ -88,3 +88,16 @@ classifies values through `review_habits.parse_value` rather than a parser
 of its own; what the aggregates hold and why is in
 `docs/tomo/scripts/lib/review_stage.md` ("WHY `context.json` Carries Field
 Aggregates").
+
+## WHY a Thousands-Grouped Value Counts Days Only
+
+WHY: `review_habits.parse_value` reads a comma as a decimal mark (`"7,5"`
+is 7.5), so `"1,000"` would read as 1 and give a plausible but wrong
+min / max / mean, off by a factor of 1,000, while the raw value no longer
+reaches `context.json`. `_reading` therefore treats a value shaped like
+thousands grouping (`^[+-]?\d{1,3}(,\d{3})+$`) as "has a value, not a
+number", so that field's period and unit stats fall back to `{days}`. The
+shape is ambiguous: `"7,500"` could be a German decimal 7.5. The guard
+resolves it conservatively, as days only: a missing aggregate is visible,
+a wrong one is not. The guard lives here, not in `review_habits`, because
+the habit check reads its own values and is out of this change's scope.

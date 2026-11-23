@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_stage.py — the stage a /review read rests in (lib/review_stage.py; spec 047 T2.3;
 PRD F1-AC2, F2-AC3, F6-AC5, F7-AC1; SDD ADR-1, ADR-2, ADR-3, ADR-10, "Data Storage Changes").
 
@@ -404,9 +404,9 @@ def test_context_holds_link_differences_fields_and_growth_counts_only(tmp_path):
 def _fields_month() -> dict:
     fields = {"2026-03-01": {"Sleep": "7"},                            # unit 2026-W09
               "2026-03-02": {"Sleep": "8", "Mood": "good", "Steps": "1000"},  # 2026-W10
-              "2026-03-03": {"Sleep": "6", "Steps": "lots"},
+              "2026-03-03": {"Sleep": "6", "Steps": "lots", "Count": "1,000", "Km": "7,5"},
               "2026-03-04": {"Sleep": "-"}, "2026-03-05": {"Sleep": ""},   # no value
-              "2026-03-10": {"Mood": "ok", "Steps": "2000"},              # 2026-W11
+              "2026-03-10": {"Mood": "ok", "Steps": "2000", "Count": "3", "Km": "2"},  # 2026-W11
               "2026-03-31": {"Sleep": "9", "Empty": "-"}}                 # 2026-W14
     return _result(MARCH, days=[_day(d.isoformat(), fields=fields.get(d.isoformat(), {})) for d in MARCH.days()])
 
@@ -415,7 +415,7 @@ def test_context_aggregates_each_field_per_period_and_unit(tmp_path):
     result = _fields_month()
     _write(tmp_path / "s", result)
     aggregates = _json(tmp_path / "s" / "context.json")["field_aggregates"]
-    assert set(aggregates) == {"Sleep", "Mood", "Steps"}
+    assert set(aggregates) == {"Sleep", "Mood", "Steps", "Count", "Km"}
     assert aggregates["Sleep"] == {
         "period": {"days": 4, "min": 6, "max": 9, "mean": 7.5},
         "units": {"2026-W09": {"days": 1, "min": 7, "max": 7, "mean": 7},
@@ -425,6 +425,11 @@ def test_context_aggregates_each_field_per_period_and_unit(tmp_path):
                                   "units": {"2026-W10": {"days": 1}, "2026-W11": {"days": 1}}}
     assert aggregates["Steps"] == {"period": {"days": 3},
                                    "units": {"2026-W10": {"days": 2}, "2026-W11": {"days": 1}}}
+    assert aggregates["Count"] == {"period": {"days": 2},              # "1,000" is not read as 1
+                                   "units": {"2026-W10": {"days": 1}, "2026-W11": {"days": 1}}}
+    assert aggregates["Km"] == {"period": {"days": 2, "min": 2, "max": 7.5, "mean": 4.75},
+                                "units": {"2026-W10": {"days": 1, "min": 7.5, "max": 7.5, "mean": 7.5},
+                                          "2026-W11": {"days": 1, "min": 2, "max": 2, "mean": 2}}}
     units = {u["unit"] for u in _json(tmp_path / "s" / "weeks.json")["units"]}
     assert all(set(a["units"]) <= units for a in aggregates.values())
 

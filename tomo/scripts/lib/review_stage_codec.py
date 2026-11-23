@@ -1,5 +1,5 @@
 # review_stage_codec.py — the bytes of a /review stage file: line-broken encoding, the ceiling, cutting and parts.
-# version: 0.2.0
+# version: 0.2.1
 """Encoding and size rules of the agent-read stage files (spec 047 T2.3; ADR-2), split out of ``review_stage``.
 
 ``encode(data)`` is the one written form: ``indent=1``, UTF-8 (``ensure_ascii``
@@ -23,7 +23,8 @@ a partial doc from moved items, ``merge(into, part)`` joins a part back
 ``read_id``; a child's ``clipped``), ``day_entry`` / ``child_entry`` /
 ``previous_entry`` back; ``growth_files`` packs the created notes per day.
 ``field_aggregates(days, units)`` gives per field name ``{period, units}`` of
-``{days, min, max, mean}`` when every value is a number, else ``{days}`` only.
+``{days, min, max, mean}`` when every value is a number, else ``{days}`` only
+(a thousands-grouped value such as ``"1,000"`` is not a number).
 ``compact`` is the script-only form of ``manifest.json``. No file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_stage_codec.md
@@ -32,6 +33,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from lib import review_day
@@ -40,13 +42,15 @@ from lib.review_weeks import FILE_CEILING
 
 LINE_PIECE = 1_000
 _TRIES = (1.0, 0.8, 0.6)
+_GROUPED = re.compile(r"[+-]?\d{1,3}(,\d{3})+")
 
 Unit = Tuple[str, str, str]
 Item = Tuple[Tuple[str, ...], bool, Any]
 
 __all__ = ["FILE_CEILING", "LINE_PIECE", "child_doc", "child_entry", "child_text", "compact", "day_doc", "day_entry",
-           "day_text", "encode", "field_aggregates", "fit", "growth_files", "join_text", "lines_of", "mark_partly_read", "merge",
-           "pack_parts", "place", "previous_doc", "previous_entry", "size", "spill", "text_key"]
+           "day_text", "encode", "field_aggregates", "fit", "growth_files", "join_text", "lines_of",
+           "mark_partly_read", "merge", "pack_parts", "place", "previous_doc", "previous_entry", "size", "spill",
+           "text_key"]
 
 
 def encode(data: Any) -> str:
@@ -284,7 +288,9 @@ def growth_files(read_id: str, created: Sequence[dict], first_day: str) -> Dict[
 # ---------------------------------------------------------------- field aggregates
 
 def _reading(raw: Any) -> Tuple[bool, Optional[float]]:
-    """``(has a value, its number or None)``."""
+    """``(has a value, its number or None)``; a thousands-grouped value has no number."""
+    if isinstance(raw, str) and _GROUPED.fullmatch(raw.strip()):
+        return True, None
     try:
         value = parse_value("integer", raw)
     except Unreadable:
@@ -301,7 +307,10 @@ def _stats(values: List[Optional[float]], numeric: bool) -> Dict[str, Any]:
 
 
 def field_aggregates(days: Sequence[dict], units: Sequence[dict]) -> Dict[str, Dict[str, Any]]:
-    """Per field name: ``{period, units: {<unit>: …}}``; a unit without a value is left out."""
+    """Per field name: ``{period, units: {<unit>: …}}``; a unit without a value is left out.
+
+    Period and unit stats are ``{days}`` only for any field with a value that is not a number.
+    """
     unit_of = {d: u["unit"] for u in units for d in u["days"]}
     readings: Dict[str, List[Tuple[str, Optional[float]]]] = {}
     for day in days:

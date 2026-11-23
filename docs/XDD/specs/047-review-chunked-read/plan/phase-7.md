@@ -40,6 +40,8 @@ Makes the privacy contract and the user documentation match the new flow, and gi
   4. Validate: `test_review_privacy_docs.py` green; ruff clean.
   5. Success: a user can see where review material rests, for how long, and which models see it `[ref: PRD/F7-AC2, F7-AC3]`
 
+  - **Carry-over from T2.4 (2026-11-23):** `tests/test_046_t6_2_docs.py:11, 89-90` still pins `read-index.json` in PRIVACY.md's "where read content rests"; update that pin together with the PRIVACY.md rewrite.
+
 - [ ] **T7.2 Leak guard and cleanup over the new steps** `[activity: testing]` `[parallel: true]`
 
   1. Prime: `tests/test_review_privacy.py` (leak guard, tmp allowlist ~212), `tests/test_review_e2e_cleanup.py`, `tests/review_privacy_fixture.py` (sentinel texts) `[ref: SDD/CON-3; ADR-10]` `[ref: SDD/Quality Requirements/Security; lines: 1237]`

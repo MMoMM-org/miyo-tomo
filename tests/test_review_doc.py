@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic reads staged through lib/review_stage.write (spec 047
@@ -48,6 +48,12 @@ T2.4; the stage replaced read.json) and proposals.json files:
   only meta.json remains (growth/ gone), after replace --abort meta.json and payloads.json;
   review-exists keeps the stage and replace --confirm builds from it, the not-read line from the
   manifest's not_read
+- spec 047 T5.2: Sources.previous holds found previous notes only (path or stem); resolve_sources
+  gives days, child hits, previous hits and links in source order, and check_item on it is
+  unchanged (a previous note is no source of a non-carried item); the carried labels EN/DE,
+  English otherwise; one top line per previous note in every state, one Not condensed line per
+  failed unit, the carry-failed line, EN and DE; the callout's first line unchanged; the document
+  still parses with no checkbox above the first ## but Approved
 
 All data is synthetic.
 """
@@ -57,6 +63,7 @@ import importlib.util
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 import jsonschema
@@ -764,3 +771,148 @@ def test_review_exists_keeps_the_stage_and_replace_confirm_builds_from_it(mod, i
     text = own.text(doc_path)
     assert "2026-03-27" in text.split("## ")[0], "the not-read line comes from manifest.json's not_read"
     assert sorted(p.name for p in folder.iterdir()) == ["meta.json"]
+
+
+# ---------------------------------------------------------------- spec 047 T5.2: previous notes, top lines
+
+PREV_WEEK = f"{WEEKLY}2026-W12.md"
+PREV_MONTH = f"{MONTHLY}2026-02.md"
+
+
+def _prev(kind: str, name: str, state: str, path=None, **extra) -> dict:
+    row = {"kind": kind, "name": name, "role": f"previous-{kind}", "path": path, "state": state, "partly_read": False}
+    row.update(extra)
+    return row
+
+
+def _prev_read() -> dict:
+    return week_read(previous=[_prev("week", "2026-W12", "found", PREV_WEEK),
+                               _prev("month", "2026-02", "empty", PREV_MONTH),
+                               _prev("quarter", "2025-Q4", "missing")])
+
+
+def test_sources_previous_holds_found_previous_notes_only_by_path_or_stem():
+    sources = rd.Sources.of(_prev_read())
+    assert sources.previous_of(PREV_WEEK) == "2026-W12"
+    assert sources.previous_of("2026-W12") == "2026-W12"
+    assert sources.previous_of("[[2026-W12]]") == "2026-W12"
+    assert sources.previous_of(PREV_MONTH) is None and sources.previous_of("2026-02") is None
+    assert sources.previous_of("2025-Q4") is None
+    assert rd.Sources.of(week_read()).previous == {}
+
+
+def test_resolve_sources_returns_days_children_previous_and_links_in_source_order():
+    sources = rd.Sources.of(_prev_read())
+    got = rd.resolve_sources(item("x", "2026-W12", "2026-03-25", "Secret/Medical", "2026-03-24", "2026-03-25"),
+                             sources)
+    assert got.days == {date(2026, 3, 25), date(2026, 3, 24)}
+    assert got.previous == ["2026-W12"] and got.children == 0
+    assert got.links == ["2026-W12", "2026-03-25", "2026-03-24"]
+    month = rd.Sources.of(month_read())
+    got = rd.resolve_sources(item("x", "2026-W13", "2026-03-02"), month, rd.WEEKLY_ONLY)
+    assert got.children == 1 and got.links == ["2026-W13", "2026-03-02"] and got.previous == []
+    assert rd.resolve_sources(item("x", "2026-W13"), month).links == []          # no child group: not resolved
+
+
+def test_check_item_on_the_resolver_is_unchanged_and_ignores_previous_notes():
+    sources = rd.Sources.of(_prev_read())
+    assert rd.check_item(rd.DONE, item("x", "2026-W12"), sources) == (rd.NO_SOURCE, [])
+    assert rd.check_item(rd.DONE, item("x", "2026-W12", "2026-03-24"), sources) == (None, ["2026-03-24"])
+    assert rd.check_item(rd.THEMES, item("x", "2026-03-24", "2026-W12"), sources) == (rd.THEME_DAYS, ["2026-03-24"])
+    month = rd.Sources.of(month_read())
+    assert rd.check_item(rd.WEEKLY_ONLY, item("x", "2026-W13"), month) == (None, ["2026-W13"])
+    assert rd.check_item(rd.WEEKLY_ONLY, item("x", "2026-03-02"), month) == (rd.NO_SOURCE, ["2026-03-02"])
+    assert rd.check_item(rd.DONE, item("  ", "2026-03-02"), month) == (rd.EMPTY_TEXT, [])
+
+
+def test_carried_labels_owner_wording_en_de_and_english_otherwise():
+    assert {k: rd.labels("en")[k] for k in ("carried_done", "carried_still_open", "carried_not_mentioned")} == {
+        "carried_done": "done (previous review)", "carried_still_open": "still open (previous review)",
+        "carried_not_mentioned": "not mentioned again (previous review)"}
+    assert {k: rd.labels("de")[k] for k in ("carried_done", "carried_still_open", "carried_not_mentioned")} == {
+        "carried_done": "erledigt (letzter Rückblick)", "carried_still_open": "noch offen (letzter Rückblick)",
+        "carried_not_mentioned": "nicht mehr erwähnt (letzter Rückblick)"}
+    assert rd.labels("fr")["carried_done"] == "done (previous review)"
+
+
+def test_doc_input_defaults_render_the_callout_unchanged():
+    inp = _doc_input()
+    assert inp.previous == [] and inp.not_condensed == [] and inp.carry_failed is False
+    lines = rd.render_document(inp)[0].split("\n")
+    callout = [ln for ln in lines if ln.startswith(">")]
+    assert callout == ['> [!info] Ziel: [[2026-W13]] (vorhanden) · vor "In my own words"']
+
+
+def _top(inp: rd.DocInput) -> list:
+    lines = rd.render_document(inp)[0].split("\n")
+    start = lines.index(f"# {inp.period_name} Review") + 1
+    return lines[start:lines.index(rd.APPROVED_LINE)]
+
+
+ALL_STATES = [
+    _prev("month", "2026-02", "found", PREV_MONTH, carried=3),
+    _prev("week", "2026-W12", "found", PREV_WEEK, carried=0),
+    _prev("month", "2026-01", "found", "M/2026-01.md", partly_read=True, carried=1),
+    _prev("week", "2026-W11", "empty", "W/2026-W11.md"),
+    _prev("quarter", "2025-Q4", "missing"),
+    _prev("quarter", "2025-Q3", "not-set-up"),
+    _prev("week", "2026-W10", "not-read", "W/2026-W10.md", cause="refused"),
+    _prev("month", "2025-12", "not-read", cause="failed"),
+    _prev("week", "2026-W09", "not-read"),
+]
+
+
+def test_one_top_line_per_previous_note():
+    top = _top(_doc_input(language="en", previous=ALL_STATES))
+    assert top == [
+        '> [!info] Target: [[2026-W13]] (exists) · before "In my own words"',
+        "> Previous review · month 2026-02: found, 3 carried",
+        "> Previous review · week 2026-W12: found, nothing carried",
+        "> Previous review · month 2026-01: found, 1 carried, read in part",
+        "> Previous review · week 2026-W11: empty",
+        "> Previous review · quarter 2025-Q4: no note found for 2025-Q4",
+        "> Previous review · quarter 2025-Q3: quarterly notes are not set up",
+        "> Previous review · week 2026-W10: not read: Kado refused it",
+        "> Previous review · month 2025-12: not read: Kado did not return it",
+        "> Previous review · week 2026-W09: not read",
+    ]
+    assert not any(w in " ".join(top).lower() for w in ("error", "fail", "warning"))
+
+
+def test_not_condensed_and_carry_failed_lines_en_and_de():
+    failed = [{"unit": "2026-W11", "days": [f"2026-03-{d:02d}" for d in range(9, 16)]},
+              {"unit": "2026-W12", "days": [f"2026-03-{d}" for d in range(16, 23)]}]
+    top = _top(_doc_input(language="en", previous=[_prev("month", "2026-02", "found", PREV_MONTH, carried=2)],
+                          not_condensed=failed, carry_failed=True))
+    assert top[1:] == ["> Previous review · month 2026-02: found, 2 carried",
+                       "> Not condensed: 2026-W11 (2026-03-09 – 2026-03-15)",
+                       "> Not condensed: 2026-W12 (2026-03-16 – 2026-03-22)",
+                       "> The previous reviews could not be taken into account."]
+    top = _top(_doc_input(previous=ALL_STATES, not_condensed=failed[:1], carry_failed=True))
+    assert top == [
+        '> [!info] Ziel: [[2026-W13]] (vorhanden) · vor "In my own words"',
+        "> Letzter Rückblick · Monat 2026-02: gefunden, 3 übernommen",
+        "> Letzter Rückblick · Woche 2026-W12: gefunden, nichts übernommen",
+        "> Letzter Rückblick · Monat 2026-01: gefunden, 1 übernommen, teilweise gelesen",
+        "> Letzter Rückblick · Woche 2026-W11: leer",
+        "> Letzter Rückblick · Quartal 2025-Q4: keine Notiz für 2025-Q4 gefunden",
+        "> Letzter Rückblick · Quartal 2025-Q3: Quartalsnotizen sind nicht eingerichtet",
+        "> Letzter Rückblick · Woche 2026-W10: nicht gelesen: Kado hat sie verweigert",
+        "> Letzter Rückblick · Monat 2025-12: nicht gelesen: Kado hat sie nicht geliefert",
+        "> Letzter Rückblick · Woche 2026-W09: nicht gelesen",
+        "> Nicht verdichtet: 2026-W11 (2026-03-09 – 2026-03-15)",
+        "> Die letzten Rückblicke konnten nicht berücksichtigt werden.",
+    ]
+
+
+def test_the_top_lines_keep_the_document_parseable_for_pass2():
+    from lib import review_doc_parse as rdp
+
+    inp = _doc_input(previous=ALL_STATES, not_condensed=[{"unit": "2026-W11", "days": ["2026-03-09"]}],
+                     carry_failed=True, groups={rd.DONE: [{"text": "Lief", "links": ["2026-03-24"]}]})
+    text, _ = rd.render_document(inp)
+    above = text.split("\n## ", 1)[0].split("\n")
+    assert [ln for ln in above if re.match(r"[-*+] \[", ln)] == [rd.APPROVED_LINE]
+    doc = rdp.parse_document(text, pass1_links=rdp.link_stems(text))
+    assert doc.warnings == [] and doc.approved is False
+    assert [(it.id, it.kept) for it in doc.items if it.origin == "tomo"] == [("t1", True)]

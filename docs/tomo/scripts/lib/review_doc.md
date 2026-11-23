@@ -285,3 +285,35 @@ reason, the user sees the same rejection. The rule keys on `not_condensed`,
 which only `review-doc.py` sets: `review-digest.py` builds `Sources` from the
 plain loaded read, so when it offers a failed unit again on a continued read
 that unit's own digest is checked against its own days.
+
+## WHY the Carried Labels and the Top Lines (Spec 047 T5.2, 0.6.0)
+
+`Sources`, `previous_of` and the one source resolver `resolve_sources` moved
+to `lib/review_sources.py` in the same version (CON-5); `review_doc`
+re-imports them. Their WHY: docs/tomo/scripts/lib/review_sources.md.
+
+WHY the carried labels live in `_LABELS` (F5-AC1): every other mark of an
+item line comes from this table, EN and DE, English for any other language.
+The wording is the owner's: "done (previous review)", "still open (previous
+review)", "not mentioned again (previous review)" / "erledigt (letzter
+Rückblick)", "noch offen (letzter Rückblick)", "nicht mehr erwähnt (letzter
+Rückblick)". The suffix itself is built by the section parts (T5.3/T5.4).
+
+WHY the top lines are continuation lines of the info callout (ADR-12): the
+callout is already the place the document says what it read and did not
+read (spec 045 F3-AC13). The first line stays byte for byte, so a document
+without previous notes, failed units or a failed carry is unchanged; new
+facts are `> ` lines under it. One plain line per previous note,
+`Previous review · <kind> <name>: <state>` / `Letzter Rückblick · …`, in the
+record shape `lib/review_previous` produces, plus the carried count:
+"found, n carried" or "found, nothing carried" (F3-AC11), ", read in part"
+appended when the note was cut at the reading limit (F3-AC10), "empty",
+"no note found for <name>" — no error tone, it is also every user's first
+review (F3-AC6; an empty folder listing is this state, PRD v1.2), "<kind>ly
+notes are not set up" (F3-AC8, no setup question), "not read: Kado refused
+it" / "not read: Kado did not return it" (F3-AC9) and a bare "not read" for a
+row without a cause. One `Not condensed: <unit> (<first> – <last>)` line per
+failed unit (F6-AC1) and one "The previous reviews could not be taken into
+account." line when the carry failed as a whole (F6-AC2). Pass 2 is
+unaffected: `review_doc_parse` reads nothing above the first `## ` but the
+column-0 `- [ ] Approved` line, and no top line starts with a checkbox.

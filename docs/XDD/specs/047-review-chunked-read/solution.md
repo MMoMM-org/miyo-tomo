@@ -462,6 +462,7 @@ tomo/
         ├── review_previous.py                # NEW 0.1.0
         ├── review_digest.py                  # NEW 0.1.0
         ├── review_carried.py                 # NEW 0.1.0
+        ├── review_sources.py                 # NEW 0.1.0 (T5.2 deviation, owner: Sources and resolve_sources split out of review_doc.py, CON-5)
         ├── review_read_parts.py              # DELETE (replaced by review_stage.py)
         ├── review_period.py                  # MODIFY 0.5.1 → 0.6.0
         ├── review_doc.py                     # MODIFY 0.5.3 → 0.6.0
@@ -485,6 +486,7 @@ docs/
 ├── tomo/scripts/lib/review_previous.md         # NEW
 ├── tomo/scripts/lib/review_digest.md           # NEW
 ├── tomo/scripts/lib/review_carried.md          # NEW
+├── tomo/scripts/lib/review_sources.md          # NEW (T5.2 deviation: the split; why one resolver)
 ├── tomo/scripts/lib/review_read_parts.md       # DELETE (history moves to review_stage.md)
 ├── tomo/scripts/lib/review_period.md, review_doc.md, review_sections.md, review_day.md, review_children.md, review_doc_parse.md  # MODIFY
 ├── setup.md                                     # MODIFY (~:293): the three models see note content; previous notes are read

@@ -1,43 +1,32 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.5.5
-"""The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13).
+# version: 0.6.0
+"""The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13; spec 047 ADR-6, ADR-12).
 
-Pure functions between the model's ``proposals.json`` and the document the
-script writes: ``load_proposals`` / ``proposal_problems`` validate the file
-against ``tomo/schemas/review-proposals.schema.json``; ``period_of`` rebuilds
-the ``Period`` from ``read.json`` under the configured week rule;
-``check_items`` applies the source rule (every item needs a daily of the
-period — never one of a day the read's ``not_condensed`` units hold — a
-``weekly_only`` item a weekly note the reader listed, a theme two
-distinct days, a text that is not empty; the month-only groups only for a
-month with weekly notes) and returns the accepted items per group with their
-links and the rejected ones with group, index and reason. The groups come
-from ``KIND_GROUPS`` per kind (the quarter's ``monthly_only`` needs a listed
-monthly note, its pair only a quarter with monthly notes; ``group_reason``);
-``check_item`` and ``group_reason`` also serve ``review_sections`` for the
-section items. A link is the stem
-of a note ``read.json`` lists that a source resolved to — a daily of the
-period or, for ``weekly_only`` / ``monthly_only``, a listed weekly / monthly — deduplicated in source
-order; a source that resolves to nothing is dropped from the links, and no
-model string is ever rendered as a link. ``render_document`` renders the
-frontmatter (a schema-valid ``tomo:`` block plus the top-level ``review_*``
-keys) and the body: title, info callout, ``- [ ] Approved``, one H2 per group
-from the de/en label table (English otherwise), Tomo items as
-``- [x] <text> ([[stem]], …) %%t<n>%%`` with the id on the checkbox line and
-continuation lines indented by two spaces, a plain ``- …`` bullet for an
-empty group. Every item line that starts with a structural marker (heading,
-checkbox bullet, quote, fence, thematic break) is escaped with a leading
-backslash so the text cannot forge a line Pass 2 would read (``neutralised``
-is that predicate, shared with ``review_actions`` for the landing). Habits arrive
-rendered from ``review_habits`` and get an id like every Tomo item; no habits
-means no habits heading. With a mapping (``DocInput.sections``) the body is
-``review_sections.render_parts``; without one it is spec 045's byte for byte
-(``review_sections.group_parts``, every group).
-``ID_PATTERN`` and ``group_labels`` are the shared
-vocabulary of ``review_doc_parse``, which reads the document back.
-``mark_delivered`` (F5-AC11) is the delivered mark: ``tomo.state``
-becomes ``approved`` and the title line gets the language's "delivered"
-word; idempotent, a marked text comes back unchanged.
+Pure functions between the model's ``proposals.json`` and the document the script writes: ``load_proposals`` /
+``proposal_problems`` validate the file against ``tomo/schemas/review-proposals.schema.json``; ``period_of`` rebuilds
+the ``Period`` from ``read.json`` under the configured week rule; ``check_items`` applies the source rule (every item
+needs a daily of the period — never one of a day the read's ``not_condensed`` units hold — a ``weekly_only`` item a
+weekly note the reader listed, a theme two distinct days, a text that is not empty; the month-only groups only for a
+month with weekly notes) and returns the accepted items per group with their links and the rejected ones with group,
+index and reason. The groups come from ``KIND_GROUPS`` per kind (the quarter's ``monthly_only`` needs a listed
+monthly note, its pair only a quarter with monthly notes; ``group_reason``); ``check_item`` and ``group_reason`` also
+serve ``review_sections`` for the section items. ``check_item`` rests on ``review_sources.resolve_sources`` (re-exported
+here with ``Sources`` and ``note_stem``); a found previous review note is never a source of a non-carried item. A link is the stem of a note ``read.json`` lists that a
+source resolved to — a daily of the period or, for ``weekly_only`` / ``monthly_only``, a listed weekly / monthly —
+deduplicated in source order; a source that resolves to nothing is dropped from the links, and no model string is
+ever rendered as a link. ``render_document`` renders the frontmatter (a schema-valid ``tomo:`` block plus the
+top-level ``review_*`` keys) and the body: title, info callout (its first line, then one ``> `` line per previous
+note, per not-condensed unit and for a failed carry), ``- [ ] Approved``, one H2 per group from the de/en label
+table (English otherwise), Tomo items as ``- [x] <text> ([[stem]], …) %%t<n>%%`` with the id on the checkbox line
+and continuation lines indented by two spaces, a plain ``- …`` bullet for an empty group. Every item line that
+starts with a structural marker (heading, checkbox bullet, quote, fence, thematic break) is escaped with a leading
+backslash so the text cannot forge a line Pass 2 would read (``neutralised`` is that predicate, shared with
+``review_actions`` for the landing). Habits arrive rendered from ``review_habits`` and get an id like every Tomo
+item; no habits means no habits heading. With a mapping (``DocInput.sections``) the body is
+``review_sections.render_parts``; without one spec 045's byte for byte (``group_parts``). ``ID_PATTERN`` and
+``group_labels`` are the shared vocabulary of ``review_doc_parse``, which reads the document back.
+``mark_delivered`` (F5-AC11) is the delivered mark: ``tomo.state`` becomes ``approved`` and the title line gets the
+language's "delivered" word; idempotent, a marked text comes back unchanged.
 
 No Kado, no model, no file I/O beyond the schema. Needs jsonschema and PyYAML.
 
@@ -46,7 +35,6 @@ Design notes: docs/tomo/scripts/lib/review_doc.md
 from __future__ import annotations
 
 import json
-import posixpath
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -55,6 +43,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from lib.doc_frontmatter import build_tomo_block
 from lib.period import KINDS, MONTH, QUARTER, WEEK, Period, WeekRule
+from lib.review_sources import (  # noqa: F401 - re-exported: rd.Sources / rd.note_stem / rd.resolve_sources
+    _ONLY_IN_CHILD, MONTHLY_ONLY, WEEKLY_ONLY, Resolved, Sources, note_stem, resolve_sources)
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "review-proposals.schema.json"
 
@@ -66,9 +56,8 @@ APPROVED_LINE = "- [ ] Approved"
 _FENCE = "---"
 _DELIVERED_SEP = " — "
 
-DONE, OPEN, THEMES, GROWTH, HABITS, WEEKLY_ONLY, NOT_IN_WEEKLY = (
-    "done", "open", "themes", "growth", "habits", "weekly_only", "not_in_weekly")
-MONTHLY_ONLY, NOT_IN_MONTHLY = "monthly_only", "not_in_monthly"
+DONE, OPEN, THEMES, GROWTH, HABITS, NOT_IN_WEEKLY = "done", "open", "themes", "growth", "habits", "not_in_weekly"
+NOT_IN_MONTHLY = "not_in_monthly"
 MONTH_GROUPS = (WEEKLY_ONLY, NOT_IN_WEEKLY)
 QUARTER_GROUPS = (MONTHLY_ONLY, NOT_IN_MONTHLY)
 _BASE_GROUPS = (DONE, OPEN, THEMES, GROWTH, HABITS)
@@ -77,7 +66,6 @@ GROUPS = _BASE_GROUPS + MONTH_GROUPS + QUARTER_GROUPS
 MODEL_GROUPS = tuple(g for g in GROUPS if g != HABITS)
 CHILD_GROUPS = {MONTH: MONTH_GROUPS, QUARTER: QUARTER_GROUPS}       # the marks of a kind, against its child notes
 _CHILD_NOTES = {MONTH: "weekly", QUARTER: "monthly"}                # the read.json key of those child notes
-_ONLY_IN_CHILD = (WEEKLY_ONLY, MONTHLY_ONLY)                         # rests on a child note, not on a daily
 MIN_THEME_DAYS = 2
 
 NO_SOURCE = "no-source-in-period"
@@ -111,6 +99,14 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "review_h": 'in the section "{r}" under "{h}"', "place_h": 'as the section "{r}" {where} "{h}"',
         "mark_weekly_only": "only in the weekly review", "mark_not_in_weekly": "in no weekly review",
         "mark_monthly_only": "only in the monthly review", "mark_not_in_monthly": "in no monthly review",
+        "carried_done": "done (previous review)", "carried_still_open": "still open (previous review)",
+        "carried_not_mentioned": "not mentioned again (previous review)", "previous": "Previous review",
+        "kind_week": "week", "kind_month": "month", "kind_quarter": "quarter", "found": "found, {n} carried",
+        "found_none": "found, nothing carried", "in_part": "read in part", "empty": "empty", "missing":
+        "no note found for {name}", "unset_week": "weekly notes are not set up", "unset_month":
+        "monthly notes are not set up", "unset_quarter": "quarterly notes are not set up", "cause_refused":
+        "Kado refused it", "cause_failed": "Kado did not return it", "not_condensed": "Not condensed",
+        "carry_failed": "The previous reviews could not be taken into account.",
     },
     "de": {
         DONE: "Erledigt", OPEN: "Offen", THEMES: "Wiederkehrende Themen", GROWTH: "Vault-Wachstum",
@@ -124,6 +120,15 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "review_h": "im Abschnitt „{r}“ unter „{h}“", "place_h": "als Abschnitt „{r}“ {where} „{h}“",
         "mark_weekly_only": "nur im Wochenrückblick", "mark_not_in_weekly": "in keinem Wochenrückblick",
         "mark_monthly_only": "nur im Monatsrückblick", "mark_not_in_monthly": "in keinem Monatsrückblick",
+        "carried_done": "erledigt (letzter Rückblick)", "carried_still_open": "noch offen (letzter Rückblick)",
+        "carried_not_mentioned": "nicht mehr erwähnt (letzter Rückblick)", "previous": "Letzter Rückblick",
+        "kind_week": "Woche", "kind_month": "Monat", "kind_quarter": "Quartal", "found": "gefunden, {n} übernommen",
+        "found_none": "gefunden, nichts übernommen", "in_part": "teilweise gelesen", "empty": "leer", "missing":
+        "keine Notiz für {name} gefunden", "unset_week": "Wochennotizen sind nicht eingerichtet", "unset_month":
+        "Monatsnotizen sind nicht eingerichtet", "unset_quarter": "Quartalsnotizen sind nicht eingerichtet",
+        "cause_refused": "Kado hat sie verweigert", "cause_failed": "Kado hat sie nicht geliefert",
+        "not_condensed": "Nicht verdichtet",
+        "carry_failed": "Die letzten Rückblicke konnten nicht berücksichtigt werden.",
     },
 }
 
@@ -187,53 +192,6 @@ def period_of(read: dict, rule: WeekRule) -> Period:
     return period
 
 
-def note_stem(path: str) -> str:
-    name = posixpath.basename(path.strip().strip("[]"))
-    return name[:-3] if name.endswith(".md") else name
-
-
-@dataclass
-class Sources:
-    """What a source may resolve to, keyed by the listed path and by its stem: a daily → (day, stem),
-    a weekly or monthly note → stem."""
-
-    dailies: Dict[str, Tuple[date, str]] = field(default_factory=dict)
-    weeklies: Dict[str, str] = field(default_factory=dict)
-    monthlies: Dict[str, str] = field(default_factory=dict)
-
-    @classmethod
-    def of(cls, read: dict) -> "Sources":
-        """The read's sources; the days of a unit in ``read["not_condensed"]`` give none."""
-        sources = cls()
-        not_condensed = {str(d) for unit in read.get("not_condensed") or [] for d in unit.get("days") or []}
-        for entry in read.get("days") or []:
-            if str(entry.get("date")) in not_condensed:
-                continue
-            try:
-                day = date.fromisoformat(str(entry.get("date")))
-            except ValueError:
-                continue
-            for path in entry.get("dailies") or []:
-                stem = note_stem(str(path))
-                sources.dailies[str(path)] = (day, stem)
-                sources.dailies.setdefault(stem, (day, stem))
-        for key, notes in (("weekly", sources.weeklies), ("monthly", sources.monthlies)):
-            for entry in read.get(key) or []:
-                path = str(entry.get("path") or "")
-                if path:
-                    notes[path] = note_stem(path)
-                    notes.setdefault(note_stem(path), note_stem(path))
-        return sources
-
-    def daily_of(self, source: str) -> Optional[Tuple[date, str]]:
-        return self.dailies.get(source.strip()) or self.dailies.get(note_stem(source))
-
-    def child_of(self, group: str, source: str) -> Optional[str]:
-        """The weekly note of a ``weekly_only`` source, the monthly note of a ``monthly_only`` one."""
-        notes = self.weeklies if group == WEEKLY_ONLY else self.monthlies
-        return notes.get(source.strip()) or notes.get(note_stem(source))
-
-
 def _rejection(group: str, index: int, reason: str) -> dict:
     return {"group": group, "index": index, "reason": reason}
 
@@ -260,25 +218,11 @@ def check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str],
     ``group`` is the item's group, or a section item's mark ("" without one)."""
     if _clean(item.get("text")) == [""]:
         return EMPTY_TEXT, []
-    days: set = set()
-    weeklies = 0
-    links: List[str] = []
-    for source in (str(s) for s in item.get("sources") or []):
-        daily = sources.daily_of(source)
-        weekly = sources.child_of(group, source) if group in _ONLY_IN_CHILD and daily is None else None
-        if daily is not None:
-            days.add(daily[0])
-            link = daily[1]
-        elif weekly is not None:
-            weeklies += 1
-            link = weekly
-        else:
-            continue
-        if link not in links:
-            links.append(link)
-    if (not weeklies) if group in _ONLY_IN_CHILD else (not days):
+    got = resolve_sources(item, sources, group)
+    links = [link for link in got.links if link not in got.previous]     # no source of a non-carried item
+    if (not got.children) if group in _ONLY_IN_CHILD else (not got.days):
         return NO_SOURCE, links
-    if group == THEMES and len(days) < MIN_THEME_DAYS:
+    if group == THEMES and len(got.days) < MIN_THEME_DAYS:
         return THEME_DAYS, links
     return None, links
 
@@ -330,6 +274,9 @@ class DocInput:
     groups: Dict[str, List[dict]]        # group -> [{text, links}], habits included
     sections: Optional[list] = None      # review_sections.SectionPart per mapped section; None = no mapping
     review_heading: str = "Tomo Review"
+    previous: List[dict] = field(default_factory=list)       # review_previous rows + carried: int
+    not_condensed: List[dict] = field(default_factory=list)  # [{unit, days}]
+    carry_failed: bool = False
 
 
 def _clean(text: Any) -> List[str]:
@@ -363,7 +310,24 @@ def _callout(inp: DocInput, words: Dict[str, str], anchor: str) -> str:
         parts.append(f"{words['not_read']}: {', '.join(note_stem(p) for p in inp.not_read)}")
     if inp.partly_read:
         parts.append(f"{words['partly_read']}: {', '.join(inp.partly_read)}")
-    return "> [!info] " + " · ".join(parts)
+    lines = ["> [!info] " + " · ".join(parts)]
+    lines += [f"> {words['previous']} · {words.get('kind_' + p['kind'], p['kind'])} {p['name']}: {_state(p, words)}"
+              for p in inp.previous]
+    lines += [f"> {words['not_condensed']}: {u['unit']}" + (f" ({u['days'][0]} – {u['days'][-1]})" if u.get("days")
+              else "") for u in inp.not_condensed]
+    return "\n".join(lines + ([f"> {words['carry_failed']}"] if inp.carry_failed else []))
+
+
+def _state(row: dict, words: Dict[str, str]) -> str:
+    """One previous note's state words: found / empty / missing / not set up / not read with its cause."""
+    state, n = row.get("state"), int(row.get("carried") or 0)
+    text = {"found": words["found"].format(n=n) if n else words["found_none"], "empty": words["empty"],
+            "missing": words["missing"].format(name=row.get("name")),
+            "not-set-up": words.get(f"unset_{row.get('kind')}", "")}.get(state)
+    if text is None:
+        cause = words.get(f"cause_{row.get('cause')}")
+        text = f"{words['not_read']}: {cause}" if cause else words["not_read"]
+    return text + (f", {words['in_part']}" if row.get("partly_read") else "")
 
 
 def rendered_groups(inp: DocInput) -> List[str]:

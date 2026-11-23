@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_digest_schemas.py — spec 047 T4.1: the digest and carryover file contracts.
 
 The two closed schemas under ``tomo/schemas/`` are what ``review-digest.py check``
@@ -83,6 +83,10 @@ def _growth(n_notes: int = 1) -> dict:
     }
 
 
+def _carry_item(i: int = 1) -> dict:
+    return {"id": f"c{i}", "type": "open", "text": "t", "sources": ["2026-W13"]}
+
+
 def _with(base: dict, **fields) -> dict:
     doc = copy.deepcopy(base)
     doc.update(fields)
@@ -114,10 +118,27 @@ def test_growth_candidate_validates_with_one_to_ten_notes(digest, n_notes):
     digest.validate(_with(W14_DIGEST, growth=[_growth(n_notes)]))
 
 
-def test_caps_are_inclusive(digest, carryover):
-    digest.validate(_with(W14_DIGEST, done=[_entry(i) for i in range(25)], growth=[_growth() for _ in range(15)]))
-    items = [{"id": f"c{i}", "type": "open", "text": "t", "sources": ["2026-W13"]} for i in range(1, 31)]
-    carryover.validate(_with(W14_CARRYOVER, items=items))
+_THEME = {"text": "Running", "days": ["2026-03-31"], "sources": ["2026-03-31"]}
+
+
+@pytest.mark.parametrize(
+    "field, doc",
+    [
+        ("done", _with(W14_DIGEST, done=[_entry(i) for i in range(25)])),
+        ("open", _with(W14_DIGEST, open=[_entry(i) for i in range(25)])),
+        ("notable", _with(W14_DIGEST, notable=[_entry(i) for i in range(15)])),
+        ("themes", _with(W14_DIGEST, themes=[_THEME] * 15)),
+        ("child_notes", _with(W14_DIGEST, child_notes=[_entry(i) for i in range(15)])),
+        ("growth", _with(W14_DIGEST, growth=[_growth() for _ in range(15)])),
+        ("section items", _with(W14_DIGEST, sections=[{"key": "s1", "items": [_entry(i) for i in range(30)]}])),
+    ],
+)
+def test_digest_caps_are_inclusive(digest, field, doc):
+    digest.validate(doc)
+
+
+def test_carryover_cap_is_inclusive(carryover):
+    carryover.validate(_with(W14_CARRYOVER, items=[_carry_item(i) for i in range(1, 31)]))
 
 
 # --- digest refusals ---------------------------------------------------------
@@ -139,9 +160,9 @@ def test_digest_refuses_an_empty_text(digest):
     _refused(digest, _with(W14_DIGEST, done=[{"text": "", "sources": ["2026-03-31"]}]))
 
 
-def test_digest_refuses_an_entry_without_sources(digest):
-    _refused(digest, _with(W14_DIGEST, open=[{"text": "call"}]))
-    _refused(digest, _with(W14_DIGEST, open=[{"text": "call", "sources": []}]))
+@pytest.mark.parametrize("entry", [{"text": "call"}, {"text": "call", "sources": []}], ids=["absent", "empty"])
+def test_digest_refuses_an_entry_without_sources(digest, entry):
+    _refused(digest, _with(W14_DIGEST, open=[entry]))
 
 
 def test_digest_refuses_more_than_25_done(digest):
@@ -208,10 +229,51 @@ def test_carryover_refuses_a_type_outside_open_intention_theme(carryover, item_t
 
 
 def test_carryover_refuses_more_than_30_items(carryover):
-    items = [{"id": f"c{i}", "type": "open", "text": "t", "sources": ["2026-W13"]} for i in range(1, 32)]
-    _refused(carryover, _with(W14_CARRYOVER, items=items))
+    _refused(carryover, _with(W14_CARRYOVER, items=[_carry_item(i) for i in range(1, 32)]))
 
 
 def test_carryover_refuses_a_note_kind_outside_week_month_quarter(carryover):
     note = {**W14_CARRYOVER["notes"][0], "kind": "year"}
     _refused(carryover, _with(W14_CARRYOVER, notes=[note]))
+
+
+def test_carryover_refuses_a_negative_note_item_count(carryover):
+    note = {**W14_CARRYOVER["notes"][0], "items": -1}
+    _refused(carryover, _with(W14_CARRYOVER, notes=[note]))
+
+
+@pytest.mark.parametrize("key", list(W14_CARRYOVER))
+def test_carryover_refuses_a_missing_required_key(carryover, key):
+    doc = copy.deepcopy(W14_CARRYOVER)
+    del doc[key]
+    _refused(carryover, doc)
+
+
+@pytest.mark.parametrize("key", list(W14_DIGEST))
+def test_digest_refuses_a_missing_required_key(digest, key):
+    doc = copy.deepcopy(W14_DIGEST)
+    del doc[key]
+    _refused(digest, doc)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"open": [_entry(i) for i in range(26)]},
+        {"notable": [_entry(i) for i in range(16)]},
+        {"themes": [_THEME] * 16},
+        {"child_notes": [_entry(i) for i in range(16)]},
+        {"sections": [{"key": "s1", "items": [_entry(i) for i in range(31)]}]},
+        {"days": []},
+        {"days": ["2026-3-30"]},
+        {"read_id": ""},
+        {"unit": ""},
+        {"themes": [{**_THEME, "days": ["30.03.2026"]}]},
+    ],
+    ids=[
+        "open-26", "notable-16", "themes-16", "child_notes-16", "section-items-31",
+        "days-empty", "days-bad-date", "read_id-empty", "unit-empty", "theme-days-bad-date",
+    ],
+)
+def test_digest_refuses_one_mutation_of_the_w14_digest(digest, mutation):
+    _refused(digest, _with(W14_DIGEST, **mutation))

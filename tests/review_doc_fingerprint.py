@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """review_doc_fingerprint.py — the structure of a /review document, without its wording (spec 047 ADR-11).
 
 Spec 047 rebuilds how /review reads a period and writes its document; PRD F2-AC1
@@ -209,7 +209,7 @@ def fingerprint(document_text: str) -> Dict[str, Any]:
         if part == rd.HABITS:
             fp["habits"].append(_NUMBER.findall(_ID_TAIL.sub("", item.group(2))))
     for key in fp["parts"]:
-        if _SECTION.fullmatch(f"%%{key}%%"):
+        if re.fullmatch(r"s\d{1,3}", key):
             fp["sections"].setdefault(key, None)
     return fp
 

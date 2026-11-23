@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_doc_fingerprint.py — spec 047 T1.1: a review document's structure compared without its wording.
 
 ``tests/review_doc_fingerprint.py`` reads a rendered ``<period> Review.md``
@@ -10,7 +10,10 @@ and keeps only its structure (spec 047 ADR-11, PRD F2-AC1). Pinned here:
   and ``diff`` names the key that carries the change (each case fails when the fingerprint ignores it);
 - a link to a periodic note before the period is ``previous`` (the link kind spec 047 adds), a child
   note inside the period keeps its kind;
-- the fingerprint holds no item text (a sentinel in every model item never reaches it).
+- the fingerprint holds no item text (a sentinel in every model item never reaches it);
+- every non-blank line between the title and the first part other than the first info callout counts
+  as a top line, a second ``> [!info]`` line included;
+- a German document's mark suffixes give the same mark keys, and two suffixes in a row give both keys in order.
 
 The documents are rendered by ``lib.review_doc.render_document`` from synthetic inputs; no Kado, no file I/O.
 """
@@ -193,3 +196,54 @@ def test_diff_names_nothing_for_equal_and_the_subkey_for_a_count() -> None:
     b = json.loads(json.dumps(a))
     b["counts"][rd.OPEN] += 1
     assert diff(a, b) == [f"counts.{rd.OPEN}"]
+
+
+# --- top lines and marks ------------------------------------------------------------------------
+
+_GATE = "- [ ] Approved"
+
+
+def _with_top_lines(doc: str, *lines: str) -> str:
+    assert doc.count(_GATE) == 1
+    return doc.replace(_GATE, "".join(f"{line}\n" for line in lines) + _GATE)
+
+
+def test_plain_lines_above_the_first_part_count_as_top_lines() -> None:
+    base = _week_doc()
+    one = _with_top_lines(base, "Previous note: [[2026-W12]]")
+    two = _with_top_lines(base, "Previous note: [[2026-W12]]", "Not condensed: 2 days")
+    assert [fingerprint(d)["top_lines"] for d in (base, one, two)] == [0, 1, 2]
+    _differs(base, one, "top_lines")
+    _differs(one, two, "top_lines")
+    assert diff(fingerprint(base), fingerprint(one)) == ["top_lines"]
+
+
+def test_a_second_info_callout_line_counts_as_a_top_line() -> None:
+    base = _week_doc()
+    second = _with_top_lines(base, "> [!info] Previous note: [[2026-W12]]")
+    fb, fs = fingerprint(base), fingerprint(second)
+    assert fs["top_lines"] == 1
+    assert fs["callout"] == fb["callout"]
+    _differs(base, second, "top_lines")
+
+
+def test_a_german_document_records_its_mark_keys() -> None:
+    doc = _month_doc(language="de", sections=_month_sections(mark="weekly_only"))
+    assert " · nur im Wochenrückblick %%t" in doc
+    fp = fingerprint(doc)
+    assert fp["marks"]["s2"] == [["weekly_only"]]
+    other = _month_doc(language="de", sections=_month_sections(mark="not_in_weekly"))
+    assert fingerprint(other)["marks"]["s2"] == [["not_in_weekly"]]
+    _differs(doc, other, "marks")
+
+
+def test_two_mark_suffixes_in_a_row_record_both_keys_in_order() -> None:
+    doc = _month_doc(sections=_month_sections(mark="weekly_only"))
+    single = " · only in the weekly review %%t"
+    assert doc.count(single) == 1
+    words = rd._LABELS["en"]
+    double = doc.replace(single, f" · {words['mark_weekly_only']} · {words['mark_not_in_monthly']} %%t")
+    assert fingerprint(double)["marks"]["s2"] == [["weekly_only", "not_in_monthly"]]
+    swapped = doc.replace(single, f" · {words['mark_not_in_monthly']} · {words['mark_weekly_only']} %%t")
+    assert fingerprint(swapped)["marks"]["s2"] == [["not_in_monthly", "weekly_only"]]
+    assert fingerprint(double)["links"]["s2"] == [["weekly"]]

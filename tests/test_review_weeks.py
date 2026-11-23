@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_weeks.py — the units of a period for condensing (spec 047 T2.2; PRD F1-AC1, F1-AC2; ADR-2).
 
 Mechanisms a mutation of ``lib/review_weeks.py`` falsifies:
@@ -14,6 +14,9 @@ Mechanisms a mutation of ``lib/review_weeks.py`` falsifies:
   must use the summed number, not a day-file-only number);
 - a single day over the budget stays one unit alone and is named by
   ``over_budget``;
+- the budget boundary is inclusive: days summing to exactly ``UNIT_BUDGET``
+  share a unit and a unit of exactly ``UNIT_BUDGET`` is not over budget —
+  ``>`` turned into ``>=`` in ``_pack`` or ``over_budget`` fails them;
 - ``takes_part``: content, tasks, linked notes or ≥ 1 created note;
 - ``digest_cap`` = ``min(DIGEST_MAX, DIGEST_TOTAL // units)``.
 """
@@ -171,6 +174,40 @@ def test_a_single_day_over_the_budget_is_a_unit_alone_and_named():
     assert len(alone) == 1 and alone[0]["days"] == [_iso(heavy)]
     assert _unit_days(result) == [_iso(d) for d in week.days()]
     assert over_budget(result) == [alone[0]["unit"]]
+    assert [u["unit"] for u in result] == ["2026-W13a", "2026-W13b", "2026-W13c"]
+    assert alone[0]["unit"] == "2026-W13b"
+    assert result[0]["days"] == [_iso(d) for d in week.days()[:2]]
+    assert result[2]["days"] == [_iso(d) for d in week.days()[3:]]
+    assert result[2]["bytes"] == 20_000
+
+
+def test_days_summing_to_exactly_the_budget_share_one_unit():
+    week = Period.week(2026, 13, ISO)
+    first, second = week.days()[0], week.days()[1]
+    weights = {d: 0 for d in week.days()}
+    weights[first] = UNIT_BUDGET // 2
+    weights[second] = UNIT_BUDGET - UNIT_BUDGET // 2
+    result = units(week, ISO, weights, set())
+    assert [u["unit"] for u in result] == ["2026-W13"]
+    assert result[0]["bytes"] == UNIT_BUDGET
+    weights[second] += 1
+    split = units(week, ISO, weights, set())
+    assert [u["unit"] for u in split] == ["2026-W13a", "2026-W13b"]
+    assert split[0]["days"] == [_iso(first)]
+    assert split[1]["days"] == [_iso(d) for d in week.days()[1:]]
+
+
+def test_a_day_of_exactly_the_budget_is_not_over_it():
+    week = Period.week(2026, 13, ISO)
+    heavy = week.days()[2]
+    weights = {d: 5_000 for d in week.days()}
+    weights[heavy] = UNIT_BUDGET
+    result = units(week, ISO, weights, set())
+    alone = [u for u in result if u["days"] == [_iso(heavy)]]
+    assert len(alone) == 1 and alone[0]["bytes"] == UNIT_BUDGET
+    assert over_budget(result) == []
+    weights[heavy] = UNIT_BUDGET + 1
+    assert over_budget(units(week, ISO, weights, set())) == ["2026-W13b"]
 
 
 def test_over_budget_is_empty_when_every_unit_fits():

@@ -51,7 +51,7 @@ Turns the stage into dispatchable jobs, checks every agent file before anything 
   4. Validate: tests green; module ≤ 300 lines; ruff clean.
   5. Success: a digest that leaves out or goes beyond its unit's days is refused `[ref: PRD/F1-AC1]` `[ref: SDD/ADR-4]`
 
-- [ ] **T4.3 `review-digest.py plan | check`** `[activity: backend-api]`
+- [x] **T4.3 `review-digest.py plan | check`** `[activity: backend-api]`
 
   1. Prime: T4.2; `review-read.py` CLI conventions (one JSON object on stdout, exit 0 for usable output, ASCII stdout); T1.4 outcome (1); SDD plan/check shapes `[ref: SDD/Internal API Changes; lines: 602-623]` `[ref: SDD/Complex Logic (b), (c), (d)]` `[ref: SDD/ADR-4, ADR-8]`
   2. Test: `tests/test_review_digest.py` (CLI part):

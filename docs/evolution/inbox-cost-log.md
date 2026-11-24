@@ -11,9 +11,17 @@ python3 scripts/tomo-session-stats.py --session-latest
 Copy the output into a new row below. Note the conductor/analyst versions
 from `tomo/dot_claude/agents/*.md` headers.
 
-**Pricing**: Sonnet list rates ($3/$15/$3.75/$0.30 per M tokens for
-input/output/cache_create/cache_read). Actual billed cost may differ
-(volume discounts, batch API).
+**Pricing**: until `tomo-session-stats.py` 0.2.0 every token was priced at Sonnet list rates
+($3/$15/$3.75/$0.30 per M tokens for input/output/cache_create/cache_read). Since 0.2.0 each reply is
+priced at its model family's rate from the `PRICE` table of `scripts/tomo-token-usage.py` (the single
+source; opus $15/$75, sonnet $3/$15, haiku $0.80/$4), so a step run on opus or haiku costs what its model
+costs (spec 047 F8-AC1). A model id outside the table falls back to the `--price-*` rates (default
+Sonnet) and the report marks the step `default price`. Actual billed cost may differ (volume discounts,
+batch API); rows logged before 0.2.0 keep their Sonnet-rate figures.
+
+**Per step** (since 0.2.0): the `=== Per step ===` block lists the main session and each subagent
+(labelled by its `agentType`) with turns, model families, cost, wall time (first to last transcript
+timestamp) and peak single-turn context, counts only.
 
 **Correction (2026-11-13, #262)**: until `tomo-session-stats.py` 0.1.1 the tool summed `usage` once per
 transcript line. Claude Code writes one line per content block of a reply, and every line repeats the

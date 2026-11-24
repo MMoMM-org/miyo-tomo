@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """Tests for scripts/tomo-session-stats.py (#262).
 
 Claude Code writes one transcript line per content block of an API reply. Every line repeats the
@@ -87,3 +87,125 @@ def test_subagent_transcripts_are_deduplicated_too(tmp_path):
     sub_part = out.split("=== Subagents")[1]
     assert _field(sub_part, "Turns") == 1
     assert _field(sub_part, "Output tokens") == 1000
+
+
+# --- Per step: cost at per-model rates, wall time, peak context (spec 047 T7.3, F8-AC1) ---
+
+SENTINEL = "SENTINEL-NOTE-TEXT-7f3a"
+TOKEN_USAGE = ROOT / "scripts" / "tomo-token-usage.py"
+
+
+def _price_table():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("tomo_token_usage", TOKEN_USAGE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.PRICE
+
+
+def _cost(fam, u):
+    p = _price_table()[fam]
+    return (u["input_tokens"] * p["in"] + u["output_tokens"] * p["out"]
+            + u["cache_creation_input_tokens"] * p["cache_w"]
+            + u["cache_read_input_tokens"] * p["cache_r"]) / 1_000_000
+
+
+def _at(record, ts):
+    record["timestamp"] = ts
+    return record
+
+
+def _text(msg_id, model, usage, ts):
+    return _at(_reply(msg_id, {"type": "text", "text": SENTINEL}, usage, model=model), ts)
+
+
+USAGE_BIG = {"input_tokens": 20, "output_tokens": 4000, "cache_creation_input_tokens": 10_000,
+             "cache_read_input_tokens": 300_000}
+
+STEPS = [  # agent type, model id as transcripts write it, usage, first ts, last ts, seconds
+    ("review-digester", "claude-haiku-4-5-20251001", USAGE_A, "2026-11-20T10:01:00Z", "2026-11-20T10:01:30Z", 30),
+    ("review-carryover", "claude-sonnet-4-6", USAGE_B, "2026-11-20T10:02:00Z", "2026-11-20T10:02:45Z", 45),
+    ("review-proposer", "claude-opus-4-1-20250805", USAGE_BIG, "2026-11-20T10:03:00Z", "2026-11-20T10:05:00Z", 120),
+]
+
+
+def _review_session(tmp_path, unknown_model=None):
+    session = _write(tmp_path / "s.jsonl", [
+        _at({"type": "user", "message": {"content": SENTINEL}}, "2026-11-20T10:00:00Z"),
+        _text("msg_M1", "claude-sonnet-4-6", USAGE_B, "2026-11-20T10:00:05Z"),
+        _text("msg_M2", "claude-sonnet-4-6", USAGE_A, "2026-11-20T10:06:40Z"),
+    ])
+    sub = tmp_path / "s" / "subagents"
+    sub.mkdir(parents=True)
+    for i, (agent, model, usage, t0, t1, _sec) in enumerate(STEPS):
+        _write(sub / f"agent-a{i}.jsonl", [
+            _at({"type": "user", "message": {"content": SENTINEL}}, t0),
+            _text(f"msg_S{i}", unknown_model or model, usage, t1),
+        ])
+        (sub / f"agent-a{i}.meta.json").write_text(json.dumps(
+            {"agentType": agent, "description": SENTINEL}), encoding="utf-8")
+    return session
+
+
+def _step_line(out, label):
+    part = out.split("=== Per step ===")[1]
+    line = next((ln for ln in part.splitlines() if ln.strip().startswith(label)), None)
+    assert line, (label, part)
+    return line
+
+
+def _num(line, key):
+    match = re.search(rf"{key}=\$?([\d,.]+)", line)
+    assert match, (key, line)
+    return float(match.group(1).replace(",", ""))
+
+
+def test_each_step_lists_cost_at_its_model_rate_time_and_peak(tmp_path):
+    out = _run(_review_session(tmp_path))
+    main = _step_line(out, "main")
+    assert abs(_num(main, "cost") - round(_cost("sonnet", USAGE_A) + _cost("sonnet", USAGE_B), 4)) < 0.00005
+    assert _num(main, "time") == 400  # 10:00:00 → 10:06:40, first to last timestamp
+    assert _num(main, "peak") == 100_010
+    for (agent, _model, usage, _t0, _t1, seconds), fam in zip(STEPS, ("haiku", "sonnet", "opus")):
+        line = _step_line(out, agent)
+        assert abs(_num(line, "cost") - round(_cost(fam, usage), 4)) < 0.00005, line
+        assert _num(line, "time") == seconds, line
+        assert _num(line, "peak") == usage["input_tokens"] + usage["cache_read_input_tokens"], line
+        assert fam in line, line
+    assert "default price" not in out
+
+
+def test_the_total_sums_the_per_model_costs(tmp_path):
+    out = _run(_review_session(tmp_path))
+    expected = (_cost("sonnet", USAGE_A) + _cost("sonnet", USAGE_B) + _cost("haiku", USAGE_A)
+                + _cost("sonnet", USAGE_B) + _cost("opus", USAGE_BIG))
+    assert abs(_field(out.split("=== Total ===")[1], "Grand total cost") - round(expected, 2)) < 0.005
+
+
+def test_unknown_model_falls_back_to_the_default_price_and_says_so(tmp_path):
+    out = _run(_review_session(tmp_path, unknown_model="mystery-model-9"))
+    line = _step_line(out, "review-proposer")
+    sonnet = _price_table()["sonnet"]
+    expected = (USAGE_BIG["input_tokens"] * sonnet["in"] + USAGE_BIG["output_tokens"] * sonnet["out"]
+                + USAGE_BIG["cache_creation_input_tokens"] * sonnet["cache_w"]
+                + USAGE_BIG["cache_read_input_tokens"] * sonnet["cache_r"]) / 1_000_000
+    assert abs(_num(line, "cost") - round(expected, 4)) < 0.00005, line
+    assert "default price" in line
+    assert "mystery-model-9" in out
+
+
+def test_the_report_carries_counts_only_never_message_text(tmp_path):
+    p = subprocess.run([sys.executable, str(SCRIPT), "--session", str(_review_session(tmp_path))],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert SENTINEL not in p.stdout + p.stderr
+
+
+def test_a_zero_usage_synthetic_reply_is_not_flagged_as_default_price(tmp_path):
+    """Claude Code writes `<synthetic>` replies with zero usage; nothing is priced, so nothing is defaulted."""
+    zero = {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+    session = _write(tmp_path / "s.jsonl", [
+        _text("msg_M1", "claude-sonnet-4-6", USAGE_B, "2026-11-20T10:00:05Z"),
+        _text("msg_M2", "<synthetic>", zero, "2026-11-20T10:00:09Z"),
+    ])
+    assert "default price" not in _run(session)

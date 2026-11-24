@@ -169,7 +169,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 4: Condensing — units, digests, carryover, plan and check](phase-4.md)
 - [x] [Phase 5: Carried items, their checks and the top lines](phase-5.md)
 - [x] [Phase 6: Agents, skill dispatch and STRICT rules](phase-6.md)
-- [ ] [Phase 7: Privacy, deletion, measurement and documentation](phase-7.md)
+- [x] [Phase 7: Privacy, deletion, measurement and documentation](phase-7.md)
 - [ ] [Phase 8: Baseline e2e on the new flow](phase-8.md)
 - [ ] [Phase 9: Live walk on the test instance and close-out](phase-9.md)
 

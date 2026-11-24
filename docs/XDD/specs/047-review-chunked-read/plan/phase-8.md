@@ -59,6 +59,8 @@ Proves on the fake vault that the new flow produces the same review and the same
   - **Carry-over from the T3.2 review (2026-11-23):** add a test where a previous note's folder listing is rate-limited past the retries and only recovered by the end pass, so `resolve` reads the note after `finish()` (verified by hand in the review, not yet committed).
   - **Carry-over from the T5.6 trace (2026-11-24, orchestrator):** assert the `written.previous` row of a found note that carried nothing (`state found, carried 0`, F3-AC11) end to end; today only the rendered line is pinned.
 
+  - **Carry-over from the T7.5 trace (2026-11-24, orchestrator):** F7-AC2 behaviour end to end — a run Kado stops after the discard leaves no stage content; an interrupted stage survives until that period's next `/review`, which continues on it or reads anew.
+
 - [ ] **T8.3 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean; wire gate and manifests green and unchanged. Trace F2-AC1, F2-AC2, F5-AC6 and the e2e halves of F5-AC4, F5-AC5, F6-AC1 … F6-AC8 to node ids. Drift check spec vs code: every SDD interface shape (`review-read.py` ok/continued, `plan`, `check`, `write` refusals and `written` keys) compared with the scripts' docstrings and actual output; differences fixed or recorded as deviations in the SDD. Confirm no eval-gated file changed across the branch (`git diff --stat main...`).

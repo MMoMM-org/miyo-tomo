@@ -1,6 +1,6 @@
 ---
 title: "Phase 7: Privacy, deletion, measurement and documentation"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 7
 ---
@@ -70,6 +70,7 @@ Makes the privacy contract and the user documentation match the new flow, and gi
 
   - **Carry-over from T4.3 (2026-11-23):** `tests/review_cli_contract.py` `REVIEW_SCRIPTS` (and its `SCRIPT_NAME` regex) is hand-listed and leaves out `review-digest.py`, so the CLI contract of the WHY docs and the skill does not cover it; add it (better: derive the list from `tomo/scripts/review-*.py`) and name its subcommands/options in `docs/tomo/dot_claude/skills/periodic-review.md`.
 
-- [ ] **T7.5 Phase Validation** `[activity: validate]`
+- [x] **T7.5 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean. Trace F7-AC1 … F7-AC5 and F8-AC1 to node ids. Read PRIVACY.md and setup.md once against ADR-10's list. No eval-gated file changed.
+  - **Outcome (2026-11-24):** full suite in ONE invocation at 4221be32: 12,362 passed, 19 skipped, 1 failed — `tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists`, the baseline failure; ruff clean over `tomo tests evals scripts`; no eval-gated file changed since phase 6. Trace (40 node ids, one invocation, 40 passed): F7-AC1 → `tests/test_review_e2e_cleanup.py` (write, Pass 1 abort, three drops × week/month/quarter), `tests/test_review_stage.py`, the allowlist pin; F7-AC2 / F7-AC3 → `tests/test_review_privacy_docs.py` (behaviour end to end carried to T8.2); F7-AC4 → `tests/test_review_privacy.py` (stderr, agent prompts, cost record) + `tests/test_tomo_session_stats.py`; F7-AC5 → `tests/test_047_agents.py::test_tools_are_read_and_write_only` (the other steps and the stage-only writes → T9.2); F8-AC1 → `tests/test_tomo_session_stats.py` (real figures → T9.2). PRIVACY.md and docs/setup.md read against ADR-10: no mismatch. Found and fixed: a privacy leak — Drop of a delivered review left a later read's stage content (b802ad84, owner-approved ADR-9 exception, SDD amended). Deviation: `scripts/tomo-session-stats.py` 0.2.1 (SDD component row, owner told).

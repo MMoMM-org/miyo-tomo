@@ -73,6 +73,8 @@ Runs the new flow on the test vault, measures it per step, fixes what the walk f
   5. Success: Tomo reads every day of week, month and quarter and follows up the previous reviews in the test vault `[ref: PRD/Success Metrics; F8-AC1]`
   - **Carry-over from the T5.6 trace (2026-11-24, orchestrator):** walk once each: a carried item the days also hold appears once (F4-AC6); a full section's carried items merge only with items of their own mark (F4-AC10); a best fit off limits lands in the next section or the group (F4-AC5).
 
+  - **Carry-over from the T7.3 review and T7.5 trace (2026-11-24, orchestrator):** (1) count main-session Read/Grep/Bash calls on stage files in each live transcript with the `review-no-stage-read` grader-1 rule (`tomo-session-stats.py` counts no tool calls; the SDD's "transcript count by tomo-session-stats.py" is met this way); (2) F7-AC5 rows: no step but `review-doc.py write` and delivery touches Kado or the vault, the agents write only inside the stage; (3) the close-out states peak = input + cache_read (spec 046 peaks also counted cache_write, so they are not compared directly).
+
 - [ ] **T9.3 Walk-found fixes** `[activity: backend-api]`
 
   1. Prime: `live-walk.md` findings `[ref: SDD/Deployment View; lines: 1055]` `[ref: SDD/Error Handling; lines: 962]`

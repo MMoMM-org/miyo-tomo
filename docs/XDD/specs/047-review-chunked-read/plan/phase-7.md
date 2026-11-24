@@ -58,7 +58,7 @@ Makes the privacy contract and the user documentation match the new flow, and gi
   4. Validate: `test_tomo_session_stats.py` green; ruff clean.
   5. Success: a live run shows where cost and time go, per step `[ref: PRD/F8-AC1]`
 
-- [ ] **T7.4 Directory Map and WHY mirror sweep** `[activity: technical-writing]` `[parallel: true]` `[model: routine]`
+- [x] **T7.4 Directory Map and WHY mirror sweep** `[activity: technical-writing]` `[parallel: true]` `[model: routine]`
 
   1. Prime: `tests/test_review_sdd_map.py` (T1.1 extension), `tests/test_review_why_docs.py`, SDD Directory Map (429-505), `docs/tomo/scripts/**`, `docs/tomo/dot_claude/**` `[ref: SDD/Implementation Gotchas; lines: 1300-1301]`
   2. Test: every review file that exists is named in spec 045's, 046's or 047's map; no file the 047 map marks DELETE exists (`review_read_parts.py`, its test, its mirror); every review script, lib and agent has a `docs/tomo` mirror; every `review-digest.py` subcommand appears in the skill's WHY doc; the untruncated `rg` listing of `tomo/scripts/lib/review_*.py` and `tomo/scripts/review-*.py` matches the mirror list one to one.

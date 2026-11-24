@@ -635,7 +635,7 @@ review-read.py --period P --kind K [--stem S] [--fresh] [--measure] [--tmp] [--c
 
 review-digest.py plan --stem S [--tmp]
   ok:      {status ok, stem, read_id, read_at, ready: bool,
-            rounds: [[{agent: review-digester, unit, days, day_files, growth_files, weekly_note, sections: bool, out: "digests/<unit>.json", cap_bytes},
+            rounds: [[{agent: review-digester, unit, days, day_files, growth_files, weekly_note, sections: bool, section_files: [context file(s) holding sections; [] when sections is false], out: "digests/<unit>.json", cap_bytes},
                       {agent: review-carryover, previous_files, out: "carryover.json", cap_bytes: 12288}]],
             done: [units], not_condensed: [{unit, days}], carryover_state,
             proposer: {inputs: [paths, in read order], out: "proposals.json", carried: bool}}

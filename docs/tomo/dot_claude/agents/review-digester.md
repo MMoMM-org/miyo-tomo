@@ -87,14 +87,17 @@ WHY: the prompt names the stem, unit, `read_id`, the file list, `out`, `cap_byte
 text: the main session must not read a stage file, so it has no note text to pass, and `read_id` lets `check` refuse a
 digest written for another read (`read-id-mismatch`).
 
-## WHY Section Items Read `context.json`
+## WHY Section Items Come From `section_files`
 
 WHY: with a section mapping, the job's `sections` is true and a digest may hold `sections` entries, whose `key` must
 be a row id of the read's section definitions (`unknown-section` otherwise). The definitions (key, description,
-keywords) sit in `context.json`, not in the job, so the digester reads that one extra file when `sections` is true
-and only then. It sorts the unit's material by each row's description and keywords already at the unit level because
-a section can ask for something no fixed group holds (what was challenging, what to stop doing); a digest without
-it would leave the proposer nothing to fill such a section from. Without a mapping `sections` is an empty list.
+keywords) sit in the context, not in the job, and a large context is spilled into `context-<n>.json` parts, so the
+job names the file(s) that hold them as `section_files` ([review-digest](../../scripts/review-digest.md) "WHY a
+Digester Job Names Its `section_files`"). The digester reads exactly those files and takes only `sections` from
+them; it never reads a context file by fixed name and never uses the other context lists. It sorts the unit's
+material by each row's description and keywords already at the unit level because a section can ask for something
+no fixed group holds (what was challenging, what to stop doing); a digest without it would leave the proposer
+nothing to fill such a section from. Without a mapping `sections` is an empty list.
 
 ## WHY Sources Are Daily Paths
 

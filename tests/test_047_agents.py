@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_047_agents.py — the three /review agents (spec 047 T6.2; ADR-7; PRD F1-AC3, F1-AC4, F1-AC5, F2-AC3,
 F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC5, F4-AC6, F4-AC8, F4-AC10, F4-AC11, F6-AC2, F7-AC5).
 
 What each agent writes is model behaviour; this file proves that each rule has its imperative in
 tomo/dot_claude/agents/review-{digester,carryover,proposer}.md and that the names the agents use are the
 scripts' and schemas' own:
-- frontmatter: ``# version: 0.1.0``, the owner's model, ``permissionMode: acceptEdits``, ``tools: Read, Write``
+- frontmatter: one ``# version:`` line, the owner's model, ``permissionMode: acceptEdits``, ``tools: Read, Write``
   only (no Bash, no ``mcp__*``, no Agent, no skills) — F7-AC5
 - no rationale, spec ids, dates or examples in the runtime text (their WHY lives in docs/tomo/dot_claude/agents/)
 - the prompt fields each agent names are the job fields ``review-digest.py plan`` prints
@@ -61,9 +61,12 @@ def _count(agent: str, phrase: str) -> int:
 # ── frontmatter (ADR-7, F7-AC5) ──────────────────────────────────────────────
 
 
+VERSIONS = {"review-digester": "0.1.1", "review-carryover": "0.1.0", "review-proposer": "0.1.1"}
+
+
 @pytest.mark.parametrize("agent", AGENTS)
-def test_carries_version_0_1_0_once(agent):
-    assert re.findall(r"^# version: .*$", _text(agent), re.MULTILINE) == ["# version: 0.1.0"]
+def test_carries_its_version_once(agent):
+    assert re.findall(r"^# version: .*$", _text(agent), re.MULTILINE) == [f"# version: {VERSIONS[agent]}"]
 
 
 @pytest.mark.parametrize("agent", AGENTS)
@@ -177,7 +180,9 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     ("review-digester", "every-day-file", "Read every file of `day_files`, one Read call per file; skip no day."),
     ("review-digester", "growth-and-weekly",
      "Read every file of `growth_files` and the `weekly_note` when it is not null, one Read call per file."),
-    ("review-digester", "sections-context", "`sections` true → read `context.json` for its `sections` entries."),
+    ("review-digester", "section-files",
+     "`sections` true → read every file of `section_files` and take only their `sections` entries."),
+    ("review-digester", "no-context-by-name", "never read a context file by name."),
     ("review-digester", "days-exactly", "`days` is exactly the prompt's `days` list."),
     ("review-digester", "daily-sources",
      "Each source is a path from the `dailies` list of a day file of this unit; never a linked note."),
@@ -233,7 +238,7 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
      "Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of "
      "`context.json`:"),
     ("review-proposer", "growth-creation-days", "give it the candidates' `sources`, their creation days."),
-    ("review-proposer", "habits", "Habits are computed by the script: never propose them."),
+    ("review-proposer", "habits", "Never propose habits."),
     ("review-proposer", "own-sections",
      "Never propose text for the user's own sections other than the `sections` of `context.json`."),
     # review-proposer: the section rules (spec 046)

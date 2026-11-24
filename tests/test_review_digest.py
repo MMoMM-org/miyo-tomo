@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_digest.py — spec 047 T4.2/T4.3: digest and carryover file checks, the condensed.json job state,
 the ``review-digest.py plan | check`` CLI.
 
@@ -570,7 +570,7 @@ def test_plan_w14_is_one_round_of_its_digester_and_the_carryover(tmp_path, capsy
     assert out["rounds"] == [[
         {"agent": "review-digester", "unit": "2026-W14", "days": ["2026-03-30", "2026-03-31"],
          "day_files": ["days/2026-03-30.json", "days/2026-03-31.json"], "growth_files": [], "weekly_note": None,
-         "sections": False, "out": "digests/2026-W14.json", "cap_bytes": 8192},
+         "sections": False, "section_files": [], "out": "digests/2026-W14.json", "cap_bytes": 8192},
         {"agent": "review-carryover", "previous_files": ["previous/week-2026-W13.json", "previous/month-2026-02.json"],
          "out": "carryover.json", "cap_bytes": 12288}]]
     assert (out["done"], out["not_condensed"], out["carryover_state"]) == ([], [], "pending")
@@ -645,6 +645,45 @@ def test_the_sections_flag_follows_the_mapping(tmp_path, capsys):
         sections=[{"key": "s1", "heading": "Wins", "level": 2, "parent": None, "description": "",
                    "keywords": [], "groups": ["done"], "cap": 5}]))
     assert _plan(capsys, stage)["rounds"][0][0]["sections"] is True
+
+
+def _section_rows(n: int) -> list:
+    return [{"key": f"s{i}", "heading": f"Heading {i}", "level": 2, "parent": None, "description": "",
+             "keywords": [], "groups": ["done"], "cap": 5} for i in range(1, n + 1)]
+
+
+def _holds_sections(stage: Path, name: str) -> bool:
+    return bool(json.loads((stage / name).read_text(encoding="utf-8")).get("sections"))
+
+
+def test_section_files_name_the_context_file_that_holds_the_sections(tmp_path, capsys):
+    stage = _stage(tmp_path, "2026-W14_review", _read(
+        Period.week(2026, 14), lambda d: d == "2026-03-30", sections=_section_rows(1)))
+    (job,) = _plan(capsys, stage)["rounds"][0]
+    assert job["section_files"] == ["context.json"]
+
+
+def test_section_files_name_the_spilled_part_when_context_is_over_the_ceiling(tmp_path, capsys):
+    """A context over the ceiling is spilled into context-<n>.json parts; the head keeps no section, so the job
+    names the part(s) that hold them, never the bare context.json."""
+    tasks = [{"text": f"task {i} {SECRET} " + "x" * 400, "done": False, "done_date": None,
+              "source": "Efforts/Next Todos.md", "label": "open today"} for i in range(120)]
+    stage = _stage(tmp_path, "2026-W14_review", _read(
+        Period.week(2026, 14), lambda d: d == "2026-03-30", sections=_section_rows(3), open_tasks=tasks))
+    head = json.loads((stage / "context.json").read_text(encoding="utf-8"))
+    assert head.get("parts") and not head.get("sections"), "fixture: the context must spill its sections"
+    (job,) = _plan(capsys, stage)["rounds"][0]
+    assert job["section_files"] == [n for n in head["parts"] if _holds_sections(stage, n)]
+    assert job["section_files"] and "context.json" not in job["section_files"]
+    keys = [s["key"] for n in job["section_files"]
+            for s in json.loads((stage / n).read_text(encoding="utf-8"))["sections"]]
+    assert keys == ["s1", "s2", "s3"]
+
+
+def test_section_files_are_empty_without_a_mapping(tmp_path, capsys):
+    stage = _stage(tmp_path, "2026-W14_review", _read(Period.week(2026, 14), lambda d: d == "2026-03-30"))
+    (job,) = _plan(capsys, stage)["rounds"][0]
+    assert (job["sections"], job["section_files"]) == (False, [])
 
 
 # ---------------------------------------------------------------- plan on a continued read (walkthrough (c))

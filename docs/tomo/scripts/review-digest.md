@@ -130,6 +130,22 @@ day files, so the digester is never asked to condense an empty day nor
 handed a day outside the period. A unit without a taking-part day has no job
 at all. `growth_files` are the unit's own creation-day files from `weeks.json`.
 
+## WHY a Digester Job Names Its `section_files`
+
+WHY: a digest's `sections` keys must be row ids of the read's section
+definitions (`unknown-section` otherwise), and the definitions live in the
+context, not in the job. A bare `context.json` is no safe address: when the
+context is over the file ceiling, `review_stage` spills its lists into
+`context-<n>.json` parts and the head keeps only `read_id` and `period`, so on
+a large quarter `sections` sits in a part and a digester reading the head sees
+no keys at all. So `plan` names the file(s) that hold a non-empty `sections`
+list as `section_files` (stage-relative, in the manifest's context order) when
+the job's `sections` is true, else `[]`; the digester reads exactly those and
+takes only `sections` from them, never a context file by fixed name. That also
+keeps every other context list (open tasks, link lists, field aggregates) out
+of the digesters, which need none of it. No new stage file: the parts already
+are the stage's own files under the same ceiling.
+
 ## WHY the Proposer's Inputs Are Listed by the Script, in Read Order
 
 WHY: ADR-1, ADR-8. The proposer reads `context*.json` first (period, mapping,

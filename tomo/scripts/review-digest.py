@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-digest.py — Plan and check the condensing jobs of a /review read: digesters, carryover, the proposer's inputs.
-# version: 0.1.2
+# version: 0.1.3
 """The condensing step of /review (spec 047 T4.3; PRD F1-AC6, F6-AC1, F6-AC2, F6-AC4, F6-AC8; ADR-4, ADR-8).
 
 After ``review-read.py`` wrote the stage ``tomo-tmp/review/<stem>/``, ``plan``
@@ -16,7 +16,8 @@ Output: one JSON object on stdout, ASCII-escaped. Paths are stage-relative.
                rounds [[job]] (≤ MAX_PARALLEL jobs per round; [] when nothing is left to run),
                done [units passed], not_condensed [{unit, days}], carryover_state none|pending|retry|passed|failed,
                proposer {inputs [paths in read order], out "proposals.json", carried}
-        job:   {agent review-digester, unit, days, day_files, growth_files, weekly_note, sections, out, cap_bytes}
+        job:   {agent review-digester, unit, days, day_files, growth_files, weekly_note, sections,
+                section_files [the context file(s) holding sections; [] when sections is false], out, cap_bytes}
                {agent review-carryover, previous_files, out "carryover.json", cap_bytes 12288}
     check ok:  status ok, stem, units {<unit>: {state, errors?}}, carryover {state, notes [{path, state, items}],
                errors?}, retry [{agent, unit?, errors}], not_condensed [{unit, days}], carry_failed, ready, proposer
@@ -116,6 +117,7 @@ class Stage:
                         for p in self.read["previous"])]
         self.previous_files = [f"{review_stage.PREVIOUS}/{n}" for n in found]
         self.state = self._state()
+        self._section_files: Optional[List[str]] = None
 
     def _state(self) -> dict:
         fresh = rd.new_state(self.read_id, self.units, carryover=bool(self.previous_files))
@@ -139,6 +141,14 @@ class Stage:
     def unit_errors(self, unit: dict) -> List[str]:
         return rd.check_digest(self.text(_digest(unit)), unit, self.read, read_id=self.read_id, cap_bytes=self.cap)
 
+    def section_files(self) -> List[str]:
+        """The context files (``context.json`` and its spilled parts, manifest order) holding a non-empty
+        ``sections`` list."""
+        if self._section_files is None:
+            names = self.manifest["files"].get("context") or [review_stage.CONTEXT]
+            self._section_files = [n for n in names if json.loads(self.text(n) or "{}").get("sections")]
+        return self._section_files
+
     def carry_check(self) -> rd.CarryoverCheck:
         return rd.check_carryover(self.text(review_stage.CARRYOVER), self.read, read_id=self.read_id)
 
@@ -161,11 +171,13 @@ def rounds(jobs: Sequence[Any]) -> List[List[Any]]:
 def _digester_job(stage: Stage, unit: dict) -> dict:
     days = rd.taking_part_days(unit, stage.read)
     weekly = unit.get("weekly_note")
+    sections = bool(stage.read.get("sections"))
     return {"agent": DIGESTER, "unit": unit["unit"], "days": days,
             "day_files": [f"{review_stage.DAYS}/{d}.json" for d in days],
             "growth_files": [f"{review_stage.GROWTH}/{n}" for n in unit.get("growth_files") or []],
             "weekly_note": f"{review_stage.CHILDREN}/{weekly}" if weekly else None,
-            "sections": bool(stage.read.get("sections")), "out": _digest(unit), "cap_bytes": stage.cap}
+            "sections": sections, "section_files": stage.section_files() if sections else [],
+            "out": _digest(unit), "cap_bytes": stage.cap}
 
 
 def _carrier_job(stage: Stage) -> dict:

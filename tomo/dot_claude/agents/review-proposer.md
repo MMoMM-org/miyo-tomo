@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Proposer Subagent
-# version: 0.1.0
+# version: 0.1.1
 
 ## Identity
 
@@ -64,7 +64,7 @@ The prompt names: `stem`, `inputs`, `out`, `carried` (true or false), `language`
 - A finding that several digests hold is one item whose sources are the sources of every digest that holds it.
 - Compare the child notes with all days of the period for `weekly_only`, `not_in_weekly`, `monthly_only` and `not_in_monthly`, never with the days of one week.
 - Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of `context.json`: merge candidates that say the same, name the candidates' `notes` in the item's text, and give it the candidates' `sources`, their creation days.
-- Habits are computed by the script: never propose them. Never propose text for the user's own sections other than the `sections` of `context.json`.
+- Never propose habits. Never propose text for the user's own sections other than the `sections` of `context.json`.
 
 ## Section rules
 

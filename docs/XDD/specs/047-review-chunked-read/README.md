@@ -8,7 +8,7 @@
 | **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
 | **Model tier** | hard |
-| **Last Updated** | 2026-11-23 |
+| **Last Updated** | 2026-11-24 |
 
 ## Documents
 
@@ -68,6 +68,9 @@
 | 2026-11-23 | An open carryover (pending/retry) at document write is not refused; it renders as carry-failed (`carry_failed` = found previous notes and carryover state not `passed`), wired in T5.4 | Orchestrator, after the T4.4 spec review: the SDD gate names units only; no silent drop of the top line (F6-AC2) |
 | 2026-11-23 | T5.2 deviation (owner, choice A): `Sources`, `Resolved`, `resolve_sources`, `note_stem` and the child-mark constants move to new `lib/review_sources.py` 0.1.0; `review_doc` re-exports them | `lib/review_doc.py` reached 493 lines against the ≈ 470 cap (CON-5) before T5.4's carried branch; the resolver is the natural seam and `review_carried` imports it from a small module. `review_doc` 412 lines |
 | 2026-11-23 | Owner: the German top-line wording proposed in T5.2 is kept ("Letzter Rückblick · …: gefunden, n übernommen", "keine Notiz für X gefunden", "…notizen sind nicht eingerichtet", "nicht gelesen: Kado hat sie verweigert / nicht geliefert", "Nicht verdichtet", "Die letzten Rückblicke konnten nicht berücksichtigt werden.") | Top lines follow `review.language` like every fixed line (spec 045: DE/EN, English otherwise); only shown in German reviews; may be revised in the Phase 9 walk |
+| 2026-11-24 | T5.4 (owner): the shared fixture carryover (`tests/review_privacy_fixture.py`) has no items by default ("found, nothing carried"); an opt-in adds one item plus a matching carried proposal, used by the privacy walk and the carried-write tests | F4-AC1 coverage correctly refused every walk (`carried-missing`) because the fixture carried items no proposal listed; default-empty keeps the baseline counts and links, the opt-in keeps the privacy marker in `carryover.json` and one carried item end to end |
+| 2026-11-24 | T5.4 (owner): plan deviation, the T8.1 mechanism is brought forward: `test_047_baseline_e2e` compares with `allowed={"top_lines"}` from Phase 5 on; goldens stay byte-identical, every other key strict | The previous-note top lines (T5.2) are an ADR-11 allowed difference; keeping the test strict until Phase 8 would leave Phases 5–7 without a green suite gate |
+| 2026-11-24 | T5.4 (owner): F6-AC2 partial case wording, a found previous note whose carry failed reads EN "found, not taken into account" / DE "gefunden, nicht berücksichtigt" | Same pattern as the other top-line states, no error tone; closes the gap that no state named a note whose carry failed |
 
 ## Context
 

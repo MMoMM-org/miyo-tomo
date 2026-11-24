@@ -1,6 +1,6 @@
 ---
 title: "Phase 9: Live walk on the test instance and close-out"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 9
 ---
@@ -31,7 +31,7 @@ phase: 9
 
 Runs the new flow on the test vault, measures it per step, fixes what the walk finds, and closes the spec with its evidence.
 
-- [ ] **T9.1 Sync and pre-walk checks (owner go)** `[activity: validate]`
+- [x] **T9.1 Sync and pre-walk checks (owner go)** `[activity: validate]`
 
   1. Prime: memory notes on update-tomo (version-gated, syncs the checked-out branch, `--yolo`), restart after sync, test vault path and plugins (update-time-on-edit, Templater on create) `[ref: SDD/Deployment View; lines: 1060]`
   2. Test, owner-gated steps:
@@ -43,13 +43,15 @@ Runs the new flow on the test vault, measures it per step, fixes what the walk f
   4. Validate: instance versions match the branch; `tomo-privat` untouched.
   5. Success: the instance runs the branch and the walk's assumptions hold `[ref: PRD/Assumptions]`
 
+  - **Outcome (2026-11-24):** synced at ca952d0e with `scripts/update-tomo.sh --instance tomo-instance --yolo` (13 created, 10 updated, 0 deleted; run outside the sandbox, which blocks the instance `.claude/`); all 50 review files on the instance (3 agents, SKILL.md 0.3.0, `review-*.py`, `lib/review_*.py`, `review-*.schema.json`) are byte-identical to the repo; the orphan `review_read_parts.py` is present as expected; `tomo-privat` untouched (0 files under its `.claude/` or `scripts/` newer than phase 8). Container session restarted by the owner. `review-read.py --measure` from the host against the test vault's Kado (counts only, no file written): 2026-W13 45 calls, 7/7 days, 1 unit, 6.8 s waited; 2026-03 169 calls, 31/31 days, 6 units, 37.8 s; 2026-Q1 456 calls, 90/90 days, 15 units (W04 split into W04a/W04b), 105.1 s; 0 retried, 0 not read, nothing over the ceiling or the budget in all three. Previous notes: 2026-W12 and 2026-02 found as assumed; **2025-Q4 found** (`Calendar/304 Quarterly/2025-Q4.md`), against the PRD assumption — owner: keep the vault as is, R2 and R3 walk the 2025-Q4 carryover (Decisions Log). Optional paid eval not run (owner chose the sync only).
+
 - [ ] **T9.2 Live walk runs (owner-orchestrated)** `[activity: validate]`
 
   1. Prime: T9.1; spec 046 walk documents for W13, 2026-03 and 2026-Q1 (for the owner's comparison); `scripts/tomo-session-stats.py` (T7.3) `[ref: PRD/Success Metrics]` `[ref: SDD/Quality Requirements]`
   2. Test, each run in a fresh session, Pass 1 and Pass 2, cost per step recorded right after it:
      - R1 week 2026-W13 — previous W12 and 2026-02 found; carried items with marks; deliver and Hashi apply (owner).
-     - R2 month 2026-03 — 2026-02 found, 2025-Q4 "no note found"; 6 units in one round.
-     - R3 quarter 2026-Q1 — 14 digesters in one message; 90/90 days, 0 not read for size, no grep fallback; 2025-Q4 "no note found"; deliver and Hashi apply (owner).
+     - R2 month 2026-03 — 2026-02 and 2025-Q4 found (T9.1: 2025-Q4 exists, owner kept it); 6 units in one round.
+     - R3 quarter 2026-Q1 — 15 digesters in one message (T9.1: W04 split into W04a/W04b); 90/90 days, 0 not read for size, no grep fallback; 2025-Q4 found and carried (T9.1); deliver and Hashi apply (owner).
      - R4 previous-note case 2026-W14 — crosses the month edge (reads 2026-W13 and 2026-02); one carried item ticked, one edited, one unticked; Pass 2 delivers them as left; the "Review delivered" counts per mark.
      - R5 resume case 2026-03 — the owner ends the session after the round is sent; the rerun says "Continuing the read made at …", dispatches only the jobs not passed, and writes the document.
      Walk rows (counts only) record per run: days read / not read by cause, units dispatched per message, agents self-started (must be 0), main-session Reads on stage files (must be 0), retries, not-condensed units, carried items per mark and per place (section / group), carried items placed twice and without a previous-note link (must be 0), content files left after write / abort / drop (must be 0), and the model-behaviour rows for F1-AC3, F1-AC4, F1-AC5, F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC8, F4-AC11 (what the owner saw, yes/no per criterion, no text).

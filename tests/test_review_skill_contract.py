@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_review_skill_contract.py — spec 045 T5.2 / P5: the SDD's Error Handling rows, the WHY document's
 option lines and the CLI-contract sweep over every skill that names a review script.
 
@@ -48,7 +48,7 @@ ERROR_HANDLING_ROWS = {
     "match template without a frontmatter block at line 1": "`1 Use it as it is · 2 I'll create a Tomo variant`",
     "match unsafe name format": "the name format must not contain `/`, `\\` or `..`",
     "setup-input / writer invalid": "`status` `invalid` → show `errors` and `problems` verbatim and ask `1 Correct · 2 Abort`",
-    "write proposals-invalid": "rewrite `proposals.json` once and rerun `write`; a second `proposals-invalid` → show it and stop",
+    "write proposals-invalid": "dispatch `review-proposer` once more by its template with the line `errors: <errors>` added last, `<errors>` the `errors` of `write` verbatim as JSON, and rerun `write`; a second `proposals-invalid` → show it and stop",
     "write doc-name-taken": "not Tomo's review document and nothing was overwritten",
     "write review-exists": "ask `1 Replace · 2 Keep it`",
     "write / deliver / drop kado-write-failed": "`kado-write-failed` → say nothing was written and stop",
@@ -117,8 +117,9 @@ def _all_review_calls() -> list[tuple[str, str, str]]:
 
 def test_the_review_skill_calls_every_script_of_the_flow():
     calls = Counter(script for skill, script, _ in _all_review_calls() if skill == "periodic-review")
-    # review-doc.py 5: write, parse, replace --confirm / --abort, and the parse of step 7's section stop (046 T4.4)
-    assert calls == {"review-session.py": 6, "review-read.py": 1, "review-doc.py": 5, "review-instructions.py": 3,
+    # review-doc.py 6: write, parse, replace --confirm / --abort, the parse of step 7's section stop (046 T4.4)
+    # and the Pass 1 Abort's replace --abort (047 T6.3)
+    assert calls == {"review-session.py": 6, "review-read.py": 1, "review-doc.py": 6, "review-instructions.py": 3,
                      "vault-config-writer.py": 1}
 
 

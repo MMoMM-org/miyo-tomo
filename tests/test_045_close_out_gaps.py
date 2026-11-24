@@ -1,70 +1,33 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_045_close_out_gaps.py — spec 045 T6.4: criteria parts no test could fail.
 
 The close-out trace (docs/XDD/specs/045-weekly-monthly-review/close-out.md §3)
 found three criterion parts with an imperative in the runtime text, or a lib
 behaviour, that no test pinned: deleting the line or changing the code left
-every traced test green. Each test below fails under the mutation the
+every traced test green. The test below fails under the mutation the
 close-out names for it.
 
-The two prose pins (F4-AC2, F4-AC5) only prove the imperative exists in
-periodic-review/SKILL.md; whether the model follows it is the live walk's
-evidence, as for tests/test_review_skill.py. The period-read test (F8-AC2)
-drives lib.review_period over the month fixture of
+The two prose pins of F4-AC2 (the groups, the two-day theme rule) and F4-AC5
+(the setup language) were retired by spec 047 T6.3 with the step-5 proposal
+prose; they are pinned against review-proposer.md in tests/test_047_agents.py
+(`groups`, `themes-over-the-period`, `review-language`). The period-read test
+(F8-AC2) drives lib.review_period over the month fixture of
 tests/review_period_fixtures.py with its stub day readers.
 """
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TESTS_DIR = REPO_ROOT / "tests"
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
-SKILL = REPO_ROOT / "tomo" / "dot_claude" / "skills" / "periodic-review" / "SKILL.md"
 for p in (str(SCRIPTS_DIR), str(TESTS_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
 from review_period_fixtures import DAILY, MARCH, entry, month_sources, month_vault, run  # noqa: E402
-
-
-def _section(heading: str) -> str:
-    """One `## ` section of the skill, whitespace collapsed."""
-    text = SKILL.read_text(encoding="utf-8")
-    begin = text.index(f"\n## {heading}\n")
-    end = text.find("\n## ", begin + 1)
-    return re.sub(r"\s+", " ", text[begin:end if end != -1 else len(text)])
-
-
-# ── Prose pins ─────────────────────────────────────────────────────────────
-
-
-def test_the_groups_are_defined_for_the_model_with_the_two_day_theme_rule():
-    """F4-AC2: the model is told what each group holds — done, open, a theme found on at least two days,
-    growth from the read's lists, the two month-only groups from the link differences — and to leave an
-    empty group out. The script enforces the two-day rule and the group set; this line is what the model
-    sorts by."""
-    text = _section("5. Propose and write the document")
-    line = ("- `done`: what happened and got done; `open`: what stayed open; `themes`: a theme found on at least "
-            "two days; `growth`: what the `growth` lists of `read.json` show; `weekly_only` and `not_in_weekly` "
-            "(month only, when `read.json` holds `weekly`): what the `only_in_weekly_links` and "
-            "`dailies_not_in_weekly` lists show. Leave out a group with nothing to propose.")
-    assert line in text
-    assert text.index("Write `tomo-tmp/review/<stem>/proposals.json`:") < text.index(line) \
-        < text.index("python3 scripts/review-doc.py write --stem <stem>")
-
-
-def test_every_proposal_is_written_in_the_setup_language():
-    """F4-AC5: the proposals are in the review language of the setup. The script renders headings and fixed
-    lines by `review.language`; the proposal text itself is the model's, so this is the only place the
-    language reaches it."""
-    text = _section("5. Propose and write the document")
-    assert "`<language>` is the value of `review.language` in the config file." in text
-    assert "- Every item is in `<language>`; its `sources` name the notes of `read.json` it rests on" in text
-    assert text.index("`<language>` is the value of") < text.index("- Every item is in `<language>`")
 
 
 # ── The period read ────────────────────────────────────────────────────────

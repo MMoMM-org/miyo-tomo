@@ -2,13 +2,13 @@
 name: periodic-review
 description: MUST BE USED when the user runs /review, or asks for a weekly, monthly or quarterly review of their periodic notes (the last finished week, month or quarter, a named period such as 2026-W13, 2026-03 or 2026-Q1, an @-picked periodic note), to continue, deliver or drop an open review, or to set up or change the review setup (/review setup). NOT for inbox triage (/inbox) and NOT for a single note from a template (/note).
 user-invocable: true
-allowed-tools: Read, Write, Bash
+allowed-tools: Read, Write, Bash, Agent
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.13
+# version: 0.3.0
 
-Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
+Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/confirmed-<kind>.json` yourself; the review agents of step 5 write their own files (the digests, `carryover.json`, `proposals.json`), and every other change goes through the scripts below.
 
 ## Rules
 
@@ -18,9 +18,10 @@ Review one finished week, month or quarter with the user: Pass 1 writes a review
 - Every question is plain text in the visible reply: first the content, copied from the Read or Bash result, then the question, numbered on one line as `1 First · 2 Second` as the last line. Then end the turn.
 - The next user message is the answer: a typed number or option word; when it is unclear, ask again in plain text.
 - Show the `error`, `expected`, `example` and `errors` of a script verbatim, and the `hints` of step 2 and the `problems` of step 4; never paraphrase them. Every other `problems` entry, `warnings` entry and `notices` entry is said by the line its step gives it; without one, verbatim.
-- Never quote `read*.json`, a daily note, a journal answer or a tracker value in your reply; print the scripts' reports and `section_md` only.
+- Never quote a stage file (a file under `tomo-tmp/review/<stem>/`), a daily note, a journal answer or a tracker value in your reply; print the scripts' reports and `section_md` only.
 - Never say a folder is empty or a note does not exist: `kado-none`, `kado_empty` and an empty result may mean the Kado key cannot read the folder; say so.
-- On Abort at any question, run no further script and write nothing; say in one line what stays as it is.
+- On Abort at any question, run no further script and write nothing, except the Pass 1 Abort below; say in one line what stays as it is.
+- An Abort answered after step 4 read the period and before step 5 wrote the document is a Pass 1 Abort: run `python3 scripts/review-doc.py replace --stem <stem> --abort` and nothing else, and say in one line that the read is discarded and no document was written.
 - Ask in the language the user writes in.
 
 ## 1. Start
@@ -121,34 +122,81 @@ On a non-zero exit of the writer, show its output verbatim and stop; nothing is 
 python3 scripts/review-read.py --period <period> --kind <kind> --stem <stem>
 ```
 
+Add `--fresh` to the call when this step follows a Start over answer or a `read-stale` refusal of step 5.
+
 Branch on `status` first:
 - `stopped` with `error` → the stopped rule. `stopped` with `problems` → show them verbatim (`setup-missing`, `setup-invalid` with `errors`, `daily-not-configured`, `dailies-not-read`) and the `report` when present, and stop; nothing is written. Never read `nothing_to_review` from a `stopped` output.
 - `ok` with `nothing_to_review` true → say that no daily note of the period holds content and name the days of `report.days`; when `advice` holds `check-key-access`, add that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders. Stop; nothing is written.
-- `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes`, `monthly_status` and `monthly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `advice` holds `check-key-access`, say that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders; the user checks its access. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Then step 5.
+- `ok` with `continued` true → say in one line that the review continues on the read made at `read_at` and reads nothing anew; then go on with the next bullet.
+- `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes`, `monthly_status` and `monthly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `advice` holds `check-key-access`, say that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders; the user checks its access. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Print one line per entry of `report.previous`: its `kind` and `name`, its `state`, its `cause` when set, and read in part when `partly_read` is true. A `not-set-up` entry is such a line too; ask no setup question for it. Then step 5.
 
 ## 5. Propose and write the document
 
-Read `read_path` of step 4 and `config/vault-config.yaml`; `<language>` is the value of `review.language` in the config file. A quarter: then read each file of `read_parts` in the listed order, one Read call after the other; in this step `read.json` means all these files together. Write `proposals.json` only after the last part.
+`<language>` is the value of `review.language` in `config/vault-config.yaml`; Read it. `<section heading>` of a key is the `heading` of the row with that `id` under `review.<weekly|monthly|quarterly>.sections` (the kind's) in the same file. Then run:
 
-Write `tomo-tmp/review/<stem>/proposals.json`:
-
-```json
-{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": ["<path or stem from read.json>"]}], "open": [], "themes": [], "growth": [], "weekly_only": [], "not_in_weekly": []}}
+```bash
+python3 scripts/review-digest.py plan --stem <stem>
 ```
 
-- Every item is in `<language>`; its `sources` name the notes of `read.json` it rests on, at least one a daily of the period (for `weekly_only` a weekly note of the period). A second line of `text` becomes a continuation line of the item.
-- `done`: what happened and got done; `open`: what stayed open; `themes`: a theme found on at least two days; `growth`: what the `growth` lists of `read.json` show; `weekly_only` and `not_in_weekly` (month only, when `read.json` holds `weekly`): what the `only_in_weekly_links` and `dailies_not_in_weekly` lists show. Leave out a group with nothing to propose.
-- Quarter (when `read.json` holds `monthly`, `report.monthly_status` `found`): `monthly_only` and `not_in_monthly` are what `only_in_monthly_links`, `dailies_not_in_monthly` and the `month_text` of the `monthly` entries show; a `monthly_only` item's sources name a `monthly` note; a section item carries `"mark": "monthly_only"` or `"mark": "not_in_monthly"` as a month's carries its marks.
-- Habits are computed by the script: never propose them. Never propose text for the user's own sections other than the `sections` of `read.json`.
-- `read.json` holds `sections` → add `"sections": [{"key": "<key>", "items": [{"text": "<reminder>", "sources": ["<path or stem from read.json>"]}]}]` beside `groups`: one entry per `sections` entry with something to propose, its `key` copied; no other key.
-- A section's items are what its `description` and `keywords` ask for in the period's notes, whatever group they would fit. Each is a reminder of what happened or will need to happen, with its sources; never finished review text, never a judgement. At most `cap` items: merge findings that say the same, keeping the sources of each.
-- A section whose `groups` names groups starts from what those groups would hold; such a finding goes into the section, not into the group.
-- Each finding goes in one place: the section it fits best, else its group; never in a second section or a group as well.
-- A `sections` entry with `analysis` true → items that sum up what the period's values for it show, each an overview, never one item per day.
-- Month: a section item that only the weekly notes hold, or that they left out, carries `"mark": "weekly_only"` or `"mark": "not_in_weekly"`; its sources as for that group.
-- `<section heading>` of a key is the `heading` of the row with that `id` under `review.<weekly|monthly|quarterly>.sections` (the kind's) in `config/vault-config.yaml`.
+Run `plan` once after each run of step 4; the only other `plan` is the `condense-incomplete` line below. Branch on `status` first:
+- `refused` with `read-stale` → run step 4 with `--fresh`, once per run, and continue there; a second `read-stale` → show it and stop.
+- `refused` with `stage-missing` or `stage-invalid` → run step 4 again, once, and continue there; a second refusal → show `problems` verbatim and stop.
+- `ok` → `<read_id>` is its `read_id`. Send each entry of `rounds`, in order, as one message that holds one `Agent()` call per job, built by the template of the job's `agent` below. After the last round run `check`. `rounds` empty → run no agent and go to the proposer with this output's `proposer`.
 
-Then run:
+# STRICT — send every `Agent()` call of a round in ONE message. Why: one call per message runs the agents one after another, a quarter's digesters sixteen times as long.
+# STRICT — every `Agent()` call names `subagent_type` with the job's `agent`. Why: a call without it starts a general-purpose agent with every tool and none of the review agent's rules.
+# STRICT — every `Agent()` call passes `run_in_background: false`. Why: a backgrounded agent answers after the run went on, before its file exists.
+
+```text
+Agent(subagent_type: "review-digester", run_in_background: false, description: "Condense <unit>", prompt:
+stem: <stem>
+unit: <unit>
+read_id: <read_id>
+days: <days>
+day_files: <day_files>
+growth_files: <growth_files>
+weekly_note: <weekly_note>
+sections: <sections>
+section_files: <section_files>
+out: <out>
+cap_bytes: <cap_bytes>
+language: <language>)
+```
+
+```text
+Agent(subagent_type: "review-carryover", run_in_background: false, description: "Carry the previous reviews", prompt:
+stem: <stem>
+read_id: <read_id>
+previous_files: <previous_files>
+out: <out>
+cap_bytes: <cap_bytes>
+language: <language>)
+```
+
+Each `<key>` is the job's value of that key, written as JSON; `<stem>`, `<read_id>` and `<language>` are this run's. Every path stays as the job names it. Put nothing else in a prompt: no note text, no part of the report.
+
+```bash
+python3 scripts/review-digest.py check --stem <stem>
+```
+
+# STRICT — never read a stage file or search the day files with `grep` or Bash in this session, and never start an agent `plan` did not list; a unit without a passed digest is named as not condensed. Why: a grep fallback and self-started helpers reviewed a sample of the period while claiming the whole.
+
+Run `check` at most twice; after the second, go on to the proposer. Branch on `status` first:
+- `refused` → the `refused` lines of `plan` above.
+- `stopped` with `nothing-condensed` → say that no week of the period could be condensed and name every entry of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written.
+- `ok` with a non-empty `retry` → send the job of each entry again, the job of `plan`'s `rounds` with the same `agent` and `unit`, by its template unchanged, all in one message; then run `check` once more and branch on it by this list.
+- `ok` with an empty `retry` → dispatch `review-proposer` once with the `proposer` of this output.
+
+```text
+Agent(subagent_type: "review-proposer", run_in_background: false, description: "Propose the review", prompt:
+stem: <stem>
+inputs: <inputs>
+out: <out>
+carried: <carried>
+language: <language>)
+```
+
+A reply other than `<out> written` → show it and stop; the read stays for the next `/review`. Then run:
 
 ```bash
 python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<stem>/proposals.json
@@ -156,13 +204,14 @@ python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<s
 
 Branch on `status` first:
 - `stopped` → the stopped rule; `problems` `kado-write-failed` → say nothing was written and stop.
-- `refused` with `proposals-invalid` → show `errors` verbatim, rewrite `proposals.json` once and rerun `write`; a second `proposals-invalid` → show it and stop.
-  In the rewrite, fix each `errors` entry in the item or entry its pointer names: `unknown-section` or `duplicate-section` → each `read.json` key once, no other; `over-cap (<key>)` → merge that section's items down to its `cap`; `double-placement` → remove that item; `mark-not-allowed` → drop its `mark`.
+- `refused` with `proposals-invalid` → show `errors` verbatim, dispatch `review-proposer` once more by its template with the line `errors: <errors>` added last, `<errors>` the `errors` of `write` verbatim as JSON, and rerun `write`; a second `proposals-invalid` → show it and stop; no document is written.
+- `refused` with `condense-incomplete` → run this step again from `plan`, once; a second `condense-incomplete` → show it and stop.
+- `refused` with `read-stale` → the `read-stale` line of `plan` above.
 - `refused` with `doc-name-taken` → say `doc_path` is a note that is not Tomo's review document and nothing was overwritten; stop.
 - `refused` with `review-exists` → say Tomo's review document for the period already exists at `doc_path` and that replacing it discards the user's edits in it; ask `1 Replace · 2 Keep it`. Replace → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` and branch on its `status` by this list, `replaced` as `written`. Keep it → run `python3 scripts/review-doc.py replace --stem <stem> --abort` and say in one line that the document is kept.
 - `refused` with `sections-changed` → say the section setup changed since the read; run step 4 again, once, and continue there; a second `sections-changed` → show it and stop.
 - `refused` with any other problem (`read-missing`, `read-invalid`, `setup-missing`, `setup-invalid`, `inbox-not-configured`) → show `problems` and `errors` verbatim and stop.
-- `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, `counts` per group and per section (by `<section heading>`), and every `rejected` item with its `group` or `section`, `index` and `reason`. Then say: edit the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.
+- `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, `counts` per group and per section (by `<section heading>`), and every `rejected` item with its `group` or `section`, `index` and `reason`. Then one line per entry of `previous`: its `kind`, `name` and `state` as step 4 said them, and that its items could not be carried when `carry_failed` is set on it. One line per entry of `not_condensed`: the week `unit` and its `days` could not be condensed and are missing from the review. When `carry_failed` is true, one line that the previous reviews could not be taken into account. One line per entry of `carried_moved`: `count` carried items of the section `<section heading>` of its `key` moved to the group `to`. Then say: edit the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.
 
 ## 6. Continue an open review
 
@@ -235,7 +284,7 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
 python3 scripts/review-instructions.py deliver --stem <stem>
 ```
 
-# STRICT — never write the review document, the instruction set, the new note or a file under `tomo-tmp/` other than the two named at the top yourself, not through Kado and not with Write; only the review scripts write them. Why: a hand-written document mark and a hand-edited `meta.json` make the next deliver or drop act on a delivery that never happened.
+# STRICT — never write the review document, the instruction set, the new note or a file under `tomo-tmp/` other than `tomo-tmp/review/confirmed-<kind>.json` yourself, not through Kado and not with Write; only the review scripts write them, and the review agents their own files (the digests, `carryover.json`, `proposals.json`). Why: a hand-written document mark and a hand-edited `meta.json` make the next deliver or drop act on a delivery that never happened.
 
 Add `--place-anchor "<heading>"` when a heading was chosen in step 7, and the section choice flags of the last `preview` of step 7, unchanged. Branch on `status` first:
 - `delivered` or `resumed` → report `target`, `place`, `paths.set_json`, `paths.set_md` and `paths.note` when set, and "Next: review and apply the instruction set in Hashi, or by hand with the readable instructions." Then the step 7 notice lines for `notices` and `target_appeared`.

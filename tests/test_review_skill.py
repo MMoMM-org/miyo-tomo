@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.17
+# version: 0.2.18
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.2.13")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.3.0")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -88,21 +88,18 @@ def test_help_version_was_bumped():
 
 # The one STRICT line of the skill (spec 046 T6.3): the model hand-wrote the document mark and edited meta.json
 # after a refused resume in the live walk. Its `Why:` is the one rationale the runtime text may carry.
-STRICT_LINE = ("# STRICT — never write the review document, the instruction set, the new note or a file under "
-               "`tomo-tmp/` other than the two named at the top yourself, not through Kado and not with Write; only the review scripts write "
-               "them. Why: a hand-written document mark and a hand-edited `meta.json` "
-               "make the next deliver or drop act on a delivery that never happened.")
+# Its text and the four STRICT lines of step 5 (spec 047 T6.3) are pinned in tests/test_047_skill_contract.py.
 
 
 def test_the_skill_carries_one_strict_line_in_the_deliver_step():
-    text = _text(SKILL)
-    assert text.count("# STRICT") == 1 and text.count(STRICT_LINE) == 1
-    assert STRICT_LINE.split(" Why:")[0][:60] in _section("8. Deliver")
+    strict = [ln for ln in _section("8. Deliver").split("# STRICT")[1:]]
+    assert len(strict) == 1 and "Why:" in strict[0]
+    assert _text(SKILL).count("# STRICT") == 5
 
 
 @pytest.mark.parametrize("path", [COMMAND, SKILL], ids=["command", "skill"])
 def test_has_no_rationale_prose(path):
-    text = _text(path).replace(STRICT_LINE, "")
+    text = "\n".join(ln for ln in _text(path).splitlines() if not ln.startswith("# STRICT — "))
     for pattern in (r"\bF\d+-AC\d+\b", r"\bADR-\d+\b", r"\bWhy:", r"\bWHY\b", r"\b20\d\d-\d\d-\d\d\b",
                     r"#31\b", r"\b[Ss]pec 0\d\d\b", r"\bT\d\.\d\b", r"\b[Bb]ecause\b", r"\b[Rr]ationale\b",
                     r"# STRICT"):
@@ -115,7 +112,7 @@ def test_skill_frontmatter_names_the_skill_with_minimal_tools_and_no_model_pin()
     assert "user-invocable: true" in head
     assert "argument-hint:" in head
     (tools,) = re.findall(r"^allowed-tools: (.*)$", head, re.MULTILINE)
-    assert {t.strip() for t in tools.split(",")} == {"Read", "Write", "Bash"}
+    assert {t.strip() for t in tools.split(",")} == {"Read", "Write", "Bash", "Agent"}
     assert not re.search(r"^model:", head, re.MULTILINE)
     assert not re.search(r"^context:", head, re.MULTILINE)
     (description,) = re.findall(r"^description: (.*)$", head, re.MULTILINE)
@@ -172,11 +169,6 @@ def test_scripts_run_from_the_working_directory_not_the_skill_dir():
     text = _flat(SKILL)
     assert ("Run every script from the session's working directory (the instance root), "
             "never from the skill's base directory.") in text
-
-
-def test_the_skill_writes_only_the_two_named_files_itself():
-    assert ("Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` "
-            "yourself; every other change goes through the scripts below.") in _flat(SKILL)
 
 
 # ── Start (F2) ──────────────────────────────────────────────────────────────
@@ -494,22 +486,10 @@ def test_every_advice_of_the_read_script_has_its_line():
 # ── Proposals and the document (F4, F6) ─────────────────────────────────────
 
 
-def test_the_model_reads_read_json_and_the_language_and_writes_proposals_json_only():
-    text = _section("5. Propose and write the document")
-    assert ("Read `read_path` of step 4 and `config/vault-config.yaml`; `<language>` is the value of "
-            "`review.language` in the config file.") in text
-    assert "Write `tomo-tmp/review/<stem>/proposals.json`:" in text
-    assert '{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": [' in text
-    assert ("Habits are computed by the script: never propose them. Never propose text for the user's own sections "
-            "other than the `sections` of `read.json`.") in text
-    assert "at least one a daily of the period (for `weekly_only` a weekly note of the period)" in text
-    assert "python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<stem>/proposals.json" in text
-
-
 def test_write_refusals_each_have_their_branch():
     text = _section("5. Propose and write the document")
-    assert ("- `refused` with `proposals-invalid` → show `errors` verbatim, rewrite `proposals.json` once and rerun "
-            "`write`; a second `proposals-invalid` → show it and stop.") in text
+    assert "- `refused` with `proposals-invalid` → show `errors` verbatim, dispatch `review-proposer` once more" in text
+    assert "a second `proposals-invalid` → show it and stop; no document is written." in text
     assert ("- `refused` with `doc-name-taken` → say `doc_path` is a note that is not Tomo's review document and "
             "nothing was overwritten; stop.") in text
     assert "- `stopped` → the stopped rule; `problems` `kado-write-failed` → say nothing was written and stop." in text
@@ -556,5 +536,6 @@ def test_pass_1_ends_the_turn_with_the_document_report():
     text = _section("5. Propose and write the document")
     assert ("- `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, "
             "`counts` per group and per section (by `<section heading>`), and every `rejected` item with its "
-            "`group` or `section`, `index` and `reason`. Then say: edit "
-            "the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.") in text
+            "`group` or `section`, `index` and `reason`.") in text
+    assert ("Then say: edit the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the "
+            "turn.") in text

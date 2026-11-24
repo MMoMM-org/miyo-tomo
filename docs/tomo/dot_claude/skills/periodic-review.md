@@ -573,12 +573,31 @@ step 5 only orchestrates, and every decision of the orchestration is a script's:
   `read_id`, the file list, `out`, `cap_bytes`, the review language — paths, ids, dates and the language only, never
   note text (the main session has none to give). The reply is one line per agent.
 - **`review-digest.py check --stem`** judges every file the agents wrote and spends one attempt per open job: the first
-  failure comes back in `retry` with its errors, sent again in one message with the errors verbatim; the second is
-  `failed`. Then `check` again. So a run is `plan` once, then `check` at most twice.
+  failure comes back in `retry` with its errors, and its job — the one `plan` listed for that `agent` and `unit` —
+  is sent again by its template unchanged, all retries in one message; the second is `failed`. Then `check` again.
+  So a run is `plan` once, then `check` at most twice. The errors are not put into the retry prompt: `errors` is
+  no field of the digester's or the carryover's `## Input` line (only the proposer's rewrite takes them), and an
+  agent writes its file anew from the inputs on every run, so a fresh attempt is the retry; the errors are
+  `check`'s to judge.
+- **All rounds, then one `check`.** `check` spends an attempt on every open job, so it runs after the last round,
+  never between rounds: a job of round 2 not yet sent would count as a failed first attempt. An empty `rounds` (a
+  continued read whose units all passed) runs no agent and goes to the proposer with `plan`'s own `proposer`.
+- **`stage-missing` / `stage-invalid` read again, once.** `plan` refuses them when the stage is gone or cannot be
+  loaded (a session that ended mid-read, a hand-edited file). Step 4 without `--fresh` reads anew in both cases
+  (no manifest, or a stage that does not load, is never continued); a second refusal means something else is
+  wrong and is shown.
+- **A proposer that wrote nothing stops the run.** Its reply `proposals.json not written: <reason word>` means no
+  file exists for `write` to check; running `write` anyway would only refuse. The run stops with the reply shown
+  and the stage kept: the next `/review` continues on the read and `plan` dispatches the proposer again.
+- **`carried_moved` is a report line.** `write` moves the last carried items of a full section into the group of
+  their mark (docs/tomo/scripts/review-doc.md); the run report names each move by the section's configured heading,
+  so the user knows why a follow-up is not in the section it fits.
 - **`plan` once per run.** `plan` resets every failed unit (and a whole-file failed carryover) to pending on each call,
   because it cannot tell a continued read in a new session from a repeat call in the same one (T4.3 review). Retries
   stay bounded only if the skill runs `plan` once per run; a second `plan` after a failed retry would offer the unit
-  again and again. The step says so as an imperative; a STRICT follows only if a live run shows a second `plan`. So a unit
+  again and again. The step says so as an imperative ("once after each run of step 4": a step 4 rerun after
+  `read-stale`, `stage-missing`, `stage-invalid` or `sections-changed` makes a new read, whose `plan` is its first);
+  a STRICT follows only if a live run shows a second `plan`. So a unit
   that fails twice stays failed until the next session, whose `plan` offers it once more (the cause, often
   throttling or a model slip, may be gone by then).
 - **Not condensed is named, never read instead.** A unit that failed its retry is in `not_condensed` with its days;

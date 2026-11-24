@@ -23,6 +23,9 @@ batch API); rows logged before 0.2.0 keep their Sonnet-rate figures.
 (labelled by its `agentType`) with turns, model families, cost, wall time (first to last transcript
 timestamp) and peak single-turn context, counts only.
 
+**Peak** = the largest single reply's input + cache_read tokens (cache_create excluded); spec 046's
+close-out peaks used input + cache_read + cache_write and are not comparable.
+
 **Correction (2026-11-13, #262)**: until `tomo-session-stats.py` 0.1.1 the tool summed `usage` once per
 transcript line. Claude Code writes one line per content block of a reply, and every line repeats the
 reply's `usage`, so costs taken from the tool before that date are overstated, typically about 2×. Since

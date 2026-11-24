@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "tomo-session-stats.py"
 
@@ -209,3 +211,21 @@ def test_a_zero_usage_synthetic_reply_is_not_flagged_as_default_price(tmp_path):
         _text("msg_M2", "<synthetic>", zero, "2026-11-20T10:00:09Z"),
     ])
     assert "default price" not in _run(session)
+
+
+def _session_with_meta(tmp_path, meta_text):
+    session = _write(tmp_path / "s.jsonl", [_text("msg_M1", "claude-sonnet-4-6", USAGE_B, "2026-11-20T10:00:05Z")])
+    sub = tmp_path / "s" / "subagents"
+    sub.mkdir(parents=True)
+    _write(sub / "agent-a0.jsonl", [_text("msg_S0", "claude-haiku-4-5", USAGE_A, "2026-11-20T10:01:00Z")])
+    if meta_text is not None:
+        (sub / "agent-a0.meta.json").write_text(meta_text, encoding="utf-8")
+    return session
+
+
+
+@pytest.mark.parametrize("meta_text", [None, "{not json", '["agentType"]', '{"description": "x"}', '{"agentType": ""}'],
+                         ids=["missing", "corrupt", "not-an-object", "no-agentType", "empty-agentType"])
+def test_subagent_label_falls_back_to_the_transcript_stem(tmp_path, meta_text):
+    out = _run(_session_with_meta(tmp_path, meta_text))
+    assert _step_line(out, "agent-a0")

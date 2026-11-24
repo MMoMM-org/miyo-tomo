@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 # tomo-session-stats.py — Token usage and cost report for a Tomo session.
-# version: 0.2.0
+# version: 0.2.1
 """
 Reports turns, token breakdown (input/cache_read/cache_create/output),
 peak single-turn context, model usage, subagent stats, and estimated cost,
 plus a per-step block: the main session and each subagent (labelled by the
 ``agentType`` of its ``.meta.json``) with cost, wall time (first to last
 transcript timestamp) and peak context. Counts only, never message text.
+
+Peak = the largest single reply's input_tokens + cache_read_input_tokens
+(cache_creation_input_tokens excluded). Spec 046's close-out peaks used
+input + cache_read + cache_write and are not comparable with these.
 
 One API reply is written as one transcript line per content block (thinking, text, each tool_use),
 and every line repeats the reply's ``message.id`` and ``usage``. Each id is counted once; a line
@@ -46,7 +50,14 @@ PRICE = _TOKEN_USAGE.PRICE
 model_family = _TOKEN_USAGE.model_family
 
 _PRICE_KEYS = {"input": "in", "output": "out", "cache_create": "cache_w", "cache_read": "cache_r"}
-DEFAULT_PRICE = {key: PRICE["sonnet"][short] for key, short in _PRICE_KEYS.items()}
+
+
+def _rates(family: str) -> dict | None:
+    rates = PRICE.get(family)
+    return None if rates is None else {key: rates[short] for key, short in _PRICE_KEYS.items()}
+
+
+DEFAULT_PRICE = _rates("sonnet")
 
 
 def latest_session_jsonl() -> Path | None:
@@ -138,10 +149,8 @@ def _flat_cost(tokens: dict, price: dict) -> float:
 
 def model_price(model: str, default: dict) -> tuple[dict, bool]:
     """Return (rates, is_default) for a model id, mapped by family onto PRICE."""
-    rates = PRICE.get(model_family(model))
-    if rates is None:
-        return default, True
-    return {key: rates[short] for key, short in _PRICE_KEYS.items()}, False
+    rates = _rates(model_family(model))
+    return (default, True) if rates is None else (rates, False)
 
 
 def estimate_cost(stats: dict, default: dict) -> tuple[float, list[str]]:

@@ -42,7 +42,7 @@ Makes the privacy contract and the user documentation match the new flow, and gi
 
   - **Carry-over from T2.4 (2026-11-23):** `tests/test_046_t6_2_docs.py:11, 89-90` still pins `read-index.json` in PRIVACY.md's "where read content rests"; update that pin together with the PRIVACY.md rewrite.
 
-- [ ] **T7.2 Leak guard and cleanup over the new steps** `[activity: testing]` `[parallel: true]`
+- [x] **T7.2 Leak guard and cleanup over the new steps** `[activity: testing]` `[parallel: true]`
 
   1. Prime: `tests/test_review_privacy.py` (leak guard, tmp allowlist ~212), `tests/test_review_e2e_cleanup.py`, `tests/review_privacy_fixture.py` (sentinel texts) `[ref: SDD/CON-3; ADR-10]` `[ref: SDD/Quality Requirements/Security; lines: 1237]`
   2. Test: the leak guard runs every review script incl. `review-digest.py` (`plan`, `check`, each refusal and stop) and `review-read.py --measure` and finds no sentinel text in stdout, stderr, `manifest.json`, `condensed.json`, `meta.json` or a cost record (F7-AC4); the allowlist lists `days/`, `growth/`, `children/`, `previous/`, `context*.json`, `weeks.json`, `digests/`, `carryover.json`, `proposals.json` and nothing else; `test_review_e2e_cleanup.py` shows 0 content files after write, after Pass 1 abort and after drop, for week, month and quarter (F7-AC1 end to end); an agent prompt built from `plan` holds no sentinel text.

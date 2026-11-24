@@ -50,7 +50,7 @@ Makes the privacy contract and the user documentation match the new flow, and gi
   4. Validate: tests green; ruff clean.
   5. Success: no note text reaches Tomo's records and no material outlives the document `[ref: PRD/F7-AC4; F7-AC1]`
 
-- [ ] **T7.3 Cost, time and peak size per step (`scripts/tomo-session-stats.py`)** `[activity: performance]` `[parallel: true]`
+- [x] **T7.3 Cost, time and peak size per step (`scripts/tomo-session-stats.py`)** `[activity: performance]` `[parallel: true]`
 
   1. Prime: `scripts/tomo-session-stats.py` (subagent stats, peak context, Sonnet default prices), `scripts/tomo-token-usage.py` (PRICE table: opus $15/$75, sonnet, haiku), `tests/test_tomo_session_stats.py` `[ref: SDD/Quality Requirements/Performance (guidance); lines: 1235]` `[ref: PRD/F8-AC1]`
   2. Test: on a synthetic transcript with a main session and one subagent per review agent: the report lists per step (main session, each subagent) cost at the per-model rates of `tomo-token-usage.py`, wall time (first to last timestamp) and peak context, with counts only and no message text; an unknown model falls back to the default price and says so.

@@ -1,0 +1,22 @@
+--- a/skills/periodic-review/SKILL.md
++++ b/skills/periodic-review/SKILL.md
+@@ -141,9 +141,8 @@
+ Run `plan` once after each run of step 4; the only other `plan` is the `condense-incomplete` line below. Branch on `status` first:
+ - `refused` with `read-stale` → run step 4 with `--fresh`, once per run, counted over `plan`, `check` and `write` together, and continue there; a second `read-stale` → show it and stop.
+ - `refused` with `stage-missing` or `stage-invalid` → run step 4 again, once, and continue there; a second refusal → show `problems` verbatim and stop.
+-- `ok` → `<read_id>` is its `read_id`. Send each entry of `rounds`, in order, as one message that holds one `Agent()` call per job, built by the template of the job's `agent` below. After the last round run `check`. `rounds` empty → run no agent and go to the proposer with this output's `proposer`.
++- `ok` → `<read_id>` is its `read_id`. Send the jobs of each entry of `rounds`, in order, one `Agent()` call per message, each after the previous one replied, built by the template of the job's `agent` below. After the last round run `check`. `rounds` empty → run no agent and go to the proposer with this output's `proposer`.
+ 
+-# STRICT — send every `Agent()` call of a round in ONE message. Why: one call per message runs the agents one after another, a quarter's digesters sixteen times as long.
+ # STRICT — every `Agent()` call names `subagent_type` with the job's `agent`. Why: a call without it starts a general-purpose agent with every tool and none of the review agent's rules.
+ # STRICT — every `Agent()` call passes `run_in_background: false`. Why: a backgrounded agent answers after the run went on, before its file exists.
+ 
+@@ -184,7 +183,7 @@
+ Run `check` at most twice after each `plan`. Branch on `status` first:
+ - `refused` → the `refused` lines of `plan` above.
+ - `stopped` with `nothing-condensed` → say that no week of the period could be condensed and name every entry of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written.
+-- `ok` with a non-empty `retry` from the first `check` → send the job of each entry again, the job of `plan`'s `rounds` with the same `agent`, and the same `unit` when the entry has one, by its template with the line `errors: <errors>` added last, `<errors>` the entry's `errors` verbatim as JSON, all in one message; then run `check` once more and branch on it by this list.
++- `ok` with a non-empty `retry` from the first `check` → send the job of each entry again, the job of `plan`'s `rounds` with the same `agent`, and the same `unit` when the entry has one, by its template with the line `errors: <errors>` added last, `<errors>` the entry's `errors` verbatim as JSON, one per message; then run `check` once more and branch on it by this list.
+ - `ok` with a non-empty `retry` from the second `check` → send no agent; those units are not condensed. Go on with the next bullet.
+ - `ok` with an empty `retry`, or after the second `check` → dispatch `review-proposer` once with the `proposer` of this output.
+ 

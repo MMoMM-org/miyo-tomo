@@ -1,0 +1,20 @@
+--- a/skills/periodic-review/SKILL.md
++++ b/skills/periodic-review/SKILL.md
+@@ -132,7 +132,7 @@
+ 
+ ## 5. Propose and write the document
+ 
+-`<language>` is the value of `review.language` in `config/vault-config.yaml`; Read it. `<section heading>` of a key is the `heading` of the row with that `id` under `review.<weekly|monthly|quarterly>.sections` (the kind's) in the same file. Then run:
++`<language>` is the value of `review.language` in `config/vault-config.yaml`; Read it. Then Read `tomo-tmp/review/<stem>/days/<date>.json` once, `<date>` the first date of `report.days`, to see that the stage holds the first day of the period. `<section heading>` of a key is the `heading` of the row with that `id` under `review.<weekly|monthly|quarterly>.sections` (the kind's) in the same file. Then run:
+ 
+ ```bash
+ python3 scripts/review-digest.py plan --stem <stem>
+@@ -179,7 +179,7 @@
+ python3 scripts/review-digest.py check --stem <stem>
+ ```
+ 
+-# STRICT — never read a stage file or search the day files with `grep` or Bash in this session, and never start an agent `plan` did not list; a unit without a passed digest is named as not condensed. Why: a grep fallback and self-started helpers reviewed a sample of the period while claiming the whole.
++# STRICT — never start an agent `plan` did not list; a unit without a passed digest is named as not condensed. Why: self-started helpers reviewed a sample of the period while claiming the whole.
+ 
+ Run `check` at most twice after each `plan`. Branch on `status` first:
+ - `refused` → the `refused` lines of `plan` above.

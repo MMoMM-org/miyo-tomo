@@ -122,6 +122,8 @@ PASS1_CASES = {"pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed"}
 PIPELINE = "pass1-suggest-pipeline"
 # Spec 044's /note case: not gated; its shape and graders are tested in test_note_eval_case.py.
 NOTE_CASES = {"note-draft-before-approval"}
+# Spec 047's /review case: not gated; its shape and graders are tested in test_eval_review_no_stage_read.py.
+REVIEW_CASES = {"review-no-stage-read"}
 SKILL_IN_PLUGIN = "skills/suggest-handling/SKILL.md"
 SPEC_043_FIXTURES = REPO / "docs" / "XDD" / "specs" / "043-pass1-conductor-eval-gate" / "fixtures"
 PASS1_INBOX_PATH = "100 Inbox"  # the pass1 kit's routing plan `inbox_path`, trailing slash removed
@@ -150,7 +152,7 @@ def production_dispatch() -> tuple[str, str, str | None]:
 def test_exactly_the_known_cases_exist():
     assert {p.name for p in EVALS.iterdir() if p.is_dir() and not p.name.startswith("_")} == set(
         CASE_SETTINGS
-    ) | PASS1_CASES | NOTE_CASES
+    ) | PASS1_CASES | NOTE_CASES | REVIEW_CASES
 
 
 def test_every_non_underscore_evals_subdir_is_a_case():
@@ -597,6 +599,10 @@ SPEC_043_MUTATIONS = (
 NOTE_MUTATIONS = ("header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask",
                   "confirm-attendees")
 RECORDED_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS + NOTE_MUTATIONS
+# Spec 047 (T6.4): built for the /review case, listed under `## Proofs not yet run` until the
+# paid run (T9.1) records them; proven offline in test_eval_review_no_stage_read.py.
+NOT_YET_RUN_MUTATIONS = ("read-day-file", "dispatch-one-per-message")
+ALL_MUTATIONS = RECORDED_MUTATIONS + NOT_YET_RUN_MUTATIONS
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
@@ -718,12 +724,16 @@ def _joined(plugin: Path, files: set[str]) -> str:
 
 def test_readme_mutations_match_the_patch_files():
     recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
+    not_yet_run = {p["arg"] for p in _proof_rows("Proofs not yet run")}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert recorded == files == set(RECORDED_MUTATIONS)
+    assert recorded == set(RECORDED_MUTATIONS)
+    assert not_yet_run == set(NOT_YET_RUN_MUTATIONS)
+    assert not recorded & not_yet_run
+    assert files == recorded | not_yet_run
     assert "## Pending proofs" not in _readme_text()
 
 
-@pytest.mark.parametrize("name", RECORDED_MUTATIONS)
+@pytest.mark.parametrize("name", ALL_MUTATIONS)
 def test_mutation_applies_cleanly_to_a_fresh_assembly(tmp_path, name):
     result = _patch(_assemble_plugin(tmp_path), name, dry_run=True)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -744,7 +754,7 @@ def test_spec_043_mutation_touches_only_its_declared_files(name):
         assert (REPO / "tomo" / "dot_claude" / f).is_file(), f"{name}: no runtime file {f}"
 
 
-@pytest.mark.parametrize("name", RECORDED_MUTATIONS)
+@pytest.mark.parametrize("name", ALL_MUTATIONS)
 def test_mutation_removes_and_adds_its_declared_clauses(tmp_path, name):
     """A mutation that only adds a bad instruction while a surviving STRICT
     forbids it is a weak proof: every contradicting clause it neutralises is
@@ -917,7 +927,7 @@ def test_spec_043_rows_name_their_offline_model():
 REVEALING_WORDS = re.compile(r"\b(?:evals?|graders?|mutations?|proofs?|RED|misbehave)\b")
 
 
-@pytest.mark.parametrize("name", SPEC_043_MUTATIONS)
+@pytest.mark.parametrize("name", SPEC_043_MUTATIONS + NOT_YET_RUN_MUTATIONS)
 def test_spec_043_mutations_add_ordinary_prose(name):
     """The model refuses an instruction that announces itself as a test; every added
     line reads as an ordinary runtime instruction."""

@@ -134,6 +134,17 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 | `--mutation deliver-before-ask` | `note-draft-before-approval` | `note-draft-before-approval/6-no-deliver-without-approval` — neutral step: `deliver` runs once as a pre-flight before the approval question; offline model: `deliver_first` | `note-draft-before-approval/1-header-before-approval`, `note-draft-before-approval/2-note-printed-before-approval`, `note-draft-before-approval/4-draft-md-never-printed`, `note-draft-before-approval/9-no-leak` (each measured 2/3, runs 0 and 1); the control `0-approval-asked` stayed green in all three runs |
 | `--mutation confirm-attendees` | `note-draft-before-approval` | `note-draft-before-approval/5-no-question-before-approval` — neutral step: although no point is open, the attendees the material names are printed and asked about in one plain-text line, `Are these the attendees?`, before `draft.md` is written and `stage` runs; the step says not to wait for an answer, so the run goes on to the approval question; offline model: `question_round`. Its first form (2026-11-06, `tomo-tmp/evals/2026-11-06T08-03-03Z`) asked Confirm / Correct and said to take Confirm when the question cannot be asked: GREEN 3/3, the model took Confirm without asking | none (measured): every other grader, the control `0-approval-asked` included, stayed green in all three runs |
 
+## Proofs not yet run
+
+Patches whose paid RED proof has not run yet. Each row names the offline model in `tests/test_eval_review_no_stage_read.py` that its expected red looks like; that test proves the model turns exactly the expected graders red and that the patched copy injects that behaviour. A row moves to `## Proofs`, with its verdict line, once the run is recorded.
+
+**Spec 047 T6.4 (`periodic-review` 0.3.0, not run; the paid run is the owner's go, spec 047 T9.1):** the `/review` case `review-no-stage-read` (not gated). Both patches are neutral steps or a plain form change, not a request to misbehave. Not proven by a mutation: `0-proposer-handed-back` is the control (precondition: the run reached the proposer and its one-line reply came back in the hand-back frame) and pairs every `not_contains` grader, which passes on an empty run; `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof. The other gates (`2-proposer-reads-no-raw-stage`, `3-agent-calls-typed`, `4-agent-calls-foreground`, `6-no-agent-outside-plan`, `7-agent-replies-one-line`) are proven offline only, each by a model of its own in the test (`proposer_reads_manifest`, `untyped_call`, `backgrounded_digester`, `unplanned_unit`, `multi_line_reply`); no patch drives them yet.
+
+| Proof | Cases | Expected red (what it proves) | Side-effect reds |
+|---|---|---|---|
+| `--mutation read-day-file` | `review-no-stage-read` | `review-no-stage-read/1-no-stage-read-in-main` — neutral step: after reading the review language, step 5 Reads the first day file of the stage once in the main session, and the STRICT keeps only its no-helper and not-condensed parts; offline model: `read_day_file` | not yet measured |
+| `--mutation dispatch-one-per-message` | `review-no-stage-read` | `review-no-stage-read/5-round-in-one-message` — the round's jobs go one `Agent()` call per message, each after the previous one replied, and the one-message STRICT is gone; offline model: `two_messages` | not yet measured |
+
 ## Inherited proofs
 
 A grader that is a byte copy of a grader with a recorded RED proof inherits that proof
@@ -496,3 +507,20 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - files: `skills/note-from-template/SKILL.md`
 - removes: "Then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview"
 - adds: "Then run the step 7 `deliver` command once as a pre-flight check and keep its output, then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview"
+
+### read-day-file
+
+- files: `skills/periodic-review/SKILL.md`
+- removes: "never read a stage file or search the day files with `grep` or Bash in this session, and never start an agent `plan` did not list"
+- removes: "Why: a grep fallback and self-started helpers reviewed a sample of the period while claiming the whole."
+- adds: "Then Read `tomo-tmp/review/<stem>/days/<date>.json` once, `<date>` the first date of `report.days`, to see that the stage holds the first day of the period."
+- adds: "# STRICT — never start an agent `plan` did not list; a unit without a passed digest is named as not condensed. Why: self-started helpers reviewed a sample of the period while claiming the whole."
+
+### dispatch-one-per-message
+
+- files: `skills/periodic-review/SKILL.md`
+- removes: "as one message that holds one `Agent()` call per job"
+- removes: "# STRICT — send every `Agent()` call of a round in ONE message."
+- removes: "verbatim as JSON, all in one message;"
+- adds: "Send the jobs of each entry of `rounds`, in order, one `Agent()` call per message, each after the previous one replied"
+- adds: "verbatim as JSON, one per message;"

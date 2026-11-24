@@ -517,6 +517,7 @@ tests/
 ├── test_047_t5_4_carried_write.py            # NEW (spec 047 T5.4): carried items through review-doc.py write: labels, top-line counts, coverage, carry_failed, overflow before over-cap, the new written keys
 ├── test_047_skill_contract.py                # NEW: pinned step 4/5 prose, allowed-tools, STRICTs, agent prompts
 ├── test_047_agents.py                        # NEW: frontmatter (model, tools Read/Write, no mcp), version header
+├── test_eval_review_no_stage_read.py         # NEW (implemented, spec 047 T6.4): plugin eval case review-no-stage-read offline: stage and stub contract, graders on synthetic traces, the two mutations
 ├── test_review_read_parts.py                 # DELETE
 └── changed by design: test_review_read.py, test_046_t4_5_quarter_read.py, test_046_t4_5_skill_quarter.py,
     test_046_t4_4_skill_sections.py, test_review_skill*.py, test_review_doc.py, test_review_doc_parse.py (new case),

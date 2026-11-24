@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Agents, skill dispatch and STRICT rules"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 6
 ---
@@ -73,6 +73,7 @@ Puts the three agents in place and makes the skill drive them, with the main ses
   4. Validate: the case's offline/grader unit tests (as the README describes) green; ruff clean.
   5. Success: the main session's no-read rule and the batch dispatch are machine-checked `[ref: SDD/ADR-8; SDD/Quality Requirements]`
 
-- [ ] **T6.5 Phase Validation** `[activity: validate]`
+- [x] **T6.5 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean. Trace F1-AC3, F1-AC4, F1-AC5, F4-AC1 … F4-AC4, F4-AC8, F4-AC11, F6-AC3, F6-AC6, F7-AC5 to node ids (model-behaviour parts marked for the T9.2 live-walk rows). Audit the three agents and the skill after the edits (`tcs-helper:agent-author` / `skill-author` audit): imperatives only, no rationale, no STRICT without an observed deviation. Git log: T6.1 docs before T6.2/T6.3. `settings.json` and every eval-gated file byte-identical.
+  - **Outcome (2026-11-24):** full suite in ONE invocation at 7f32f6e5: 12,307 passed, 18 skipped, 1 failed — `tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists`, the baseline failure (failing ⊆ baseline); ruff clean over `tomo tests evals`. `settings.json`, `synthesis-conductor.md`, `suggestion-conductor.md`, `suggest-handling/SKILL.md` and `commands/inbox.md` byte-identical since phase 5 (`git diff --stat 1cbe7001 HEAD` empty). Git log: T6.1 WHY docs (063e3fd2, f9c0bc3c) before every runtime commit (671bfa93 … e271dd8e). Audit (agent-author / skill-author audit): the three agents hold imperatives only, no STRICT; SKILL.md 0.3.0 holds five STRICT blocks, each with a one-line `Why:` whose observed deviation is in `docs/tomo/dot_claude/skills/periodic-review.md` (the three dispatch STRICTs rest on `/inbox` evidence, stated there); two flagged "rationale tails" (step 8, from specs 045/046) are user-facing message text and stay. SKILL.md is 38 KB (trim: #259). Trace (one invocation, 440 passed): F1-AC3, F1-AC4, F1-AC5, F4-AC1 … F4-AC4, F4-AC8, F4-AC11 → `tests/test_047_agents.py` pins; F6-AC3, F6-AC6 → `tests/test_047_skill_contract.py` pins + `tests/test_review_digest.py`; F7-AC5 → `test_tools_are_read_and_write_only`, `test_allowed_tools_add_agent`, `tests/test_eval_review_no_stage_read.py`. Every criterion's model-behaviour part is a T9.2 live-walk row; the eval case `review-no-stage-read` is proven offline only (paid run: T9.1, owner's go). Review-found fixes this phase: `section_files` for digesters (c4fd81e0), proposer rewrite in place (80ddad46), carried move written back on `proposals-invalid` only (853267e9, 5e03837d), retries carry the errors (04a29380), abort trigger and retry bounds (e271dd8e).

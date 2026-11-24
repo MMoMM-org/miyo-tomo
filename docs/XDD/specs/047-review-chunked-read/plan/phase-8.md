@@ -61,6 +61,8 @@ Proves on the fake vault that the new flow produces the same review and the same
 
   - **Carry-over from the T7.5 trace (2026-11-24, orchestrator):** F7-AC2 behaviour end to end — a run Kado stops after the discard leaves no stage content; an interrupted stage survives until that period's next `/review`, which continues on it or reads anew.
 
+  - **Carry-over from the T8.1 review (2026-11-24, orchestrator):** the fake vault creates no notes, so the T8.1 baseline proves only an empty "Vault growth" group (F2-AC1). Add a created-note fixture (≥ 2 notes on different days of the period, one of them in a different unit): the digests carry them as `growth` candidates, the fixture proposer builds the group from them, and the written group equals what the pre-047 read produced for the same vault (same notes, same links, the creation days as sources — compute the old group with the 046 renderer path on the same fixture, never a re-recorded golden). Mutation proof: drop one unit's growth candidate → the test fails.
+
 - [ ] **T8.3 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean; wire gate and manifests green and unchanged. Trace F2-AC1, F2-AC2, F5-AC6 and the e2e halves of F5-AC4, F5-AC5, F6-AC1 … F6-AC8 to node ids. Drift check spec vs code: every SDD interface shape (`review-read.py` ok/continued, `plan`, `check`, `write` refusals and `written` keys) compared with the scripts' docstrings and actual output; differences fixed or recorded as deviations in the SDD. Confirm no eval-gated file changed across the branch (`git diff --stat main...`).

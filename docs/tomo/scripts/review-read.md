@@ -221,6 +221,9 @@ discarded without a `discarded` key. Only the mapping invalidates a stored
 read among the setup values — PRD names the mapping only; other setup edits
 (daily sections, `max_chars_per_day`) apply to the next new read.
 
+A new read that Kado then stops has discarded the stored read and left no stage, and its stop report carries no
+`discarded` key. `--fresh` over a manifest that cannot be read reports `stage-invalid`, not `fresh`, because the manifest is judged before the flag.
+
 The unit count a continued read prints comes from `weeks.json` inside the
 same check: a stamped `weeks.json` without `units` (or with a malformed list)
 is `stage-invalid` and read anew, never an exit 1 (T2.4 review carry-over).

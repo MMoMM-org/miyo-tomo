@@ -53,3 +53,5 @@ with the class unchanged.
 `review_doc.check_item` reads it to decide whether an item rests on a child
 note or on a day. A leading underscore promised it was private to this
 module while another module depended on it; the name is now public.
+
+See also: [review_doc](review_doc.md), [review_carried](review_carried.md).

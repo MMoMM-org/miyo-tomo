@@ -118,9 +118,10 @@ def _all_review_calls() -> list[tuple[str, str, str]]:
 def test_the_review_skill_calls_every_script_of_the_flow():
     calls = Counter(script for skill, script, _ in _all_review_calls() if skill == "periodic-review")
     # review-doc.py 6: write, parse, replace --confirm / --abort, the parse of step 7's section stop (046 T4.4)
-    # and the Pass 1 Abort's replace --abort (047 T6.3)
+    # and the Pass 1 Abort's replace --abort (047 T6.3);
+    # review-digest.py 2: plan and check (047 T4.3, covered by the derived REVIEW_SCRIPTS since T7.4)
     assert calls == {"review-session.py": 6, "review-read.py": 1, "review-doc.py": 6, "review-instructions.py": 3,
-                     "vault-config-writer.py": 1}
+                     "review-digest.py": 2, "vault-config-writer.py": 1}
 
 
 @pytest.mark.parametrize("skill,script,rest", _all_review_calls(), ids=lambda v: str(v)[:60])

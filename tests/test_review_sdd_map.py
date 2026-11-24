@@ -240,3 +240,31 @@ def test_spec_045_and_046_maps_are_still_read() -> None:
     assert _named_in(_map_blocks(SDD_046)["tests/"], only_046.name)
     assert not _named_in(_map_blocks(SDD)["tests/"], only_046.name)
     assert _mapped("tests/", only_045) and _mapped("tests/", only_046)
+
+
+# --- spec 047 T7.4: what the 047 map marks DELETE is gone from the tree --------------------------------------
+
+def _deleted_names() -> list[str]:
+    """The basenames of the map lines of spec 047 that carry `# DELETE`, read from the untruncated map text."""
+    names = []
+    for block in _map_blocks(SDD_047).values():
+        for line in block.splitlines():
+            if "DELETE" in line:
+                names += re.findall(r"[\w.-]+\.(?:py|md)", line.split("#", 1)[0])
+    return names
+
+
+def test_the_047_map_marks_review_read_parts_for_deletion() -> None:
+    assert {"review_read_parts.py", "review_read_parts.md"} <= set(_deleted_names())
+
+
+def test_no_file_the_047_map_marks_delete_exists() -> None:
+    survivors = [str(p.relative_to(ROOT)) for name in _deleted_names()
+                 for base in ("tomo", "docs/tomo", "tests") for p in (ROOT / base).rglob(name)]
+    assert not survivors, survivors
+    assert not (ROOT / "tests" / "test_review_read_parts.py").exists()
+
+
+def test_every_review_file_that_exists_is_named_by_a_map_not_only_by_a_deleted_line() -> None:
+    mapped_only_deleted = [str(p) for _b, p in _EXISTING if p.name in _deleted_names()]
+    assert not mapped_only_deleted, mapped_only_deleted

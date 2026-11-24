@@ -345,3 +345,5 @@ second config read: one place builds the period's sources. A previous note's
 cut limit is the day's `max_chars_per_day` (ADR-2). CON-5: this module gets
 call sites and the field only; finding, states and text are
 `lib/review_previous.py`'s.
+
+See also: [review_day](review_day.md), [review_children](review_children.md), [review_sources](review_sources.md).

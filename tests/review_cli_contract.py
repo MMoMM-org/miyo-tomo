@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """review_cli_contract.py — the CLI contract of the /review scripts, read from their own argparse parsers.
 
 Spec 045 T5.1 / T5.2. Shared by tests/test_review_why_docs.py (the WHY documents under
@@ -35,14 +35,16 @@ REPO = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO / "tomo" / "scripts"
 SKILLS_DIR = REPO / "tomo" / "dot_claude" / "skills"
 
-REVIEW_SCRIPTS = ("review-session.py", "review-doc.py", "review-instructions.py", "review-read.py")
+# Derived from the tree, never hand-listed: a new review-*.py script is covered the day it exists (T7.4).
+REVIEW_SCRIPTS = tuple(sorted(p.name for p in SCRIPTS_DIR.glob("review-*.py")))
+_NAMES = "|".join(re.escape(name.removesuffix(".py").removeprefix("review-")) for name in REVIEW_SCRIPTS)
 WRITER_SCRIPT = "vault-config-writer.py"
 PARSER_SCRIPTS = REVIEW_SCRIPTS + (WRITER_SCRIPT,)
 
-SCRIPT_NAME = re.compile(r"review-(?:session|doc|instructions|read)\.py")
+SCRIPT_NAME = re.compile(rf"review-(?:{_NAMES})\.py")
 # `review-doc.py write --stem --proposals`: the script name is part of the mention so a bare `write`
 # in prose is never read as a CLI reference.
-SUB_MENTION = re.compile(r"`(review-(?:session|doc|instructions)\.py) ([a-z][a-z-]*)((?: --[a-z][a-z-]*)*)`")
+SUB_MENTION = re.compile(rf"`(review-(?:{_NAMES})\.py) ([a-z][a-z-]*)((?: --[a-z][a-z-]*)*)`")
 # `review-read.py --period --kind`: no subcommand, flags only.
 READ_MENTION = re.compile(r"`(review-read\.py)((?: --[a-z][a-z-]*)*)`")
 WRITER_MENTION = re.compile(r"`(vault-config-writer\.py) (review)((?: --[a-z][a-z-]*)*)`")

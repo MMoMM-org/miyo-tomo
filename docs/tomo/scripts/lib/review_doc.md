@@ -369,3 +369,5 @@ carry-failed line: "found, nothing carried" would claim the note held
 nothing to follow up, which nobody checked. `previous_rows` sets
 `carry_failed` on such a row; `review-doc.py write` reports it in
 `previous`.
+
+See also: [review_sources](review_sources.md), [review_carried](review_carried.md), [review_sections](review_sections.md), [review_doc_parse](review_doc_parse.md).

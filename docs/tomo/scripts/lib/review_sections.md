@@ -273,3 +273,5 @@ The proposer places the item in the next fitting section or its group.
 WHY `section_cap` is public: `review_carried.overflow` needs the same cap
 rule; a second copy would drift. It is imported at call time there because
 this module imports `review_doc`, which imports `review_carried`.
+
+See also: [review_doc](review_doc.md), [review_carried](review_carried.md), [review_doc_parse](review_doc_parse.md).

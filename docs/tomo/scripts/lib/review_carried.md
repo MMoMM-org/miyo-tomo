@@ -116,3 +116,5 @@ call-time imports. Moving them into the leaf `review_sources` would put the
 group table and the cap rule into a module about sources, which they are
 not; the call-time import keeps each rule in its owner at the cost of one
 import line inside two functions.
+
+See also: [review_doc](review_doc.md), [review_sections](review_sections.md), [review_sources](review_sources.md).

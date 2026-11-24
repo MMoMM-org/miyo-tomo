@@ -370,3 +370,5 @@ where they surfaced as `choice-invalid` (a "preview again" answer) instead
 of a bad invocation. One public definition here, where the key is read from
 Tomo's own record, keeps both checks the same. ASCII digits, not `\d`: a
 `str` pattern's `\d` takes every script's digits, and no id has them.
+
+See also: [review_doc](review_doc.md), [review_sections](review_sections.md), [review_carried](review_carried.md).

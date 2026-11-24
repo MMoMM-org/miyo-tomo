@@ -550,8 +550,8 @@ spells per kind; a quarter then reads each `read_parts` entry, one Read call eac
 - **The script joins, the model does not.** `review-doc.py write` loads the whole read through `lib/review_stage.load`
   (spec 046: `lib/review_read_parts.load`, deleted in spec 047 T2.4), so a source from any month resolves, and its
   clean-up removes every stage content file
-  (docs/tomo/scripts/review-doc.md). A missing or broken part is `read-invalid`, which step 5 already shows and stops
-  on.
+  (docs/tomo/scripts/review-doc.md). A stage that does not load is refused before any Kado call: no manifest is `read-missing`, a
+  malformed file `read-invalid`, a file of another read `read-stale`; step 5 shows each and stops on it.
 
 **Size.** The quarter branch, the quarter keys, the setup and step 1 changes and the wider descriptions took
 the skill from 31,122 to 31,600 characters (+478, `wc -c`; 243 lines before and after) at 0.2.5. No `STRICT`

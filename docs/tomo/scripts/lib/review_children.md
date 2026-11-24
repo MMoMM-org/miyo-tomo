@@ -71,3 +71,5 @@ served from the cache, except for the notes of a listing the end pass
 recovered — those are read there for the first time, and a failure is final
 and lands in `not_read` (`review_period.md`, "WHY a Recovered Folder Listing
 Re-Reads Its Period").
+
+See also: [review_period](review_period.md), [review_sources](review_sources.md).

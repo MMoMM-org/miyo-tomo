@@ -318,3 +318,5 @@ words sit in `sections`, `linked[].text` and `tasks[].text`; they go to
   a date; those lines stay in the kept text.
 - A full-path wiki-link stem such as `[[Folder/Note]]` resolves to
   "missing". The test vault's dailies hold none.
+
+See also: [review_period](review_period.md).

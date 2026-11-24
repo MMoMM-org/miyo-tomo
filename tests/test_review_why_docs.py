@@ -101,8 +101,8 @@ def test_every_review_script_and_lib_has_its_why_mirror(code):
 
 
 def test_parsers_are_the_source_of_the_subcommand_list(subcommands):
-    """The guard reads the real parsers: three scripts carry subcommands, review-read.py carries none."""
-    assert set(subcommands) == {"review-session.py", "review-doc.py", "review-instructions.py"}
+    """The guard reads the real parsers: four scripts carry subcommands, review-read.py carries none."""
+    assert set(subcommands) == {"review-session.py", "review-doc.py", "review-instructions.py", "review-digest.py"}
     assert all(subcommands[script] for script in subcommands)
 
 
@@ -373,3 +373,80 @@ def test_skill_doc_holds_the_step_4_5_decision(skill_doc, label, pattern):
 
 def test_skill_doc_no_longer_says_no_step_dispatches_a_subagent(skill_doc):
     assert "no step dispatches a subagent" not in _flat(skill_doc)
+
+
+# --- spec 047 T7.4: the mirror layer covers exactly the files that exist; carry-overs of T2.4 and T4.3 ---------
+
+SCRIPTS_WHY = REPO / "docs" / "tomo" / "scripts"
+READ_WHY = SCRIPTS_WHY / "review-read.md"
+
+
+def test_the_mirror_listing_matches_the_code_listing_one_to_one():
+    """The untruncated listing of review scripts and libs and the listing of their WHY documents are the same set:
+    no code without a mirror (the per-file test) and no mirror without code (a deleted file's document is deleted too)."""
+    code = {p.relative_to(REPO / "tomo").with_suffix(".md") for p in REVIEW_CODE}
+    mirrors = {p.relative_to(REPO / "docs" / "tomo")
+               for p in [*SCRIPTS_WHY.glob("review-*.md"), *(SCRIPTS_WHY / "lib").glob("review_*.md")]}
+    assert mirrors == code, (sorted(mirrors - code), sorted(code - mirrors))
+
+
+def test_the_deleted_review_read_parts_has_no_file_left():
+    """Spec 047 T2.4 replaced lib/review_read_parts.py by review_stage.py; its history lives in review_stage.md."""
+    assert not (REPO / "tomo" / "scripts" / "lib" / "review_read_parts.py").exists()
+    assert not (SCRIPTS_WHY / "lib" / "review_read_parts.md").exists()
+    assert not (REPO / "tests" / "test_review_read_parts.py").exists()
+
+
+def test_the_contract_covers_review_digest_because_the_script_list_is_derived():
+    from review_cli_contract import REVIEW_SCRIPTS, SCRIPT_NAME
+    on_disk = sorted(p.name for p in (REPO / "tomo" / "scripts").glob("review-*.py"))
+    assert list(REVIEW_SCRIPTS) == on_disk
+    assert DIGEST_SCRIPT in REVIEW_SCRIPTS
+    assert SCRIPT_NAME.search("`review-digest.py plan --stem`")
+
+
+def _count(text: str, pattern: str) -> int:
+    return len(re.findall(pattern, _flat(text)))
+
+
+def test_skill_doc_names_the_stage_refusals_of_a_failed_load_not_a_part(skill_doc):
+    """The quarter-part mechanism (`read_parts`, one `read-invalid` for a part) was removed with spec 047 T2.4; the
+    document names what `review_stage.load` refuses instead, each sentence once."""
+    flat = _flat(skill_doc)
+    assert "A missing or broken part is `read-invalid`" not in flat
+    assert _count(skill_doc, r"A stage that does not load is refused before any Kado call: no manifest is `read-missing`") == 1
+
+
+def test_review_read_why_says_a_stopped_new_read_leaves_no_stage_and_no_discarded_key():
+    text = READ_WHY.read_text(encoding="utf-8")
+    assert _count(text, r"A new read that Kado then stops has discarded the stored read and left no stage, "
+                        r"and its stop report carries no `discarded` key\.") == 1
+
+
+def test_review_read_why_says_fresh_over_an_unreadable_manifest_reports_stage_invalid():
+    text = READ_WHY.read_text(encoding="utf-8")
+    assert _count(text, r"`--fresh` over a manifest that cannot be read reports `stage-invalid`, not `fresh`, "
+                        r"because the manifest is judged before the flag\.") == 1
+
+
+SEE_ALSO = {
+    "review_period": {"review_day", "review_children", "review_sources"},
+    "review_doc": {"review_sources", "review_carried", "review_sections", "review_doc_parse"},
+    "review_sections": {"review_doc", "review_carried", "review_doc_parse"},
+    "review_day": {"review_period"},
+    "review_children": {"review_period", "review_sources"},
+    "review_doc_parse": {"review_doc", "review_sections", "review_carried"},
+    "review_sources": {"review_doc", "review_carried"},
+    "review_carried": {"review_doc", "review_sections", "review_sources"},
+}
+
+
+@pytest.mark.parametrize("name", sorted(SEE_ALSO))
+def test_the_review_lib_mirrors_link_their_neighbours_in_one_see_also_line(name):
+    """The split-out libs (spec 047 T5.2, T5.3) and the modules they came from point at each other, each once."""
+    lines = [ln for ln in (SCRIPTS_WHY / "lib" / f"{name}.md").read_text(encoding="utf-8").splitlines()
+             if ln.startswith("See also: ")]
+    assert len(lines) == 1, lines
+    linked = set(re.findall(r"\[(\w+)\]\(\1\.md\)", lines[0]))
+    assert linked == SEE_ALSO[name]
+    assert all((SCRIPTS_WHY / "lib" / f"{n}.md").is_file() for n in linked)

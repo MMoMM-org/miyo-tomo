@@ -32,7 +32,7 @@ phase: 7
 
 Makes the privacy contract and the user documentation match the new flow, and gives the live walk its per-step measurement.
 
-- [ ] **T7.1 PRIVACY.md, setup, README, usage and backlog** `[activity: technical-writing]` `[parallel: true]`
+- [x] **T7.1 PRIVACY.md, setup, README, usage and backlog** `[activity: technical-writing]` `[parallel: true]`
 
   1. Prime: `PRIVACY.md` (140-168), `tests/test_review_privacy_docs.py`, `docs/setup.md` (~293), `README.md` (:25, :164 agents table, :174), `docs/usage.md`, `docs/XDD/backlog.md`, `tomo/config/vault-example.yaml` (review section) `[ref: SDD/ADR-10]` `[ref: SDD/Directory Map/Documentation; lines: 478-482]`
   2. Test: `test_review_privacy_docs.py` pins the new sentences — every stage file holding content is named, the deletion moments (write, Pass 1 abort, drop, new read), an interrupted run's rest time and that a Kado stop leaves nothing (F7-AC2), the previous notes as a read source, the three models by name, their own transcripts in the container home (F7-AC3); `docs/setup.md` names the three models; the old `read.json` sentences are gone.

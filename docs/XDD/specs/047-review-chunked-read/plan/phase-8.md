@@ -1,6 +1,6 @@
 ---
 title: "Phase 8: Baseline e2e on the new flow"
-status: pending
+status: in_progress
 version: "1.2"
 phase: 8
 ---

@@ -98,6 +98,7 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | R-47b | `/review`: a setup marker for intention sections | Could | Spec 047 Won't Have (#270). The carryover model decides from the text what counts as open or intended; revisit if the live walk shows poor detection. |
 | R-47c | `/review`: an age counter for carried items ("open for three weeks") | Could | Spec 047 Won't Have (#270). Today an item still open is carried again with the same mark and no age. |
 | R-47d | `/review`: leave non-note embeds out of the "not in a weekly or monthly review" lists | Could | Parked from the spec 046 live walk, kept parked by spec 047 (#270). |
+| R-47e | `/review`: `review-doc.py write` refuses on its own when every unit failed to condense (defence in depth; today the skill stops at `review-digest.py check`'s `nothing-condensed`) | Could | Found in the spec 047 T8.2 end-to-end tests (#270). |
 
 ## Done (historical record)
 

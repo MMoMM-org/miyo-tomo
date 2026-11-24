@@ -640,7 +640,7 @@ review-digest.py plan --stem S [--tmp]
   ok:      {status ok, stem, read_id, read_at, ready: bool,
             rounds: [[{agent: review-digester, unit, days, day_files, growth_files, weekly_note, sections: bool, section_files: [context file(s) holding sections; [] when sections is false], out: "digests/<unit>.json", cap_bytes},
                       {agent: review-carryover, previous_files, out: "carryover.json", cap_bytes: 12288}]],
-            done: [units], not_condensed: [{unit, days}], carryover_state,
+            done: [units], not_condensed: [{unit, days}], carryover_state: none|pending|retry|passed|failed,
             proposer: {inputs: [paths, in read order], out: "proposals.json", carried: bool}}
   # proposer.inputs = context*.json, digests/, carryover.json (when passed), the child notes the kind marks against;
   # never manifest.json (the report), never days/ or growth/
@@ -653,8 +653,10 @@ review-digest.py plan --stem S [--tmp]
 review-digest.py check --stem S [--tmp]
   ok:      {status ok, stem, units {<unit>: {state, errors?: ["<pointer>: <error>"]}},
             carryover {state, notes [{path, state, items}], errors?},
-            retry: [{agent, unit?, errors}], not_condensed: [{unit, days}], carry_failed: bool, ready: bool}
-  stopped: {status stopped, problems [nothing-condensed], not_condensed: [every unit]}
+            retry: [{agent, unit?, errors}], not_condensed: [{unit, days}], carry_failed: bool, ready: bool,
+            proposer: {inputs, out, carried}}   # as plan's; the skill dispatches the proposer from the last check
+  stopped: {status stopped, stem, problems [nothing-condensed], not_condensed: [every unit]}
+  # carry_failed here: the carryover state is failed (the document's carry_failed also counts pending/retry, below)
   refused: {status refused, problems [stage-missing | stage-invalid | read-stale]}
   # each call counts one attempt for every job not passed; a job failing its 2nd attempt is failed (final for this run)
   # errors: digest-missing, not-json, schema (<pointer>), read-id-mismatch, unit-mismatch, days-mismatch,
@@ -664,15 +666,22 @@ review-digest.py check --stem S [--tmp]
 
 review-doc.py write | replace --confirm   (flags unchanged)
   new refusals:  condense-incomplete (condensed.json missing, or a unit pending/retry), read-stale (a stage file's read_id
-                 differs from manifest.json), read-missing (no manifest.json; also a pre-047 stage)
+                 differs from manifest.json), read-missing (no manifest.json; also a pre-047 stage), read-invalid (a stage
+                 file that does not load; unchanged from spec 045)
   new proposals-invalid errors (review_carried; ALWAYS in errors, never in rejected): carried-without-carryover,
                  carried-unknown (<id>), carried-missing (<id>), carried-twice (<id>), carried-needs-previous-note,
                  carried-source-not-its-note (<id>), carried-needs-day, carried-gone-has-day, carried-mark-conflict,
                  carried-not-allowed (<group>), carried-theme-done (<id>)
   new notice in written: carried-moved [{key, to: done|open|themes, count}] — carried items the script moved out of a
                  full section into the group of their mark (F4-AC10); counts only
-  written: unchanged keys + previous [{kind, name, state, carried: n}], not_condensed [{unit, days}], carry_failed
-  replace --abort: now discards the whole stage content (review_stage.discard), keeps meta.json and payloads.json
+  written: unchanged keys + previous [{kind, name, state, carried: n, carry_failed?: true}], not_condensed [{unit, days}],
+           carry_failed, carried_moved — each new key only when it has a fact (non-empty / true), so spec 046's exact result
+           stays as it was without them (T5.4)
+  # carry_failed = at least one previous note found AND the carryover state is not passed (pending, retry, failed)
+  # proposals-invalid after a carried move: the moved proposals are written back to proposals.json first, so every
+  #   error pointer names the file the proposer rewrites in place; every other exit leaves the file untouched (T6.2 review)
+  replace --abort: now discards the whole stage content (review_stage.discard) and proposals.json, keeps meta.json and
+                 payloads.json
 ```
 
 #### Application Data Models

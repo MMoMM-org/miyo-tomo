@@ -170,7 +170,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 5: Carried items, their checks and the top lines](phase-5.md)
 - [x] [Phase 6: Agents, skill dispatch and STRICT rules](phase-6.md)
 - [x] [Phase 7: Privacy, deletion, measurement and documentation](phase-7.md)
-- [ ] [Phase 8: Baseline e2e on the new flow](phase-8.md)
+- [x] [Phase 8: Baseline e2e on the new flow](phase-8.md)
 - [ ] [Phase 9: Live walk on the test instance and close-out](phase-9.md)
 
 **Phase dependencies:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9, linear, no cycles. Inside phases: T1.1 ∥ T1.2 → T1.3; T1.4 and T1.5 (owner go) run any time in Phase 1, independent of T1.1–T1.3, and their outcomes must be recorded before Phase 2 starts (T1.5 may lower the ADR-2 numbers; T1.4 decides the nested-write fallback used in T4.3). T2.1 ∥ T2.2 → T2.3 → T2.4 (one switch-over commit: read and load side together) → T2.5 (owner go). T3.1 may start once T2.1 is done (it needs `cut_at_boundary`), T3.2 needs T2.4 and T3.1. T4.1 → T4.2 → T4.3 → T4.4. T5.1 ∥ T5.2 ∥ T5.5 → T5.3 (needs T5.2's `resolve_sources`) → T5.4. T6.1 → T6.2 → T6.3 → T6.4 (T6.3 needs T6.2: T6.2 re-creates the step-5 proposal pins in `tests/test_047_agents.py` before T6.3 removes them from the skill tests). T7.1 ∥ T7.2 ∥ T7.3 ∥ T7.4. T8.1 → T8.2. T9.1 → T9.2 → T9.3 → T9.4.

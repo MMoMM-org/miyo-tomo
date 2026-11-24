@@ -1,6 +1,6 @@
 ---
 title: "Phase 8: Baseline e2e on the new flow"
-status: in_progress
+status: completed
 version: "1.2"
 phase: 8
 ---
@@ -63,6 +63,7 @@ Proves on the fake vault that the new flow produces the same review and the same
 
   - **Carry-over from the T8.1 review (2026-11-24, orchestrator):** the fake vault creates no notes, so the T8.1 baseline proves only an empty "Vault growth" group (F2-AC1). Add a created-note fixture (≥ 2 notes on different days of the period, one of them in a different unit): the digests carry them as `growth` candidates, the fixture proposer builds the group from them, and the written group equals what the pre-047 read produced for the same vault (same notes, same links, the creation days as sources — compute the old group with the 046 renderer path on the same fixture, never a re-recorded golden). Mutation proof: drop one unit's growth candidate → the test fails.
 
-- [ ] **T8.3 Phase Validation** `[activity: validate]`
+- [x] **T8.3 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean; wire gate and manifests green and unchanged. Trace F2-AC1, F2-AC2, F5-AC6 and the e2e halves of F5-AC4, F5-AC5, F6-AC1 … F6-AC8 to node ids. Drift check spec vs code: every SDD interface shape (`review-read.py` ok/continued, `plan`, `check`, `write` refusals and `written` keys) compared with the scripts' docstrings and actual output; differences fixed or recorded as deviations in the SDD. Confirm no eval-gated file changed across the branch (`git diff --stat main...`).
+  - **Outcome (2026-11-24):** full suite in ONE invocation at 4cd92452: 12,383 passed, 19 skipped, 1 failed — `tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists`, the baseline failure; ruff clean over `tomo tests evals scripts`; `test_035_wire_gate.py` / `test_035_wire_manifests.py` unchanged since `main` and green (wire v4); no eval-gated file changed across the branch (`git diff --stat main...` empty for settings.json, both conductors, suggest-handling SKILL.md, commands/inbox.md). Trace (29 node ids, one invocation, 29 passed): F2-AC1, F2-AC2, F5-AC4, F5-AC5 → `tests/test_047_baseline_e2e.py` (golden files untouched, allowed differences = top lines + what carried items add); F5-AC6, F6-AC1 … F6-AC8 → `tests/test_047_e2e_failures.py` (16 tests, 25 mutations RED). Model parts carried to T9.2 (continued-read line, the proposer's real correction). Drift check (SDD Internal API vs code and docstrings): no code bug; the SDD was stale in eight additive places (check's `proposer`, `stem` on stops, `carryover_state` values, `read-invalid`, optional `written` keys and the per-note `carry_failed`, the write-back on `proposals-invalid`, `replace --abort` removing `proposals.json`) — backported into solution.md. Backlog (low): `review-doc.py write` does not itself refuse when every unit failed (the skill stops at `check`'s `nothing-condensed`, as the SDD requires).

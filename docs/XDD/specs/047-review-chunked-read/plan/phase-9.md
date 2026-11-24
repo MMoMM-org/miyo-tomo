@@ -75,6 +75,8 @@ Runs the new flow on the test vault, measures it per step, fixes what the walk f
 
   - **Carry-over from the T7.3 review and T7.5 trace (2026-11-24, orchestrator):** (1) count main-session Read/Grep/Bash calls on stage files in each live transcript with the `review-no-stage-read` grader-1 rule (`tomo-session-stats.py` counts no tool calls; the SDD's "transcript count by tomo-session-stats.py" is met this way); (2) F7-AC5 rows: no step but `review-doc.py write` and delivery touches Kado or the vault, the agents write only inside the stage; (3) the close-out states peak = input + cache_read (spec 046 peaks also counted cache_write, so they are not compared directly).
 
+  - **Carry-over from the T8.3 trace (2026-11-24, orchestrator):** model-behaviour rows — the continued-read line names the read's time (F6-AC4, skill prose; the script returns `read_at`); on `proposals-invalid` the proposer actually corrects the named errors in one rewrite (F6-AC3; the e2e uses a fixture proposer).
+
 - [ ] **T9.3 Walk-found fixes** `[activity: backend-api]`
 
   1. Prime: `live-walk.md` findings `[ref: SDD/Deployment View; lines: 1055]` `[ref: SDD/Error Handling; lines: 962]`

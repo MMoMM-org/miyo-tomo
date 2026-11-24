@@ -57,6 +57,7 @@ Proves on the fake vault that the new flow produces the same review and the same
   5. Success: every failure is named, a resumed run equals an uninterrupted one, and a re-review leaves one block `[ref: PRD/F5-AC6, F6-AC1, F6-AC2, F6-AC4, F6-AC5, F6-AC6, F6-AC7, F6-AC8]`
 
   - **Carry-over from the T3.2 review (2026-11-23):** add a test where a previous note's folder listing is rate-limited past the retries and only recovered by the end pass, so `resolve` reads the note after `finish()` (verified by hand in the review, not yet committed).
+  - **Carry-over from the T5.6 trace (2026-11-24, orchestrator):** assert the `written.previous` row of a found note that carried nothing (`state found, carried 0`, F3-AC11) end to end; today only the rendered line is pinned.
 
 - [ ] **T8.3 Phase Validation** `[activity: validate]`
 

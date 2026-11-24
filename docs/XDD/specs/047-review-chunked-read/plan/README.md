@@ -167,7 +167,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 2: Stage layout, limits and the loader](phase-2.md)
 - [x] [Phase 3: Previous notes](phase-3.md)
 - [x] [Phase 4: Condensing — units, digests, carryover, plan and check](phase-4.md)
-- [ ] [Phase 5: Carried items, their checks and the top lines](phase-5.md)
+- [x] [Phase 5: Carried items, their checks and the top lines](phase-5.md)
 - [ ] [Phase 6: Agents, skill dispatch and STRICT rules](phase-6.md)
 - [ ] [Phase 7: Privacy, deletion, measurement and documentation](phase-7.md)
 - [ ] [Phase 8: Baseline e2e on the new flow](phase-8.md)
@@ -212,17 +212,17 @@ Model-behaviour criteria (marked †) are owned by the task that writes the agen
 | F3-AC8 | T3.1 | T6.3 (no setup question) |
 | F3-AC9 | T3.1 | T1.4 (Kado denial shape) |
 | F3-AC10 | T3.1 | T5.2 (line "read in part") |
-| F3-AC11 | T5.2 | — |
+| F3-AC11 | T5.2 | T8.2 (`written.previous` count row) |
 | F4-AC1 † | T6.2 | T5.3 (`coverage`), T9.2 |
 | F4-AC2 † | T6.2 | T5.3 (day rule per mark), T9.2 |
 | F4-AC3 † | T6.2 | T5.3 (`carried-theme-done`), T9.2 |
 | F4-AC4 † | T6.2 | T5.3 (group/mark rule), T9.2 |
-| F4-AC5 | T5.4 | T3.1 (off-limits text read as a source) |
-| F4-AC6 | T5.3 | — |
+| F4-AC5 | T5.4 | T3.1 (off-limits text read as a source), T6.2 (prose), T9.2 |
+| F4-AC6 | T5.3 | T6.2 (prose: one item, nowhere else), T9.2 |
 | F4-AC7 | T5.3 | — |
 | F4-AC8 † | T6.2 | T9.2 |
 | F4-AC9 | T3.1 | T8.2 |
-| F4-AC10 | T5.3 | T5.4 (`over-cap` after `overflow`) |
+| F4-AC10 | T5.3 | T5.4 (`over-cap` after `overflow`), T6.2 (prose: same-mark merge), T9.2 |
 | F4-AC11 † | T6.2 | T9.2 |
 | F5-AC1 | T5.2 | — |
 | F5-AC2 | T5.4 | — |

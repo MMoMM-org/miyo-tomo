@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Carried items, their checks and the top lines"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -77,6 +77,7 @@ Lets a proposal carry an item from a previous note, proves its mark and sources 
   4. Validate: tests green; `git diff --stat` shows no change under `tomo/scripts/lib/review_doc_parse.py`; ruff clean.
   5. Success: Pass 2 treats a carried item exactly like any other item `[ref: PRD/F5-AC4, F5-AC5]`
 
-- [ ] **T5.6 Phase Validation** `[activity: validate]`
+- [x] **T5.6 Phase Validation** `[activity: validate]`
 
   - Full suite in ONE invocation — GREEN; ruff clean; `test_035_wire_gate.py` and `test_035_wire_manifests.py` unchanged and green (wire v4). Trace F3-AC6, F3-AC11, F4-AC5, F4-AC6, F4-AC7, F4-AC10, F5-AC1 … F5-AC5 to node ids. Confirm `review-instructions.py` and the Pass 2 libraries are untouched (`git diff --stat`). WHY docs before code; no eval-gated file changed; CON-5 sizes held.
+  - **Outcome (2026-11-24):** full suite in ONE invocation at 53be3ba2: 11,970 passed, 18 skipped, 1 failed — `tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists`, the baseline failure (failing ⊆ baseline); ruff clean. `git diff --stat bd418bc0 HEAD` empty for `review-instructions.py`, `lib/review_doc_parse.py`, `tomo/dot_claude`, `test_035_wire_gate.py`, `test_035_wire_manifests.py` and `tests/fixtures/047-baseline/` (wire v4, Pass 2 and goldens untouched). Sizes: `lib/review_doc.py` 472 (≈ 470 cap, owner split moved the resolver to `lib/review_sources.py` 106), `lib/review_carried.py` 151, `lib/review_sections.py` 311, `review-doc.py` 491. Trace (39 node ids, one invocation, 39 passed): F3-AC6, F3-AC10 (top line), F3-AC11, F5-AC1 … F5-AC5, F4-AC7 and F6-AC2 → `tests/test_review_doc.py`, `tests/test_review_carried.py`, `tests/test_047_t5_4_carried_write.py`, `tests/test_review_sections.py`, `tests/test_review_doc_parse.py`; F4-AC5, F4-AC6 and F4-AC10's same-mark merge are model behaviour, carried to T6.2 / T9.2 (F3-AC11 count row to T8.2). Owner deviations logged 2026-11-23/24: `review_sources.py` split, DE top-line wording, fixture carryover empty by default with an opt-in, baseline `allowed={"top_lines"}` brought forward from T8.1, "found, not taken into account" for a failed note.

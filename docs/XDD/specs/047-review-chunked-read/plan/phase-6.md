@@ -49,6 +49,7 @@ Puts the three agents in place and makes the skill drive them, with the main ses
   3. Implement: `tomo/dot_claude/agents/review-digester.md`, `review-carryover.md`, `review-proposer.md` — imperatives only, no rationale (it lives in T6.1's docs).
   4. Validate: `test_047_agents.py` green; `update-tomo.sh` agent glob (`agents/*.md`, :374-377) covers them (read only); ruff clean.
   5. Success: three agents with the owner's models, no vault access, and the proposal rules over the whole period `[ref: PRD/F1-AC3, F1-AC4, F1-AC5, F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC8, F4-AC11, F7-AC5]`
+  - **Carry-over from the T5.6 trace (2026-11-24, orchestrator):** three carried-item clauses are model behaviour no script can check, so the proposer's imperatives own them and `tests/test_047_agents.py` pins each in prose: F4-AC6 (a carried item the days also hold is ONE item with the note and the days as sources, and appears nowhere else); F4-AC10's merge clause (carried items of the same mark merge under spec 046 F1-AC5, keeping every source link, never with an item of another mark); F4-AC5 (a carried item never goes under an off-limits heading; the best fit off limits goes to the next fitting section or its group). T9.2 walks each once.
 
 - [ ] **T6.3 Skill step 4 and step 5: continue, dispatch, check, propose, abort** `[activity: prompt-engineering]`
 

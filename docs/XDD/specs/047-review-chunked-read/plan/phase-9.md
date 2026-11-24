@@ -71,6 +71,7 @@ Runs the new flow on the test vault, measures it per step, fixes what the walk f
 
   4. Validate: every hard row 0; if parallel dispatch throttled at 14–16, record it (the fix is T9.3).
   5. Success: Tomo reads every day of week, month and quarter and follows up the previous reviews in the test vault `[ref: PRD/Success Metrics; F8-AC1]`
+  - **Carry-over from the T5.6 trace (2026-11-24, orchestrator):** walk once each: a carried item the days also hold appears once (F4-AC6); a full section's carried items merge only with items of their own mark (F4-AC10); a best fit off limits lands in the next section or the group (F4-AC5).
 
 - [ ] **T9.3 Walk-found fixes** `[activity: backend-api]`
 

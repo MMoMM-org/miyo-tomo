@@ -7,6 +7,10 @@
 > The scripts' own WHY: [review-session](../../scripts/review-session.md), [review-read](../../scripts/review-read.md),
 > [review-doc](../../scripts/review-doc.md), [review-instructions](../../scripts/review-instructions.md),
 > [vault-config-writer](../../scripts/vault-config-writer.md).
+> Spec 047 (issue #270, `docs/XDD/specs/047-review-chunked-read/`) replaced the main session's own read of the period
+> with a stage and three agents: [review-digester](../agents/review-digester.md),
+> [review-carryover](../agents/review-carryover.md), [review-proposer](../agents/review-proposer.md), planned and
+> checked by [review-digest](../../scripts/review-digest.md). Sections that cite spec 047 use its ADR and F-AC ids.
 
 ## Why the Skill Owns the Order and Scripts Own Every State Change (ADR-1)
 
@@ -15,18 +19,20 @@ the edited document into an instruction set. The PRD forbids a black box (every 
 Constitution L1 demands that the domain behaviour is testable without an AI. So the skill holds only the dialogue
 order — start, setup, read, propose, write the document, continue, preview, deliver — and every read of the vault,
 every write, every rendering and every state decision is a script call with one JSON object on stdout. The model does
-exactly one creative step: it reads `read.json` and writes `proposals.json` (ADR-12). The skill writes two local files
-itself and nothing else: `proposals.json` and the confirmed-setup JSON that `review-session.py setup-input --confirmed`
-reads. Everything the skill tells the user comes from a script's output; it never reads the vault directly and never
-composes YAML, markdown documents or instruction sets by hand. The price is more scripts than an LLM-driven flow and a
+exactly one creative step: it reads the period and writes `proposals.json` (ADR-12). Since spec 047 that step is
+done by three agents the skill dispatches (digesters, carryover, proposer; ADR-7, ADR-8), each writing exactly its own
+stage file. The skill itself writes one local file and nothing else: the confirmed-setup JSON that
+`review-session.py setup-input --confirmed` reads. Everything the skill tells the user comes from a script's output;
+it never reads the vault directly and never composes YAML, markdown documents or instruction sets by hand. The price is more scripts than an LLM-driven flow and a
 skill whose prose is outside the eval gate (see "Why There Is No Eval Gate").
 
 ## Why /review Runs in the Main Session, Not as a Subagent
 
 WHY: The skill asks the user at the setup confirmation, the week question, start over, Deliver or Abort, resume or
 drop, and the place question. Subagents cannot ask the user and cannot use the Agent tool (Anthropic platform
-constraint), so the command shim loads the skill in the main session and no step dispatches a subagent. Revisit if
-the platform changes.
+constraint), so the command shim loads the skill in the main session. For the same reason the three review agents of
+spec 047 are dispatched by the skill itself, from the main session (ADR-8): an orchestrating subagent could not start
+them. Revisit if the platform ever allows nested Agent dispatch.
 
 ## Why Every Question Is Plain Text and the Turn Ends There
 
@@ -437,73 +443,66 @@ found and in what state, which linked notes were missing or not readable — plu
 summarises the report into "everything was read" when `not_read` is non-empty; the document will name the missing
 days at its top (F3-AC13) and the user must see that before approving.
 
+## Why Step 4 Continues a Stored Read or Reads Anew (Spec 047 F6-AC4, F6-AC5)
+
+WHY: since spec 047 `review-read.py` writes the stage `tomo-tmp/review/<stem>/` (day files, growth files, child and
+previous notes, context, units, `manifest.json` last) and prints `stage`, `read_id` and `read_at` instead of a file to
+read. A Pass 1 interrupted by the end of the session or a failed step leaves the stage behind; condensing a quarter
+costs 15–17 agent runs, so reading Kado again and condensing from scratch would throw that away.
+
+- **The continued read.** Without `--fresh`, when `manifest.json` names the current layout, period, kind and section
+  mapping, the script reads nothing from Kado and prints `continued: true` with the stored `read_id` and `read_at`.
+  The skill says in one line that it continues and when the read was made (F6-AC4): a continued read does not see
+  vault edits made since, and the user must know how old the material is to decide whether that matters. Pass 1 then
+  goes on with step 5 on the stored read; `plan` lists only what is not yet condensed. No question is asked: the
+  user's way out is the existing Start over, which reads anew.
+- **`--fresh` on every Start-over route.** `review-read.py --period --kind --stem --fresh` discards the stored
+  material first and reads anew (F6-AC5: material from an earlier read is never used after a start over). The skill
+  passes it on each route that means "read this period again": Start over of an open review, the start over after
+  `review-exists`, and the answer to `read-stale`.
+- **`read-stale`.** `review-digest.py plan`, `review-digest.py check` and `review-doc.py write` refuse `read-stale` when
+  a stage file belongs to another read than `manifest.json` names (a half-replaced stage). Nothing on the stage can be
+  trusted then, so the skill runs step 4 with `--fresh`, once; a second `read-stale` is shown and stops, because then
+  something else writes the stage under the run.
+- **A changed mapping reads anew.** The script compares the section mapping itself and reads anew
+  (`discarded: sections-changed`); the skill needs no branch for it.
+- **Kado unreachable stores nothing.** A `stopped` read writes nothing (with `--fresh` the old read was discarded
+  first), so there is nothing to continue; the stopped rule applies as before.
+- **The previous-note lines.** `report.previous` names each previous note with its state (found, read in part,
+  missing, not set up, not read with its cause). Step 4 prints them with the report and the run report after `write`
+  repeats them (F3-AC6), because the user approves the document knowing which follow-ups could not be made. A
+  previous kind that is not set up is a state line, never a setup question (F3-AC8): the review the user asked for is
+  not interrupted for a kind they did not ask about.
+
 ## Why the Model Writes Only `proposals.json` (ADR-12)
 
-WHY: Habits, vault growth and the link differences of a month are numbers and lists; computed by the script they are
-deterministic and testable (F8), and the model gets them as facts in `read.json`. The model's job is the one thing a
-script cannot do: read the period's text and propose the items — what got done, what stayed open, recurring themes,
-and for a month what only the weekly notes hold and what they left out — in the review language, each with at least
-one link to a daily inside the period (F4-AC3). It writes them to `proposals.json` in the schema
-`tomo/schemas/review-proposals.schema.json` and nothing else: no document, no section, no frontmatter.
-`review-doc.py write` validates the file; a `proposals-invalid` refusal names the pointers, the skill rewrites the file once, and a
-second refusal ends the run — looping on a schema the model cannot satisfy would burn the user's time. The model
-proposes only Tomo's own section, never text for the sections the setup names as the user's own (F4-AC7).
+Since spec 047 the model that writes `proposals.json` is the `review-proposer` agent, and the rationale of what it
+proposes (sources, habits, the user's own sections, the continuation line) moved with the rules to
+[review-proposer](../agents/review-proposer.md) "WHY It Writes Only `proposals.json`". What stays with the skill: the
+main session writes no proposals and reads no stage file; it dispatches the proposer with `plan`'s / `check`'s
+`proposer.inputs` and runs `review-doc.py write --stem --proposals` on the file the agent wrote (see "Why Step 5 Is
+Plan, One Message per Round, Check, Retry Once, Propose").
 
 ## Why Pass 1 Proposes by Section in the Same Model Pass (Spec 046 ADR-1, F1)
 
-WHY: with a mapping, `read.json` carries `sections` — one SectionDefinition per configured row (`key`, heading,
-level, parent, description, keywords, groups, cap; `analysis: true` on an analysis row). ADR-1 keeps the one
-existing model pass: the model reads one file and writes `proposals.json` with `sections: [{key, items}]` beside
-the unchanged `groups`. The step adds one bullet per rule the scripts cannot enforce, and nothing for the rules they
-can — those the rewrite-once loop below covers.
+WHY: spec 046 ADR-1 kept one model pass that proposes by section beside the groups. Since spec 047 that pass is
+the `review-proposer` agent, and every section rule with its rationale — the key copied, description and keywords,
+a row's `groups` as starting point, reminders not finished text, the cap by merging, one place per finding, analysis
+rows, the marks, the error-to-fix mapping of the rewrite — lives in [review-proposer](../agents/review-proposer.md)
+"WHY the Section Rules" and "WHY the Rewrite Gets the Errors Verbatim".
 
-- **The key is copied, never invented.** One entry per `read.json` entry with something to propose, `key` copied
-  from it. A key the read did not carry is refused `unknown-section`, a second entry `duplicate-section`
-  (`lib/review_sections.check`); the bullet says it so the first write is usually the last.
-- **What a section receives follows its description and keywords (F1-AC2).** The fixed spec 045 groups are not the
-  frame: a section that asks what to start or stop doing, or what will be challenging next month, receives items
-  for that when the notes hold matching material. The bullet says "whatever group they would fit" because a model
-  that sorted by group first would leave such a section empty.
-- **A row's `groups` are its starting point (F2-AC7).** When setup names groups for a row (for example `growth` for
-  "Notes Created This Quarter"), the section starts from what those groups would hold, and such a finding goes into
-  the section instead of the group. That keeps the one-place rule and leaves a group no row names in "Tomo Review".
-  The bullet was missing until the 046 close-out (owner decision 2026-11-19). Before it, only the description
-  steered the section, which is why the walk's s2 fix had to reword the description.
-- **Reminders, not finished text (F1-AC3, F1-AC4).** A section is the user's own words in their note; Tomo
-  reminds them of what happened or will need to happen, with the source, and leaves the judgement to them. A
-  forward-looking section gets the same: a reminder drawn from what the period shows, never an invented goal.
-- **The cap by merging (F1-AC5).** `cap` is in the definition; over it the script refuses `over-cap (<key>)`. The
-  bullet says how to stay under it — merge findings that say the same and keep each one's sources — so a merge does
-  not drop the evidence the user checks.
-- **One place per item, the rest in the groups (F1-AC6, F1-AC7).** A finding goes to the section it fits best, or
-  else to its group; never twice. `double-placement` refuses only the detectable cases (same normalised text, or
-  same sources and first line), so the bullet carries the rule for the rest.
-- **Analysis rows as overviews (F2-AC12).** An analysis row sits on a heading whose content is automatic (habits,
-  trackers); its items land in the "Tomo Review" part as an overview of what the values show, not a day-by-day
-  list. The description alone does not say that reliably — the setup's model wrote it, and the user may correct it
-  to anything — and since T4.2 the placement is read from the config, not from `read.json`. So `review-read.py`
-  marks the row `analysis: true` (docs/tomo/scripts/review-read.md) and the bullet branches on the flag. The habits
-  rule still holds: the habit lines are computed; an analysis item is the model's reading of them.
-- **Marks stay on the items (F1-AC9).** A month's section item that only the weekly notes hold, or that they left
-  out, carries the group name as `mark`, its sources as for that group; the script refuses a mark the kind does not
-  have (`mark-not-allowed`). A quarter's section items carry `monthly_only` / `not_in_monthly` the same way (T4.5).
-- **Own sections.** The spec 045 line "never propose text for the user's own sections" now says "other than the
-  `sections` of `read.json`": a mapped section is the user's too, and without the carve-out a literal model leaves
-  every section empty.
-
-**The rewrite-once loop names each new refusal's fix.** `write` refuses a section error as `proposals-invalid`
-with `"<pointer>: <error>"` strings. "Rewrite once" stays (a second refusal stops; looping on a schema the model
-cannot satisfy burns the user's time), and one line maps each error to its fix in the entry the pointer names, so
-the one rewrite is aimed: `unknown-section` / `duplicate-section` → each `read.json` key once; `over-cap` → merge
-to the cap; `double-placement` → remove the item the pointer names (the check names the later one); `mark-not-allowed`
-→ drop the mark. `sections-changed` is not the model's error: the setup's rows changed after the read, so the
-definitions in `read.json` are stale. The answer is to read the period again (step 4) — the new read carries the
-current rows — once; a second `sections-changed` is shown and stops, because then the config changes under the run.
+**The rewrite-once loop stays the skill's.** `write` refuses a bad file as `proposals-invalid` with
+`"<pointer>: <error>"` strings; the skill re-dispatches the proposer once with the errors verbatim, and a second
+`proposals-invalid` is shown and no document is written (F6-AC3): looping on a schema the model cannot satisfy burns
+the user's time. `sections-changed` is not the model's error: the setup's rows changed after the read, so the stage's
+definitions are stale. The answer is to read the period again (step 4, which then reads anew: `discarded:
+sections-changed`, F6-AC5) once; a second `sections-changed` is shown and stops, because then the config changes under
+the run.
 
 **Sections in the report.** `write`'s `counts` carry the section keys next to the groups and `rejected` names
 `section` for a section item. Keys (`s1`) mean nothing to the user, so the report names a section by the `heading`
 of the configured row with that `id`, read from `config/vault-config.yaml` (the file step 5 already reads for the
-language) — never from `read.json`, which the privacy rule keeps out of the reply, and which `write` has deleted.
+language) — never from a stage file, which the main session does not read and which `write` has deleted.
 
 **The Pass 2 stop for a missing section checkbox (F3-AC6, Rule 7).** `review-doc.py parse` warns
 `section-checkbox-missing` and prints `section_problems` (`key`, `restore`; no heading text, CON-3), and the plan's
@@ -557,13 +556,93 @@ spells per kind; a quarter then reads each `read_parts` entry, one Read call eac
 the skill from 31,122 to 31,600 characters (+478, `wc -c`; 243 lines before and after) at 0.2.5. No `STRICT`
 block: no quarter run has been observed yet.
 
+## Why Step 5 Is Plan, One Message per Round, Check, Retry Once, Propose (Spec 047 ADR-4, ADR-8)
+
+WHY: the period no longer fits one context (spec 046 close-out: a quarter of 717 KB, ≈ 390k tokens, against a Read
+limit of 25k tokens per call). Spec 047 cuts it into units, condenses each unit with a `review-digester`, takes the
+previous reviews into `carryover.json` with `review-carryover`, and builds the proposals over the whole period with
+`review-proposer`; every proposal rule now lives in [review-proposer](../agents/review-proposer.md). The skill's
+step 5 only orchestrates, and every decision of the orchestration is a script's:
+
+- **`review-digest.py plan --stem`** lists the jobs still to run, ready-made: agent, files, `out`, `cap_bytes`, in
+  rounds of at most `MAX_PARALLEL` (16) jobs ([review-digest](../../scripts/review-digest.md)). The skill decides
+  nothing about content and starts no job `plan` did not list.
+- **One message per round.** All jobs of a round go out as `Agent()` calls in ONE message, so the 14–16 digesters of a
+  quarter and the carryover run at once and the step takes one agent's time, not sixteen. Each call names its
+  `subagent_type` and `run_in_background: false`, and its prompt is the template the skill names: stem, unit,
+  `read_id`, the file list, `out`, `cap_bytes`, the review language — paths, ids, dates and the language only, never
+  note text (the main session has none to give). The reply is one line per agent.
+- **`review-digest.py check --stem`** judges every file the agents wrote and spends one attempt per open job: the first
+  failure comes back in `retry` with its errors, sent again in one message with the errors verbatim; the second is
+  `failed`. Then `check` again. So a run is `plan` once, then `check` at most twice.
+- **`plan` once per run.** `plan` resets every failed unit (and a whole-file failed carryover) to pending on each call,
+  because it cannot tell a continued read in a new session from a repeat call in the same one (T4.3 review). Retries
+  stay bounded only if the skill runs `plan` once per run; a second `plan` after a failed retry would offer the unit
+  again and again. The step says so as an imperative; a STRICT follows only if a live run shows a second `plan`. So a unit
+  that fails twice stays failed until the next session, whose `plan` offers it once more (the cause, often
+  throttling or a model slip, may be gone by then).
+- **Not condensed is named, never read instead.** A unit that failed its retry is in `not_condensed` with its days;
+  the document's top and the run report name them like days Kado did not return (F6-AC1) and the review is built from
+  the rest. The main session never reads the days of such a unit itself: that was the spec 046 fallback. When every
+  taking-part unit failed, `check` answers `stopped` `nothing-condensed` naming every week, and the skill stops like a
+  period with no content (F6-AC8); no document, the stage stays for a later run.
+- **A failed carry is a line, not a stop.** `carry_failed` true (or one previous note failed) means the review goes on
+  without the follow-up, the document's top says so (F6-AC2) and the run report names it; `proposer.carried` is then
+  false and the proposer marks nothing as carried.
+- **Then the proposer**, once, with `proposer.inputs` of the last `check` (only then are the passed digests known),
+  and `review-doc.py write --stem --proposals`. `proposals-invalid` → one re-dispatch of the proposer with the errors
+  verbatim, a second is shown and no document is written (F6-AC3; see "Why Pass 1 Proposes by Section").
+- **`condense-incomplete`.** `write` refuses when `condensed.json` is missing or a unit is still pending — the skill
+  skipped or cut short the condensing. The answer is step 5 again from `plan`, once; it is the one second `plan` of a
+  run, bounded by "once", and the units that failed in this run are offered once more.
+
+## Why Step 5's STRICT Blocks (Spec 047 ADR-8)
+
+WHY: a `STRICT` block is only for a deviation actually observed (see "Why STRICT Is Rare"). Each block of step 5 names
+one, and its `Why:` line is that failure mode in one line:
+
+- **One message per round.** Failure mode: agents sent one per message run one after another, so a quarter's 16
+  digesters take 16 agent times. Observed in the `/inbox` fan-out, which is why `suggest-handling` carries the same
+  STRICT; the review dispatch copies that pattern.
+- **`subagent_type` on every call.** Failure mode: an `Agent()` call that names the agent only in its prompt or
+  description starts a `general-purpose` agent, which has every tool (Kado included) and none of the review agent's
+  rules. Observed in earlier Tomo agent dispatches.
+- **`run_in_background: false`.** Failure mode: the CLI started a dispatched agent in the background without being
+  asked (spec 043: `claude` 2.1.316 backgrounded the conductor, 3 of 307 traces), so the reply arrived as a later task
+  notification and the run went on, or ended, before the file existed. `/inbox` passes the flag since then; step 5
+  does the same.
+- **Never read a stage file in the main session, never search day files with `grep` or Bash, never start an agent
+  `plan` did not list; a unit without a passed digest is named as not condensed.** Failure mode: the spec 046 walk
+  (2026-11-17/18): both round-3 quarter runs fell back to `grep` over parts of the read files and reported a partial read,
+  and the 08:30 run handed the read to four `general-purpose` subagents it started itself ($2.83 of that run's
+  $4.26). Either path reviews a sample of the period while claiming the whole; the not-condensed line is the honest
+  alternative.
+
+The write rule and the step 8 `STRICT` name the agents' files (digests, `carryover.json`, `proposals.json`) as the only
+stage files written outside the scripts, each by its own agent, and the skill writes only `confirmed-<kind>.json`.
+Without the carve-out the step 8 line ("never write a file under `tomo-tmp/` other than …") would contradict the
+dispatch, and a literal model resolves a contradiction either way.
+
+## Why a Pass 1 Abort Runs `replace --abort` and Nothing Else (Spec 047 ADR-10, F6-AC6)
+
+WHY: the Rules say "on Abort at any question, run no further script and write nothing". Before spec 047 that left
+nothing behind in Pass 1 worth deleting. Since spec 047 step 4 writes a stage that holds the period's journal content,
+and a stage left behind is a read the next `/review` of the period continues on (F6-AC4) — the opposite of what the
+user asked for. F6-AC6: an Abort during Pass 1 runs no further step, writes no document, deletes the material at once
+(F7-AC1) and cannot be continued. So an Abort answered after step 4 wrote a stage and before step 5 wrote the document
+runs `review-doc.py replace --stem --abort` and nothing else: the one exception to the abort rule. The call
+discards the stage content through `review_stage.discard` and keeps only the content-free `meta.json` and
+`payloads.json`; it writes nothing to the vault. An Abort before step 4 has no stage to discard, and an Abort after
+`write` is Pass 2's Abort (unchanged).
+
 ## Why the Review Language Is Read From the Config File
 
 WHY: The proposals must be in the review language of the setup (F4-AC5) and `proposals.json` names it, but no script
 of the ordinary path prints it: `start` reports the setup only as `present` / `missing`, `review-read.py` prints the
-report and `read.json` carries the period's content, not the setup. The skill therefore reads the one key
+report and the stage carries the period's content, not the setup. The skill therefore reads the one key
 `review.language` from `config/vault-config.yaml` — the instance's own configuration, not the vault, and a value the
-user confirmed in the setup dialogue — before it writes `proposals.json`. The alternative calls (`start --args='setup'`
+user confirmed in the setup dialogue — and passes it as `<language>` in every agent prompt of step 5 (the
+carryover and the proposer write their text in it, F4-AC11). The alternative calls (`start --args='setup'`
 for `current.<kind>.language`, or `match` for a proposal) each cost Kado calls for a value that is already on disk.
 Known gap, noted at T5.2: a `language` key on `review-read.py`'s output would remove the only config read of the
 skill; until then the skill reads that key and nothing else from the file and never writes it.
@@ -574,9 +653,10 @@ WHY: `review-doc.py write --stem --proposals` is the only vault write of Pass 1:
 with the target note and whether it exists, the unticked Approved box and the grouped items (F4-AC1). The skill
 reports `doc_path`, `target`, `target_exists`, the `counts` per group and `rejected` items, then ends the turn: the
 user edits the document in Obsidian, and the next `/review` finds it as an open review (ADR-2: the open state lives in
-the vault, not in `tomo-tmp`, because the user edits between passes). `write` deletes `read.json` and
-`proposals.json` once the document is written (ADR-9): the journal content the model read has no job after that, and
-the stage keeps only the content-free `meta.json`. The refusals are shown verbatim: `doc-name-taken` names the file
+the vault, not in `tomo-tmp`, because the user edits between passes). `write` discards the stage content
+(`review_stage.discard`: days, growth, child and previous notes, digests, carryover, proposals, context, manifest)
+once the document is written (ADR-9, spec 047 ADR-10): the journal content the agents read has no job after that, and
+the stage keeps only the content-free `meta.json` and `payloads.json`. The refusals are shown verbatim: `doc-name-taken` names the file
 that is not Tomo's and nothing is overwritten; `review-exists` is the start-over case (next section);
 `kado-write-failed` means nothing was claimed as written. Abort at any point before `write` deletes nothing in the
 vault, because nothing was written there.
@@ -586,8 +666,8 @@ vault, because nothing was written there.
 WHY: Replacing the review document destroys the user's edits in it. So when the user chooses Start over for an open
 review, or `write` refuses with `review-exists` (Tomo's document for the period already exists and the stage files are
 kept), the skill names the document that will be replaced (`doc_path`) and asks again, `1 Replace · 2 Keep it`.
-`review-doc.py replace --confirm` writes the new document over Tomo's own from the kept `read.json` and
-`proposals.json`; `review-doc.py replace --abort` deletes those two files and keeps the document. The script itself
+`review-doc.py replace --confirm` writes the new document over Tomo's own from the kept stage;
+`review-doc.py replace --abort` discards the stage content and keeps the document. The script itself
 answers `needs-confirm` when neither flag is given, so the skill cannot replace without the flag, and the decision
 is recorded in the call. A rerun of the whole period (read again, propose again) is the same path: `write` refuses,
 the user decides.
@@ -724,8 +804,8 @@ the question, so the user reads what lands before deciding what does not. The st
   choices table in the skill would be wrong for some of these. A stop without choices can only be aborted: the skill names it and stops without a
   question, because there is nothing to choose.
 - **Naming.** A section is named by the configured heading of its `key` (step 5, the `review.<kind>.sections` row),
-  never by `read.json`: `read.json` is model input that is never quoted (Rules), and a continued review (step 6) has
-  not read it in this session. The `placement` is named because the same heading can take the review before, under or
+  never by a stage file: the main session reads no stage file (Rules), and a continued review (step 6) has no stage
+  to read. The `placement` is named because the same heading can take the review before, under or
   at the end of it, and the user decides knowing where. The stop lines are said in `<language>`, the document's
   language (`review.language` of `config/vault-config.yaml`), because they name the review document's sections as the
   user just edited them. Step 7 defines `<language>` where it uses it and Reads the config: step 7 is normally reached
@@ -962,9 +1042,9 @@ run with "save the document and run `/review` again", so no re-check is needed i
 WHY: Tomo's own records stay free of the journal: every review script prints counts, paths, dates and states only,
 stderr carries an exception's class name and nothing else, and the cost log takes the numbers the skill reports
 (F7-AC1, tested by `tests/test_review_privacy.py`). The skill keeps that boundary on the console: it prints the
-scripts' reports and `section_md` — the user's own approved section — and never quotes `read.json`, a daily, a
+scripts' reports and `section_md` — the user's own approved section — and never quotes a stage file, a daily, a
 journal answer or a tracker value into its reply. Where the content does rest — the session transcript in the
-container home (the model read `read.json`), `tomo-tmp/review/<stem>/read.json` until `write` or `replace --abort`
+container home (the main one and the three review agents' own, which hold what they read), the stage `tomo-tmp/review/<stem>/` until `write` or `replace --abort`
 deletes it (a session that ends without either leaves it until the next `/review` of that stem), the inbox document —
 is named in `PRIVACY.md` with the advice to protect instance and home like the vault. No cleanup script and no
 cleanup promise: the data is local anyway, a script would be forgotten or inflexible, and a promise Tomo cannot keep
@@ -993,7 +1073,8 @@ block (decided at T5.2): the deviation spec 044 observed was a dialog called aft
 dialog to call — `AskUserQuestion` is not in its tools and every question is the plain-text form. A `STRICT` is
 added only when a `/review` run shows a deviation of its own.
 
-The one `STRICT` it carries is in step 8 (spec 046 T6.3). The 2026-11-18 live walk observed the model hand-writing the
+Spec 047 adds the four `STRICT` blocks of step 5, each for a deviation observed in an earlier run (see "Why Step
+5's STRICT Blocks"). The first `STRICT` it carried is in step 8 (spec 046 T6.3). The 2026-11-18 live walk observed the model hand-writing the
 document mark and editing `meta.json` after a refused resume (see "Why a `stopped` Delivery Asks Retry, Drop or Abort
 in Place").
 
@@ -1017,11 +1098,12 @@ WHY: The stem is `<period>_review` (`2026-W13_review`), given as `--stem` to eve
 from another's and from the script's default. `--today` is a suppressed test flag and never passed by the skill. The
 confirmed-setup JSON is `tomo-tmp/review/confirmed-<kind>.json`, read by `setup-input`, whose `--output` defaults to
 `tomo-tmp/review/setup-<kind>.json`, the file the writer's `--input` takes; both are helper files, not state, and
-removed after the save. The skill pins no `model`: the proposals are the model's work (ADR-12), so it runs on the
-session's model. `user-invocable: true` and an `argument-hint` make the skill itself show in the `/` menu beside the
+removed after the save. The skill pins no `model`: since spec 047 the proposals are the `review-proposer`'s work
+(`opus`, ADR-7), and the main session only orchestrates, so it runs on the session's model. `user-invocable: true` and an `argument-hint` make the skill itself show in the `/` menu beside the
 shim, as `/note` does. The description carries `MUST BE USED` per the authoring rules, with a `NOT for` clause that
 keeps inbox triage with `/inbox` and single notes with `/note`. `allowed-tools` holds Bash, Read and Write
-(`proposals.json`, the confirmed-setup file; Read for `read.json` and the one config key) and nothing that reaches the
+(the confirmed-setup file; Read for the one config key), plus `Agent` since spec 047 for the three review agents
+(ADR-8), and nothing that reaches the
 vault: every vault access goes through the scripts and Kado. The skill's body follows the `/note` precedent (a Rules
 list, then numbered steps) rather than the authoring plugin's Persona / Interface / Constraints layout: the repo rule
 for runtime files allows imperatives only, and a persona or an interface block would be prose the model does not act

@@ -177,3 +177,162 @@ def test_command_doc_is_the_shim_rationale(command_doc):
     assert "periodic-review" in command_doc
     assert re.search(r"`review-session\.py start`", command_doc), (
         "the command WHY must say that `start` parses the argument, not the shim")
+
+
+# ── spec 047 T6.1: the WHY layer of the three review agents and the new steps 4/5 ──────────────────────────
+#
+# Mechanisms a mutation falsifies:
+# - ``test_every_review_agent_has_its_why_mirror`` — an agent mirror deleted (or an agent added under
+#   tomo/dot_claude/agents/review-*.md without one) fails; the list is fixed so the mirrors exist before the agents.
+# - ``test_agent_mirror_names_its_frontmatter_and_reply`` — a mirror that drops the model, the tool pair, the
+#   permission mode or the one-line reply fails.
+# - ``test_skill_doc_names_every_review_digest_subcommand`` / ``..._no_digest_subcommand_the_parser_lacks`` —
+#   read from review-digest.py's own parser, both directions, flags included (SDD gotcha: `plan` and `check`).
+# - ``test_proposer_doc_holds_the_moved_rule`` — one row per rationale that leaves SKILL.md step 5 for the
+#   proposer (plus the carried rules added since the plan); deleting the row's sentence fails its row.
+# - ``test_skill_doc_holds_the_step_4_5_decision`` — one row per decision of the new step 4/5 and per STRICT's
+#   observed failure mode.
+
+AGENTS_DOCS = DOCS_DIR / "agents"
+RUNTIME_AGENTS = REPO / "tomo" / "dot_claude" / "agents"
+REVIEW_AGENTS = {"review-digester": "haiku", "review-carryover": "sonnet", "review-proposer": "opus"}
+DIGEST_SCRIPT = "review-digest.py"
+DIGEST_MENTION = re.compile(r"`(review-digest\.py) ([a-z][a-z-]*)((?: --[a-z][a-z-]*)*)`")
+
+
+def _doc(path) -> str:
+    assert path.is_file(), f"missing WHY document: {path.relative_to(REPO)}"
+    return path.read_text(encoding="utf-8")
+
+
+def _flat(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
+
+
+def test_the_agent_list_covers_every_runtime_review_agent():
+    runtime = {p.stem for p in RUNTIME_AGENTS.glob("review-*.md")}
+    assert runtime <= set(REVIEW_AGENTS), f"review agents without an entry in REVIEW_AGENTS: {sorted(runtime - set(REVIEW_AGENTS))}"
+
+
+@pytest.mark.parametrize("agent", sorted(REVIEW_AGENTS))
+def test_every_review_agent_has_its_why_mirror(agent):
+    mirror = AGENTS_DOCS / f"{agent}.md"
+    assert mirror.is_file(), f"missing WHY document: {mirror.relative_to(REPO)}"
+
+
+@pytest.mark.parametrize("agent", sorted(REVIEW_AGENTS))
+def test_agent_mirror_names_its_frontmatter_and_reply(agent):
+    text = _flat(_doc(AGENTS_DOCS / f"{agent}.md"))
+    assert f"tomo/dot_claude/agents/{agent}.md" in text, "the mirror must name its runtime file"
+    assert f"`{REVIEW_AGENTS[agent]}`" in text, f"the mirror must give the model `{REVIEW_AGENTS[agent]}` and why"
+    assert "`tools: Read, Write`" in text and "`permissionMode: acceptEdits`" in text
+    assert re.search(r"one[- ]line reply|replies (?:with )?one line", text, re.I), "the mirror must give why the reply is one line"
+    assert "Kado" in text, "the mirror must give why the agent never reaches Kado or the vault"
+
+
+@pytest.fixture(scope="module")
+def digest_subcommands():
+    from review_cli_contract import load_script
+    return subparsers(load_script(DIGEST_SCRIPT).build_parser())
+
+
+def test_skill_doc_names_every_review_digest_subcommand(skill_doc, digest_subcommands):
+    assert set(digest_subcommands) == {"plan", "check"}
+    named = {sub for _script, sub, _flags in DIGEST_MENTION.findall(skill_doc)}
+    missing = sorted(set(digest_subcommands) - named)
+    assert not missing, f"the skill WHY document does not name `review-digest.py <sub>` for: {missing}"
+
+
+def test_skill_doc_names_no_digest_subcommand_the_parser_lacks(skill_doc, digest_subcommands):
+    mentions = [(sub, rest.split()) for _script, sub, rest in DIGEST_MENTION.findall(skill_doc)]
+    assert mentions
+    unknown = sorted({sub for sub, _f in mentions if sub not in digest_subcommands})
+    assert not unknown, f"the skill WHY document names subcommands review-digest.py does not have: {unknown}"
+    bad = sorted((sub, flag) for sub, mention_flags in mentions if sub in digest_subcommands
+                 for flag in mention_flags if flag not in flags(digest_subcommands[sub]))
+    assert not bad, f"flags a review-digest.py subcommand does not take: {bad}"
+
+
+# The rationale that leaves SKILL.md step 5 for review-proposer.md, and the carried / growth / input rules
+# added since the plan. (label, pattern searched in the whitespace-collapsed document.)
+PROPOSER_RULES = [
+    ("opus-adr-7", r"`opus`.*ADR-7|ADR-7.*`opus`"),
+    ("only-proposals-json", r"only `proposals\.json`"),
+    ("themes-over-all-days-f1-ac3", r"F1-AC3"),
+    ("open-against-later-weeks-f1-ac4", r"F1-AC4"),
+    ("one-item-across-weeks-f1-ac5", r"F1-AC5"),
+    ("child-marks-whole-period-f2-ac3", r"F2-AC3"),
+    ("sources-a-daily-of-the-period", r"at least one (?:link to )?a? ?daily"),
+    ("continuation-line", r"continuation line"),
+    ("habits-computed", r"[Hh]abits are computed"),
+    ("own-sections", r"user's own sections"),
+    ("key-copied-unknown-section", r"`unknown-section`"),
+    ("description-and-keywords", r"description and keywords"),
+    ("groups-starting-point-f2-ac7", r"F2-AC7"),
+    ("reminders-not-finished-text", r"[Rr]eminders, not finished text"),
+    ("cap-by-merging-over-cap", r"`over-cap"),
+    ("one-place-double-placement", r"`double-placement`"),
+    ("analysis-rows", r"`analysis: true`"),
+    ("marks-mark-not-allowed", r"`mark-not-allowed`"),
+    ("quarter-marks", r"`monthly_only`"),
+    ("review-language-f4-ac11", r"F4-AC11"),
+    ("rewrite-fixes", r"errors verbatim"),
+    ("carried-adr-6", r"ADR-6"),
+    ("script-checks-marks-model-matches", r"model owns the match"),
+    ("carried-marks-f4-ac2", r"F4-AC2"),
+    ("theme-never-done-f4-ac3", r"F4-AC3"),
+    ("placement-f4-ac4", r"F4-AC4"),
+    ("off-limits-f4-ac5", r"F4-AC5"),
+    ("one-item-nowhere-else-f4-ac6", r"F4-AC6"),
+    ("carried-again-no-age-f4-ac8", r"F4-AC8"),
+    ("same-mark-merge-f4-ac10", r"F4-AC10"),
+    ("carried-false", r"`carried: false`"),
+    ("growth-candidates", r"growth candidates"),
+    ("growth-counts-and-moc-lists", r"growth counts and (?:the )?MOC lists"),
+    ("never-manifest-json", r"never reads? `manifest\.json`"),
+]
+
+
+@pytest.fixture(scope="module")
+def proposer_doc() -> str:
+    return _flat(_doc(AGENTS_DOCS / "review-proposer.md"))
+
+
+@pytest.mark.parametrize("label,pattern", PROPOSER_RULES, ids=[label for label, _p in PROPOSER_RULES])
+def test_proposer_doc_holds_the_moved_rule(proposer_doc, label, pattern):
+    assert re.search(pattern, proposer_doc, re.I), f"review-proposer.md has no home for {label} ({pattern!r})"
+
+
+SKILL_STEP_4_5 = [
+    ("plan-mention", r"`review-digest\.py plan"),
+    ("check-mention", r"`review-digest\.py check"),
+    ("plan-once-check-twice", r"`plan` once per run"),
+    ("failed-twice-stays-failed", r"fails twice stays failed until the next session"),
+    ("read-stale", r"`read-stale`"),
+    ("continued-read", r"`continued: true`"),
+    ("fresh-on-start-over", r"`review-read\.py --period --kind --stem --fresh`"),
+    ("pass-1-abort", r"`review-doc\.py replace --stem --abort`"),
+    ("abort-exception", r"and nothing else"),
+    ("agent-in-allowed-tools", r"`Agent`"),
+    ("one-message-batch", r"one message"),
+    ("subagent-type-general-purpose", r"`general-purpose`"),
+    ("subagent-type", r"`subagent_type`"),
+    ("run-in-background-false", r"`run_in_background: false`"),
+    ("spec-043-backgrounded", r"backgrounded"),
+    ("grep-fallback", r"`grep`"),
+    ("four-self-started-helpers", r"four .{0,40}subagents.{0,80}\$2\.83|\$2\.83.{0,80}four"),
+    ("never-an-agent-plan-did-not-list", r"`plan` did not list"),
+    ("not-condensed-named", r"not condensed"),
+    ("condense-incomplete", r"`condense-incomplete`"),
+    ("nothing-condensed", r"`nothing-condensed`"),
+    ("proposer-rules-moved", r"review-proposer\.md"),
+]
+
+
+@pytest.mark.parametrize("label,pattern", SKILL_STEP_4_5, ids=[label for label, _p in SKILL_STEP_4_5])
+def test_skill_doc_holds_the_step_4_5_decision(skill_doc, label, pattern):
+    assert re.search(pattern, _flat(skill_doc)), f"periodic-review.md has no WHY for {label} ({pattern!r})"
+
+
+def test_skill_doc_no_longer_says_no_step_dispatches_a_subagent(skill_doc):
+    assert "no step dispatches a subagent" not in _flat(skill_doc)

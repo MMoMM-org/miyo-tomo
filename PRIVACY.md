@@ -74,6 +74,13 @@ quarter:
   of the quarter's three months.
 - **Vault growth** — the **paths** of the notes created in the period and of
   the MOCs changed in it, not their content.
+- **Your previous reviews** — the notes of the periods before, read through
+  Kado like every other note: for a weekly review the previous week's note and
+  the note of the month before the month the week starts in, for a monthly
+  review the previous month's note and the note of the quarter before, for a
+  quarterly review the previous quarter's note. The model sees their text —
+  your own sections and Tomo's earlier blocks alike — so the review can follow
+  up what they left open, intended or kept returning to.
 - **The weekly, monthly or quarterly note itself**, so the review section can
   be placed under the right heading, and during the setup its template. During
   the setup the model also sees the names of the templates in your templates
@@ -97,6 +104,11 @@ quarter:
   preview names the heading it now sits under, so you can confirm the move —
   nothing else of the note's text. The instruction set is written to your
   inbox by a script and is not shown to the model.
+
+Besides the model of your session, three Claude models see this content in a
+review: Haiku condenses the period week by week, Sonnet takes up what your
+previous reviews left open, intended or kept returning to, and Opus writes the
+proposals from the condensed weeks and those carried items.
 
 A review reads your journal, so it reaches the most personal content a vault
 holds. Folders you do not want reviewed — a therapy journal, client notes —
@@ -145,19 +157,26 @@ what to do with them:
   journal entries, tracker values and proposals of a `/review` run, and the
   note bodies of an `/inbox` run, are in there in full. They live in the
   instance's Docker home under `home/.claude/projects/`. Tomo never reads,
-  trims or deletes them. A backup made with `backup-tomo.sh` archives the
-  Docker home, so it archives the transcripts too.
-- **Tomo's working folder `tomo-tmp/`** in the instance workspace. A `/review`
-  run keeps what it read in `tomo-tmp/review/<period>_review/read.json` and
-  the model's proposals in `proposals.json`. Tomo deletes `read.json` and
-  `proposals.json` once the review document is written to the inbox or the
-  run is aborted; a session that ended without writing or aborting leaves
-  `read.json` and `proposals.json` there until the next `/review` of that
-  period. A quarterly review keeps what it read split into `read-index.json`
-  and one `read-<YYYY-MM>.json` per month instead of `read.json`, deleted
-  together with it in the same cases. During the setup, `rows-<kind>.json` in
-  `tomo-tmp/review/` holds the headings of the template and the section rows
-  offered for mapping — setup text, no note text — until the setup is saved
+  trims or deletes them. In a `/review` run each of the three models writes
+  its own session transcript in the container home as well, beside the
+  transcript of the session you work in. A backup made with `backup-tomo.sh`
+  archives the Docker home, so it archives the transcripts too.
+- **Tomo's working folder `tomo-tmp/`** in the instance workspace. A
+  `/review` run keeps what it read in the folder `tomo-tmp/review/<period>_review/`:
+  one file per day in `days/`, the notes created on each day in `growth/`,
+  the weekly and monthly notes a month or quarter reads in `children/`, your
+  previous reviews in `previous/`, the rest of the period in `context.json`
+  (with `context-<n>.json` parts when it is large), the condensed weeks in
+  `digests/`, what the previous reviews left open in `carryover.json` and the
+  model's proposals in `proposals.json`. Tomo deletes them once the review
+  document is written to your inbox, when you abort the review before that,
+  when you drop the review, and before a new read of the period. If a run is
+  interrupted before the document is written — the session ends or a step
+  fails — what it read stays there until one of those happens: that
+  period's next `/review` continues on it, or replaces it with a new read. A
+  run stopped because Kado could not be reached stores nothing. During the
+  setup, `rows-<kind>.json` in `tomo-tmp/review/` holds the headings of the
+  template and the section rows offered for mapping — setup text, no note text — until the setup is saved
   or the next `/review` starts. While a delivery to the inbox is under way,
   `payloads.json` beside `meta.json` holds the texts that delivery writes
   (the new note, the instruction set and its readable instructions), so a
@@ -172,7 +191,7 @@ what to do with them:
   note yet adds that new note. They stay in the inbox after you applied them,
   like every other document Tomo delivers — removing them is yours to do.
 
-Beyond those two working files, Tomo does not remove any of this; whether and
+Beyond the review's working files, Tomo does not remove any of this; whether and
 when to remove it is **your choice**. Because the transcripts and the working folder can hold your journal
 as plainly as the vault does, protect the instance directory — both `instance/`
 and `home/` — **like your vault**: keep it on an encrypted disk (for example a

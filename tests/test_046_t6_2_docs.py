@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_046_t6_2_docs.py — spec 046 T6.2: the documentation half of the template-sections feature.
 
 Pins facts, not wording:
@@ -7,9 +7,10 @@ Pins facts, not wording:
 (a) PRIVACY.md names what a mapped or quarterly review reads and keeps: the quarter's monthly notes in the
     `/review` paragraph, the preview's per-section lines and a moved block's heading (the only note text the
     mapped stdout fields `sections[].lines` and `sections[].block_at.heading` carry,
-    tomo/scripts/review-instructions.py docstring), and in "Where read content rests" the quarter's read parts
-    (`read-index.json`, `read-<YYYY-MM>.json`, lib/review_read_parts) and the setup's `rows-<kind>.json`
-    (review-session.py `match`).
+    tomo/scripts/review-instructions.py docstring), and in "Where read content rests" the setup's
+    `rows-<kind>.json` (review-session.py `match`); the quarter's read parts (`read-index.json`,
+    `read-<YYYY-MM>.json`) are no longer named, since spec 047 stores every kind in the same stage folder
+    (lib/review_stage.py; the files themselves are pinned in tests/test_review_privacy_docs.py).
 (b) tomo/config/vault-example.yaml parses, and its commented review example maps sections of the quarterly
     template that the real reader (lib.review_config.review_setup, the production path) reads back as rows,
     keyed by templates.mapping.quarterly, and that lib.review_config.input_problems accepts as writer input.
@@ -86,8 +87,9 @@ def test_review_paragraph_names_the_heading_a_moved_block_sits_under() -> None:
     _one_sentence_has(_review_paragraph(), "moved", "heading")
 
 
-def test_where_read_content_rests_names_the_quarters_read_parts() -> None:
-    _one_sentence_has(_rests(), "quarter", "`read-index.json`", "`read-<yyyy-mm>.json`")
+def test_where_read_content_rests_no_longer_names_the_quarters_read_parts() -> None:
+    rests = _rests().lower()
+    assert "read-index.json" not in rests and "read-<yyyy-mm>.json" not in rests
 
 
 def test_where_read_content_rests_names_the_rows_file() -> None:

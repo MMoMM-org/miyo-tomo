@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.11
+# version: 1.12
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -541,6 +541,12 @@ daily_log:
 # concepts.calendar.granularities, sets naming.calendar_patterns.<g> and
 # templates.mapping.<g> in the same run. The section is absent until the first
 # setup; the block below shows a complete example.
+#
+# Previous reviews need no setting of their own: a review also reads the
+# previous week's, month's or quarter's note from the folders and name formats
+# above (concepts.calendar.granularities.<g>.path, naming.calendar_patterns.<g>);
+# a kind without an enabled folder or a name format there is reported as not
+# set up.
 #
 # language                 — review language, BCP 47 (de, en, pt-BR)
 # week.first_day           — first day of the week: monday..sunday

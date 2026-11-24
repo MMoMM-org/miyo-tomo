@@ -78,6 +78,16 @@ If you decide against the result, it costs two deletions and one command:
 
 If you abort during the dialogue, nothing reaches the vault.
 
+## What the marks of a review mean
+
+A `/review` also reads your previous review notes — the previous week and the month before for a weekly review, the previous month and quarter for a monthly one, the previous quarter for a quarterly one — and follows up what they left open, intended or kept returning to. Each such item shows up in the review document with a mark after its text:
+
+- `done (previous review)` — `erledigt (letzter Rückblick)` in a German review: a day of this period shows it done.
+- `still open (previous review)` — `noch offen (letzter Rückblick)`: a day of this period shows it still open or only partly done; for a recurring theme, it came up again.
+- `not mentioned again (previous review)` — `nicht mehr erwähnt (letzter Rückblick)`: no day of this period mentions it.
+
+Other review languages use the English marks. A carried item links to the previous note it came from and to the days that show it. Treat it like every other item: keep it, edit it, untick or delete it. Only what the previous note holds now is followed up, so an item you dropped from that note is not carried again.
+
 ## Re-run a setup wizard
 
 Conventions evolve. Refresh just one part of the setup without re-running the full installer:

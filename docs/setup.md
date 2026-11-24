@@ -291,7 +291,10 @@ To restore, run the installer first so the instance exists, then `restore-tomo.s
 The instance directory holds more than settings. Claude Code keeps a
 transcript of every session in `home/.claude/projects/`, with everything the
 model read — for a `/review` run that is your daily notes and journal entries
-in full — and `instance/tomo-tmp/` keeps working files between steps. Tomo
+in full. A `/review` run hands its work to three Claude models — Haiku
+condenses the period, Sonnet takes up what your previous reviews left open,
+Opus writes the proposals — and each of them leaves its own transcript there
+too. `instance/tomo-tmp/` keeps working files between steps. Tomo
 does not clean these up; removing them is your choice. Keep `instance/`,
 `home/` and every backup archive on the same footing as your vault: an
 encrypted disk, the same backup and sync rules, never shared or committed.

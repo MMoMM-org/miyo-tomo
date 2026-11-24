@@ -94,6 +94,10 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | F-05a | Typed-topic provenance at extraction (approach A) | Could | F-05 (#124) follow-on. Store extraction-time provenance in the cache instead of the title-token proxy. Only if #124's proxy proves insufficient. Heavy: cache schema bump + squelch-signature risk. |
 | F-05b | Topic-match threshold re-derivation | Could | F-05 (#124) follow-on. Standalone data-driven re-tune of `JACCARD_DUP_THRESHOLD` / analyst keep-gate beyond #124's in-scope validation. Only if #124's placement-confidence check shows misseparation. |
 | F-05c | Replay archived inbox as F-05 golden fixture | Could | F-05 (#124) follow-on. Recover the archived inbox that produced the original mis-match to build a real (not synthetic) regression fixture. Contingent on data recovery. |
+| R-47a | `/review`: a further condensing level (weeks into months before the proposals) | Could | Spec 047 Won't Have (#270). Only if the condensed weeks of a quarter prove too large for the proposer. |
+| R-47b | `/review`: a setup marker for intention sections | Could | Spec 047 Won't Have (#270). The carryover model decides from the text what counts as open or intended; revisit if the live walk shows poor detection. |
+| R-47c | `/review`: an age counter for carried items ("open for three weeks") | Could | Spec 047 Won't Have (#270). Today an item still open is carried again with the same mark and no age. |
+| R-47d | `/review`: leave non-note embeds out of the "not in a weekly or monthly review" lists | Could | Parked from the spec 046 live walk, kept parked by spec 047 (#270). |
 
 ## Done (historical record)
 

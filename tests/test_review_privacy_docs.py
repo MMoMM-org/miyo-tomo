@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-# version: 0.4.0
-"""test_review_privacy_docs.py — spec 045 T5.3: the privacy and setup documentation of /review.
+# version: 0.5.0
+"""test_review_privacy_docs.py — spec 045 T5.3, spec 047 T7.1: the privacy and setup documentation of /review.
 
 Pins PRIVACY.md (PRD F7-AC2, ADR-9): "metadata only" is scoped to Tomo's own
 records; every place read content rests is named — the session transcripts in
-the container home, tomo-tmp (read.json and proposals.json deleted on write or
-abort, left behind by a session that ends without either), the inbox (removing
+the container home, one transcript per review model among them (spec 047
+F7-AC3), the stage `tomo-tmp/review/<period>_review/` with every file that
+holds note content (CON-3: days/, growth/, children/, previous/, context*.json,
+digests/, carryover.json, proposals.json), deleted on write, Pass 1 abort, drop
+and a new read (ADR-10), an interrupted run resting until one of those or that
+period's next /review, a Kado stop storing nothing (F7-AC2), no old read.json
+named, the inbox (removing
 the delivered files is the user's job); removal is the user's choice; both
 `instance/` and `home/` are to be protected like the vault (for example an
 encrypted disk); the /review paragraph names what reaches the model (paths of
@@ -16,8 +21,9 @@ reach the model when the place cannot be resolved, which is every refusal
 that sets them, not only a missing heading; during the setup the names of the
 templates in the templates folder and the headings of the two most recent
 weekly or monthly notes reach the model, their headings and not their text —
-fix round 1 of the Phase 6 live-walk fix) and recommends Kado deny rules
-for folders not to be reviewed, in one sentence.
+fix round 1 of the Phase 6 live-walk fix; the previous reviews as a source read
+through Kado; the three models haiku, sonnet and opus — spec 047 F7-AC3) and
+recommends Kado deny rules for folders not to be reviewed, in one sentence.
 
 Each phrase test is pinned to the clause it guards: deleting that clause from
 PRIVACY.md fails the test (proven by mutation in an isolated copy, T5.3-fix1).
@@ -25,8 +31,10 @@ PRIVACY.md fails the test (proven by mutation in an isolated copy, T5.3-fix1).
 Pins docs/setup.md linking to that PRIVACY.md section (and, drift round D of
 Phase 5: the credentials and restore paragraphs staying under the Backup and
 Restore heading ahead of the Protect subsection, and the IDE lock path naming
-the instance home `home/`, never `tomo-home/`), the README naming
-/review, and tomo/config/vault-example.yaml: the weekly pattern GGGG-[W]WW and
+the instance home `home/`, never `tomo-home/`) and naming the three models
+with their own transcripts, the README naming /review and listing the three
+review agents, docs/usage.md explaining each carried mark as lib/review_doc
+writes it (English and German), and tomo/config/vault-example.yaml: the weekly pattern GGGG-[W]WW and
 a commented review: example that the real reader (lib.review_config) accepts
 for week, month and quarter, whose section rows and off-limits marks it reads
 for the mapped template (spec 046 T1.3), and whose writer-input form validates
@@ -48,12 +56,14 @@ ROOT = Path(__file__).resolve().parent.parent
 PRIVACY = ROOT / "PRIVACY.md"
 SETUP = ROOT / "docs" / "setup.md"
 README = ROOT / "README.md"
+USAGE = ROOT / "docs" / "usage.md"
 EXAMPLE = ROOT / "tomo" / "config" / "vault-example.yaml"
 PROFILE = ROOT / "tomo" / "profiles" / "miyo.yaml"
 SCHEMA = ROOT / "tomo" / "schemas" / "vault-config-review.schema.json"
 
 sys.path.insert(0, str(ROOT / "tomo" / "scripts"))
 from lib import review_config as rc  # noqa: E402
+from lib import review_doc  # noqa: E402
 
 TODAY = date(2026, 11, 12)
 
@@ -118,18 +128,45 @@ def test_metadata_only_is_scoped_to_tomos_own_records() -> None:
 def test_names_every_place_read_content_rests() -> None:
     rests = _section(_privacy(), r"Where read content rests")
     _has(rests, "session transcript", "container home", "home/.claude/projects/")
-    _has(rests, "tomo-tmp", "read.json", "proposals.json", "without writing", "abort")
     _has(rests, "inbox", "review.md", "_instructions.json")
 
 
-def test_read_json_and_proposals_json_are_deleted_on_write_or_abort() -> None:
+def test_names_every_stage_file_that_holds_note_content() -> None:
+    """CON-3 / ADR-10: the stage files that hold note content, as lib/review_stage.write lays them out."""
     rests = _section(_privacy(), r"Where read content rests")
-    _one_sentence_has(rests, "deletes `read.json` and `proposals.json`", "written to the inbox", "aborted")
+    _one_sentence_has(rests, "`tomo-tmp/review/<period>_review/`", "`days/`", "`growth/`", "`children/`",
+                      "`previous/`", "`context.json`", "`digests/`", "`carryover.json`", "`proposals.json`")
 
 
-def test_read_json_is_named_as_left_behind_by_an_unfinished_session() -> None:
+def test_stage_content_is_deleted_at_each_moment() -> None:
+    """review-doc.py write and replace --abort, review-instructions.py drop, review-read.py before a new read."""
     rests = _section(_privacy(), r"Where read content rests")
-    _one_sentence_has(rests, "read.json", "session", "ended", "without writing", "abort", "next `/review`")
+    _one_sentence_has(rests, "deletes them", "written to your inbox", "abort the review", "drop the review",
+                      "new read of the period")
+
+
+def test_an_interrupted_run_rests_until_one_of_those_moments() -> None:
+    """F7-AC2: an interrupted Pass 1 keeps its material until a deletion moment or that period's next new read."""
+    rests = _section(_privacy(), r"Where read content rests")
+    _one_sentence_has(rests, "interrupted", "stays there until", "that period's next `/review`")
+
+
+def test_a_kado_stop_leaves_nothing_stored() -> None:
+    """F7-AC2 / F6-AC4: review-read.py discards before its first Kado call and writes nothing when Kado stops it."""
+    rests = _section(_privacy(), r"Where read content rests")
+    _one_sentence_has(rests, "stopped because kado", "stores nothing")
+
+
+def test_each_model_writes_its_own_transcript_in_the_container_home() -> None:
+    """F7-AC3: every review subagent runs as its own Claude Code session with its own transcript."""
+    rests = _section(_privacy(), r"Where read content rests")
+    _one_sentence_has(rests, "each of the three models", "its own session transcript", "container home")
+
+
+def test_the_old_read_files_are_gone() -> None:
+    """Spec 047 replaced read.json (and the quarter's read parts) with the stage folder."""
+    rests = _plain(_section(_privacy(), r"Where read content rests"))
+    assert "read.json" not in rests
 
 
 def test_removing_the_delivered_inbox_files_is_the_users_job() -> None:
@@ -185,6 +222,16 @@ def test_review_paragraph_says_the_previewed_section_holds_the_habit_averages() 
     _one_sentence_has(para, "habit averages", "part of the section")
 
 
+def test_review_paragraph_names_the_previous_reviews_as_a_read_source() -> None:
+    """F7-AC3 / F3-AC1..3: lib/review_previous reads the previous notes through Kado in the same paced read."""
+    _one_sentence_has(_review_paragraph(), "previous reviews", "read through kado", "previous week's note")
+
+
+def test_review_paragraph_names_the_three_models() -> None:
+    """F7-AC3: review-digester (haiku), review-carryover (sonnet), review-proposer (opus) see note content."""
+    _one_sentence_has(_review_paragraph(), "three claude models", "haiku", "sonnet", "opus")
+
+
 def test_review_paragraph_recommends_kado_deny_rules() -> None:
     para = _review_paragraph()
     _one_sentence_has(para, "kado", "deny rules", "folders you do not want reviewed")
@@ -218,6 +265,26 @@ def test_setup_guide_names_the_instance_home_for_the_ide_lock() -> None:
     setup = SETUP.read_text(encoding="utf-8")
     assert "tomo-home/.claude" not in setup
     assert "`home/.claude/ide/<port>.lock`" in setup
+
+
+def test_setup_guide_names_the_three_models() -> None:
+    """F7-AC3: docs/setup.md names the models whose transcripts rest in the instance home."""
+    _one_sentence_has(SETUP.read_text(encoding="utf-8"), "haiku", "sonnet", "opus", "own transcript")
+
+
+def test_readme_lists_the_three_review_agents() -> None:
+    readme = README.read_text(encoding="utf-8")
+    for agent in ("review-digester", "review-carryover", "review-proposer"):
+        assert re.search(rf"^\| `{agent}` \|", readme, re.M), f"README agents table needs a {agent} row"
+
+
+def test_usage_explains_every_carried_mark() -> None:
+    """The Could Have passage of docs/usage.md names each mark exactly as lib/review_doc writes it."""
+    usage = _section(USAGE.read_text(encoding="utf-8"), r"What the marks of a review mean")
+    for lang in ("en", "de"):
+        for key in ("carried_done", "carried_still_open", "carried_not_mentioned"):
+            mark = review_doc._LABELS[lang][key]
+            assert f"`{mark}`" in usage, f"docs/usage.md does not explain {mark!r}"
 
 
 def test_readme_names_review() -> None:

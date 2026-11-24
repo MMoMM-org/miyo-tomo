@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_047_baseline_e2e.py — the before-state of the /review document and of Pass 2 (spec 047 T1.3, ADR-11).
 
 Spec 047 rebuilds how /review reads a period; PRD F2-AC1 asks that the document keeps its shape and F2-AC2
@@ -34,7 +34,9 @@ tests clear the variable, so a changed document never becomes a golden.
 
 `assert_baseline(kind, document, pass2_files, allowed=frozenset())` is the comparison; `allowed` names the
 fingerprint keys (as `review_doc_fingerprint.diff` names them: `top_lines`, `marks.s1` …) that may differ —
-the named differences Phase 8 (T8.1) passes for the new flow. Empty, it is strict. The instruction set is
+the named differences Phase 8 (T8.1) passes for the new flow. Empty, it is strict. `test_baseline` passes
+`ALLOWED` (`top_lines`) since spec 047 T5.4: the fixture walk reads previous notes, which the document now
+names at the top. The instruction set is
 always compared strictly (F2-AC2). Every write a walk attempts is recorded per test and must lie under
 the inbox. All data is synthetic.
 """
@@ -65,6 +67,9 @@ from review_doc_fingerprint import diff, fingerprint  # noqa: E402  (after the w
 GOLDEN_DIR = TESTS_DIR / "fixtures" / "047-baseline"
 WRITE_ENV = "TOMO_047_WRITE_BASELINE"
 REGEN = f"{WRITE_ENV}=1 ./venv/bin/python -m pytest tests/test_047_baseline_e2e.py::test_baseline"
+# Spec 047 T5.4 (owner 2026-11-24, the T8.1 mechanism brought forward): the previous-note lines are
+# the one named difference; every other key and the instruction set stay strict.
+ALLOWED: FrozenSet[str] = frozenset({"top_lines"})
 
 QUARTER_TEMPLATE = "t_quarter.md"
 QUARTER_SECTION_ROW = {"id": "s1", "heading": "Theme", "level": 2, "parent": None, "occurrence": 1,
@@ -212,7 +217,7 @@ def run_old_flow(w: Walk, case: Case) -> Tuple[str, Dict[str, str]]:
 @pytest.mark.parametrize("kind", list(CASES))
 def test_baseline(kind, make_walk):
     document, files = run_old_flow(make_walk(CASES[kind]), CASES[kind])
-    assert_baseline(kind, document, files)
+    assert_baseline(kind, document, files, allowed=ALLOWED)
 
 
 def test_the_quarter_baseline_carries_a_mark_suffix_and_every_kind_its_set():

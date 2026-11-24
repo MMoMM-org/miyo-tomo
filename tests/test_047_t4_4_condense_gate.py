@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_047_t4_4_condense_gate.py — the document waits for the condensing; the walk condenses (spec 047 T4.4).
 
 PRD F6-AC1, SDD ADR-4, Internal API Changes (`condense-incomplete`), Application Data Models (`Sources`),
@@ -247,15 +247,16 @@ def walk(tmp_path, monkeypatch, capsys, request):
 def test_replace_confirm_renders_from_the_kept_condensed_and_carryover(walk):
     assert walk.pass1(WEEK_PERIOD, WEEK)["status"] == "written"
     assert walk.read(WEEK_PERIOD, WEEK)["status"] == "ok"
-    out = walk.condense(WEEK_STEM)
+    out = walk.condense(WEEK_STEM, carry=True)
     assert out["proposer"]["carried"] is True, "the week's previous note was carried"
     stage = walk.stage(WEEK_STEM)
     kept = {name: (stage / name).read_bytes() for name in (CONDENSED, CARRYOVER)}
-    out = walk.write(WEEK_STEM, WEEK, condense=False)
+    out = walk.write(WEEK_STEM, WEEK, condense=False, carry=True)
     assert out["status"] == "refused" and out["problems"] == ["review-exists"], out
     assert {name: (stage / name).read_bytes() for name in kept} == kept, "the refusal keeps both files"
     out = walk.replace(WEEK_STEM, "--confirm")
     assert out["status"] == "replaced", out
+    assert out["previous"][0] == {"kind": "week", "name": "2026-W12", "state": "found", "carried": 1}, out
     assert not (stage / CONDENSED).exists() and not (stage / CARRYOVER).exists(), "discarded after the write"
 
 

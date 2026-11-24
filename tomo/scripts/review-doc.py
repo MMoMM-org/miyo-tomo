@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.10.0
+# version: 0.10.1
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
@@ -32,7 +32,7 @@ Usage (cwd = instance root):
 Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
            counts {group or section key: n}, rejected [{group | section, index, reason}],
-           previous? [{kind, name, state, carried}], not_condensed? [{unit, days}], carry_failed?,
+           previous? [{kind, name, state, carried, carry_failed?}], not_condensed? [{unit, days}], carry_failed?,
            carried_moved? [{key, to, count}] (each only when non-empty / true), calls
          | status refused, problems [condense-incomplete | proposals-invalid | doc-name-taken | review-exists |
            read-missing | read-stale | read-invalid | setup-missing | setup-invalid | inbox-not-configured |
@@ -377,7 +377,8 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
 
 def _top_facts(inp: rd.DocInput, moved: List[dict]) -> dict:
     """The new ``written`` keys, each only when it has something to say (spec 046's result stays as it was)."""
-    facts = {"previous": [{k: row[k] for k in ("kind", "name", "state", "carried")} for row in inp.previous],
+    facts = {"previous": [{k: row[k] for k in ("kind", "name", "state", "carried", "carry_failed") if k in row}
+                          for row in inp.previous],
              "not_condensed": inp.not_condensed, "carry_failed": inp.carry_failed, "carried_moved": moved}
     return {key: value for key, value in facts.items() if value}
 

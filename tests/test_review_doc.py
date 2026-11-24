@@ -178,15 +178,17 @@ def instance(tmp_path, monkeypatch):
     return tmp_path
 
 
-def stage(instance: Path, read: dict, props, stem: str | None = None, *, condensed: bool = True) -> tuple[str, Path]:
+def stage(instance: Path, read: dict, props, stem: str | None = None, *, condensed: bool = True,
+          carry: bool = False) -> tuple[str, Path]:
     """The read staged as review-read.py writes it and, unless ``condensed=False``, condensed by the fixture
-    agents through review-digest.py (spec 047 T4.4: write refuses an uncondensed stage)."""
+    agents through review-digest.py (spec 047 T4.4: write refuses an uncondensed stage); ``carry``: the
+    carryover holds the fixture's one item ``c1``."""
     stem = stem or f"{read['period']['name']}_review"
     folder = instance / "tomo-tmp" / "review" / stem
     review_stage.write(folder, read, stem=stem, rule=ISO,
                        sections_digest=review_stage.sections_digest(read.get("sections")))
     if condensed:
-        condense(folder)
+        condense(folder, carry=carry)
     path = folder / "proposals.json"
     path.write_text(props if isinstance(props, str) else json.dumps(props), encoding="utf-8")
     return stem, path
@@ -1008,7 +1010,8 @@ def test_previous_rows_count_the_accepted_carried_items_linking_each_found_note(
     read = week_read(previous=[_prev("week", "2026-W12", "found", PREV_WEEK),
                                _prev("month", "2026-02", "found", PREV_MONTH, partly_read=True),
                                _prev("quarter", "2025-Q4", "missing"),
-                               _prev("week", "2026-W11", "not-read", "W/2026-W11.md", cause="refused")])
+                               _prev("week", "2026-W11", "not-read", "W/2026-W11.md", cause="refused")],
+                      condensed={"units": {}, "carryover": {"state": "passed", "notes": {}}})
     groups = {rd.DONE: [{"text": "a", "links": ["2026-W12", "2026-03-24"], "carried": "done"},
                         {"text": "b", "links": ["2026-W12"]}],
               rd.OPEN: [{"text": "c", "links": ["2026-W12", "2026-02"], "carried": "still_open"}]}
@@ -1020,3 +1023,32 @@ def test_previous_rows_count_the_accepted_carried_items_linking_each_found_note(
         {"kind": "week", "name": "2026-W11", "state": "not-read", "partly_read": False, "carried": 0,
          "cause": "refused"},
     ]
+
+
+def _carry_read(state: str, notes: dict) -> dict:
+    return week_read(previous=[_prev("week", "2026-W12", "found", PREV_WEEK),
+                               _prev("month", "2026-02", "found", PREV_MONTH),
+                               _prev("quarter", "2025-Q4", "missing")],
+                     condensed={"units": {}, "carryover": {"state": state, "notes": notes}})
+
+
+def test_previous_rows_mark_a_found_note_whose_own_carry_failed():
+    rows = rd.previous_rows(_carry_read("passed", {PREV_WEEK: "failed", PREV_MONTH: "passed"}), {}, {})
+    assert [r.get("carry_failed", False) for r in rows] == [True, False, False]
+
+
+@pytest.mark.parametrize("state", ["pending", "retry", "failed"])
+def test_previous_rows_mark_every_found_note_when_the_whole_carryover_did_not_pass(state):
+    rows = rd.previous_rows(_carry_read(state, {}), {}, {})
+    assert [r.get("carry_failed", False) for r in rows] == [True, True, False]
+
+
+def test_a_found_note_not_taken_into_account_en_and_de():
+    rows = [_prev("week", "2026-W12", "found", PREV_WEEK, carried=1),
+            _prev("month", "2026-02", "found", PREV_MONTH, partly_read=True, carried=0, carry_failed=True)]
+    assert _top(_doc_input(language="en", previous=rows))[1:] == [
+        "> Previous review · week 2026-W12: found, 1 carried",
+        "> Previous review · month 2026-02: found, not taken into account, read in part"]
+    assert _top(_doc_input(previous=rows))[1:] == [
+        "> Letzter Rückblick · Woche 2026-W12: gefunden, 1 übernommen",
+        "> Letzter Rückblick · Monat 2026-02: gefunden, nicht berücksichtigt, teilweise gelesen"]

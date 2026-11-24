@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -62,7 +62,7 @@ for entry in (str(SCRIPTS_DIR), str(TESTS_DIR)):
 
 from review_fake_vault import _folder_key, split_frontmatter  # noqa: E402
 from review_privacy_fixture import (  # noqa: E402
-    CONFIG, DAILY, INBOX, MOCS, MONTHLY, QUARTERLY, WEEKLY, build_vault, condense_with, proposals,
+    CONFIG, DAILY, INBOX, MOCS, MONTHLY, QUARTERLY, WEEKLY, build_vault, condense_with, proposals, with_carried,
 )
 from review_deliver_helpers import GuardedVault  # noqa: E402
 
@@ -181,16 +181,23 @@ class Walk:
     def read(self, period: str, kind: str) -> dict:
         return self.run("review-read", "--period", period, "--kind", kind, "--stem", f"{period}_review")
 
-    def condense(self, stem: str) -> dict:
-        """Step 5 before the proposer: plan, the agents' files, check; ``plan``'s refusal as it stands."""
-        return condense_with(lambda command: self.run("review-digest", command, "--stem", stem), self.stage(stem))
+    def condense(self, stem: str, *, carry: bool = False) -> dict:
+        """Step 5 before the proposer: plan, the agents' files, check; ``plan``'s refusal as it stands.
+        ``carry``: the carryover holds one item (the privacy fixture's opt-in)."""
+        return condense_with(lambda command: self.run("review-digest", command, "--stem", stem), self.stage(stem),
+                             carry=carry)
 
-    def write(self, stem: str, kind: str, props: dict | None = None, *, condense: bool = True) -> dict:
+    def write(self, stem: str, kind: str, props: dict | None = None, *, condense: bool = True,
+              carry: bool = False) -> dict:
+        """``carry``: condense with one carryover item and add its carried proposal (``with_carried``)."""
         if condense:
-            self.condense(stem)
+            self.condense(stem, carry=carry)
+        props = props if props is not None else proposals(kind)
+        if carry:
+            props = with_carried(props, self.stage(stem))
         path = self.stage(stem) / "proposals.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(props if props is not None else proposals(kind)), encoding="utf-8")
+        path.write_text(json.dumps(props), encoding="utf-8")
         return self.run("review-doc", "write", "--stem", stem, "--proposals", str(path), "--today", TODAY)
 
     def pass1(self, period: str, kind: str, props: dict | None = None) -> dict:

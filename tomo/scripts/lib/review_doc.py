@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.6.1
+# version: 0.6.2
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13; spec 047 ADR-6, ADR-12).
 
 Pure functions between the model's ``proposals.json`` and the document the script writes: ``load_proposals`` /
@@ -19,7 +19,8 @@ found previous review note is never a source of a non-carried item. A link is th
 that a source resolved to — a daily of the period or, for ``weekly_only`` / ``monthly_only``, a listed weekly /
 monthly — deduplicated in source order; a source that resolves to nothing is dropped from the links, and no model
 string is ever rendered as a link. ``previous_rows`` gives the read's previous notes with the number of accepted
-carried items linking each found one. ``render_document`` renders the frontmatter (a schema-valid ``tomo:`` block plus the
+carried items linking each found one, ``carry_failed`` on a found one whose carry
+failed (its own ``condensed.json`` note state, or the whole carryover not passed). ``render_document`` renders the frontmatter (a schema-valid ``tomo:`` block plus the
 top-level ``review_*`` keys) and the body: title, info callout (its first line, then one ``> `` line per previous
 note, per not-condensed unit and for a failed carry), ``- [ ] Approved``, one H2 per group from the de/en label
 table (English otherwise), Tomo items as ``- [x] <text> ([[stem]], …) %%t<n>%%`` with the id on the checkbox line
@@ -108,7 +109,8 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "carried_done": "done (previous review)", "carried_still_open": "still open (previous review)",
         "carried_not_mentioned": "not mentioned again (previous review)", "previous": "Previous review",
         "kind_week": "week", "kind_month": "month", "kind_quarter": "quarter", "found": "found, {n} carried",
-        "found_none": "found, nothing carried", "in_part": "read in part", "empty": "empty", "missing":
+        "found_none": "found, nothing carried", "found_failed": "found, not taken into account",
+        "in_part": "read in part", "empty": "empty", "missing":
         "no note found for {name}", "unset_week": "weekly notes are not set up", "unset_month":
         "monthly notes are not set up", "unset_quarter": "quarterly notes are not set up", "cause_refused":
         "Kado refused it", "cause_failed": "Kado did not return it", "not_condensed": "Not condensed",
@@ -129,7 +131,8 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "carried_done": "erledigt (letzter Rückblick)", "carried_still_open": "noch offen (letzter Rückblick)",
         "carried_not_mentioned": "nicht mehr erwähnt (letzter Rückblick)", "previous": "Letzter Rückblick",
         "kind_week": "Woche", "kind_month": "Monat", "kind_quarter": "Quartal", "found": "gefunden, {n} übernommen",
-        "found_none": "gefunden, nichts übernommen", "in_part": "teilweise gelesen", "empty": "leer", "missing":
+        "found_none": "gefunden, nichts übernommen", "found_failed": "gefunden, nicht berücksichtigt",
+        "in_part": "teilweise gelesen", "empty": "leer", "missing":
         "keine Notiz für {name} gefunden", "unset_week": "Wochennotizen sind nicht eingerichtet", "unset_month":
         "Monatsnotizen sind nicht eingerichtet", "unset_quarter": "Quartalsnotizen sind nicht eingerichtet",
         "cause_refused": "Kado hat sie verweigert", "cause_failed": "Kado hat sie nicht geliefert",
@@ -283,10 +286,13 @@ def check_items(proposals: dict, read: dict) -> Tuple[Dict[str, List[dict]], Lis
 
 
 def previous_rows(read: dict, groups: Dict[str, List[dict]], sections: Dict[str, List[dict]]) -> List[dict]:
-    """The read's previous notes ``{kind, name, state, partly_read, carried, cause?}``; ``carried`` counts the
-    accepted carried items (groups and sections) whose links hold a found note's stem."""
+    """The read's previous notes ``{kind, name, state, partly_read, carried, cause?, carry_failed?}``; ``carried``
+    counts the accepted carried items (groups and sections) whose links hold a found note's stem; ``carry_failed``
+    marks a found note whose carry failed: its own note state, or the whole carryover not passed."""
     links = [e.get("links") or [] for entries in (*groups.values(), *sections.values()) for e in entries
              if e.get("carried")]
+    carry = (read.get("condensed") or {}).get("carryover") or {}
+    note_states = carry.get("notes") or {}
     rows = []
     for prev in read.get("previous") or []:
         stem = note_stem(str(prev.get("path") or "")) if prev.get("state") == "found" else None
@@ -294,6 +300,8 @@ def previous_rows(read: dict, groups: Dict[str, List[dict]], sections: Dict[str,
                "partly_read": bool(prev.get("partly_read")), "carried": sum(1 for ls in links if stem in ls)}
         if prev.get("cause"):
             row["cause"] = prev["cause"]
+        if stem is not None and (carry.get("state") != "passed" or note_states.get(prev.get("path")) == "failed"):
+            row["carry_failed"] = True
         rows.append(row)
     return rows
 
@@ -371,7 +379,10 @@ def _days_span(days: Sequence[str]) -> str:
 def _state(row: dict, words: Dict[str, str]) -> str:
     """One previous note's state words: found / empty / missing / not set up / not read with its cause."""
     state, n = row.get("state"), int(row.get("carried") or 0)
-    text = {"found": words["found"].format(n=n) if n else words["found_none"], "empty": words["empty"],
+    found = words["found"].format(n=n) if n else words["found_none"]
+    if row.get("carry_failed"):
+        found = words["found_failed"]
+    text = {"found": found, "empty": words["empty"],
             "missing": words["missing"].format(name=row.get("name")),
             "not-set-up": words.get(f"unset_{row.get('kind')}", "")}.get(state)
     if text is None:

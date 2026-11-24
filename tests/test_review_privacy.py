@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.1
+# version: 0.5.2
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -86,7 +86,7 @@ sys.path.insert(0, str(TESTS_DIR))
 
 from review_privacy_fixture import (  # noqa: E402
     ANCHOR, ANS, CONFIG, DAY, INBOX, KIND_OF, MARKER_RE, PRP, READABLE, TRK, WKL, build_vault, condense_files,
-    proposals, put_files,
+    proposals, put_files, with_carried,
 )
 from lib import review_day as rday  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
@@ -258,7 +258,7 @@ class Walk:
     def write_proposals(self, stem: str, kind: str) -> Path:
         path = self.stage(stem) / "proposals.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(proposals(kind)), encoding="utf-8")
+        path.write_text(json.dumps(with_carried(proposals(kind), self.stage(stem))), encoding="utf-8")
         return path
 
     def note_stage_files(self, label: str, stem: str) -> None:
@@ -423,7 +423,7 @@ def _condense(w: Walk, stem: str = MONTH_STEM, carried: bool = True) -> None:
     check of every call)."""
     rc, out = w.run("review-digest", "plan", ["plan", "--stem", stem])
     assert rc == 0 and out["status"] == "ok" and out["rounds"], out
-    put_files(w.stage(stem), condense_files(out, w.stage(stem), text=DAY))
+    put_files(w.stage(stem), condense_files(out, w.stage(stem), text=DAY, carry=True))
     rc, out = w.run("review-digest", "check", ["check", "--stem", stem])
     assert rc == 0 and out["status"] == "ok" and out["ready"] is True and out["retry"] == [], out
     assert out["proposer"]["carried"] is carried, "the previous note was carried"

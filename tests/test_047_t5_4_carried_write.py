@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_047_t5_4_carried_write.py — carried items through ``review-doc.py write`` (spec 047 T5.4).
 
 SDD ADR-6, ADR-12, Internal API Changes (the `carried-*` errors, the `carried-moved` notice, the new
 `written` keys); PRD F4-AC10, F5-AC2, F6-AC2, F3-AC11. On tests/review_fake_vault with a week read staged
 through lib/review_stage.write and condensed by the fixture agents (one `open` carryover item `c1` per
-found previous note, sourced by its stem):
+found previous note under the fixture's opt-in ``carry=True``, sourced by its stem):
 - a carried group item is written with its carried label, the previous-note top line counts it, and
   `written` carries `previous`, `not_condensed`, `carry_failed` and `carried_moved`, each only when it
   has a fact (spec 046's result unchanged), counts and names only;
@@ -16,7 +16,10 @@ found previous note, sourced by its stem):
   `carried-without-carryover`; with no found note there is no carry-failed line;
 - with a mapping, `overflow` runs before `over-cap` is counted: a carried item of a full section moves to
   the group of its mark and is reported in `carried_moved`; a full section without a carried item is
-  still refused `over-cap`.
+  still refused `over-cap`;
+- F6-AC2 partly: a found note whose own carry failed (the carryover passed for the other) says "found, not
+  taken into account" while the other's item stays carried; with the whole carryover not passed every found
+  note says so, beside the one carry-failed line.
 All data is synthetic.
 """
 from __future__ import annotations
@@ -81,10 +84,19 @@ def _set_carryover(path: Path, state: str) -> None:
     condensed.write_text(json.dumps(doc), encoding="utf-8")
 
 
-def _write(script, monkeypatch, capsys, inst, read, props, *, carryover_state=None):
-    stem, path = trd.stage(inst, read, props)
+def _set_note_states(path: Path, states: dict) -> None:
+    condensed = path.parent / "condensed.json"
+    doc = json.loads(condensed.read_text(encoding="utf-8"))
+    doc["carryover"]["notes"] = dict(states)
+    condensed.write_text(json.dumps(doc), encoding="utf-8")
+
+
+def _write(script, monkeypatch, capsys, inst, read, props, *, carryover_state=None, note_states=None):
+    stem, path = trd.stage(inst, read, props, carry=True)
     if carryover_state:
         _set_carryover(path, carryover_state)
+    if note_states:
+        _set_note_states(path, note_states)
     fake = ReviewFakeVault(dict(TARGET))
     code, out, _ = trd._run(script, monkeypatch, capsys,
                             ["write", "--stem", stem, "--proposals", str(path), "--run-id", "r-test"], fake)
@@ -159,7 +171,7 @@ def test_a_carryover_not_passed_writes_the_carry_failed_line_and_no_carried_labe
     assert out["status"] == "written" and out["carry_failed"] is True, out
     lines = _lines(fake)
     assert CARRY_FAILED_DE in lines
-    assert "> Letzter Rückblick · Woche 2026-W12: gefunden, nichts übernommen" in lines
+    assert "> Letzter Rückblick · Woche 2026-W12: gefunden, nicht berücksichtigt" in lines
     assert not any("(letzter Rückblick)" in ln for ln in lines if ln.startswith("- [x]"))
 
 
@@ -209,3 +221,25 @@ def test_a_full_section_without_a_carried_item_is_still_over_cap(script, mapped_
     out, fake = _write(script, monkeypatch, capsys, mapped_inst, _mapped(PREV), props)
     assert out["problems"] == ["proposals-invalid"] and out["errors"] == ["/sections/0/items: over-cap (s1)"], out
     assert fake.writes == []
+
+
+# ---------------------------------------------------------------- F6-AC2: one of two notes not taken into account
+
+PREV_FEB = f"{trd.MONTHLY}2026-02.md"
+FEB = {"kind": "month", "name": "2026-02", "role": "previous-month", "path": PREV_FEB, "state": "found",
+       "partly_read": True, "sections": {"Goals": "- read"}}
+
+
+def test_one_of_two_notes_failing_its_carry_is_named_and_the_others_item_stays(script, inst, monkeypatch, capsys):
+    props = trd.proposals(done=[PLAIN], open=[carried("Jana anrufen", "not_mentioned", "2026-W12")])
+    out, fake = _write(script, monkeypatch, capsys, inst, _read(PREV, FEB), props,
+                       note_states={PREV_WEEK: "passed", PREV_FEB: "failed"})
+    assert out["status"] == "written" and "carry_failed" not in out, out
+    lines = _lines(fake)
+    assert "> Letzter Rückblick · Woche 2026-W12: gefunden, 1 übernommen" in lines
+    assert "> Letzter Rückblick · Monat 2026-02: gefunden, nicht berücksichtigt, teilweise gelesen" in lines
+    assert CARRY_FAILED_DE not in lines
+    assert "- [x] Jana anrufen ([[2026-W12]]) · nicht mehr erwähnt (letzter Rückblick) %%t2%%" in lines
+    assert out["previous"] == [
+        {"kind": "week", "name": "2026-W12", "state": "found", "carried": 1},
+        {"kind": "month", "name": "2026-02", "state": "found", "carried": 0, "carry_failed": True}]

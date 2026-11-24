@@ -356,3 +356,16 @@ stem. A not-found note carries nothing and shows no count.
 WHY a single-day not-condensed unit shows the day alone: "(2026-03-02 –
 2026-03-02)" reads as a range that is not one. A unit of one taking-part day
 renders "Not condensed: W10 (2026-03-02)".
+
+## WHY a Found Note Can Say "Not Taken Into Account" (Spec 047 T5.4, 0.6.2)
+
+WHY: F6-AC2, owner 2026-11-24. When the carry of one previous note fails
+(its own state in `condensed.json`'s carryover `notes` is `failed`) while
+the carryover passed for the other, that note's top line says "found, not
+taken into account" / "gefunden, nicht berücksichtigt"; the other note's
+items stay carried. When the whole carryover did not pass (`pending`,
+`retry`, `failed`), every found note says the same, beside the one
+carry-failed line: "found, nothing carried" would claim the note held
+nothing to follow up, which nobody checked. `previous_rows` sets
+`carry_failed` on such a row; `review-doc.py write` reports it in
+`previous`.

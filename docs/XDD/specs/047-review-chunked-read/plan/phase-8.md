@@ -40,7 +40,7 @@ Proves on the fake vault that the new flow produces the same review and the same
   4. Validate: GREEN; full suite green; ruff clean.
   5. Success: the review and Pass 2 stay as they were, for every kind, apart from what this spec adds `[ref: PRD/F2-AC1, F2-AC2]`
 
-- [ ] **T8.2 Failure, resume and re-review end to end** `[activity: testing]`
+- [x] **T8.2 Failure, resume and re-review end to end** `[activity: testing]`
 
   1. Prime: T8.1; `tests/test_review_e2e_failures.py`, `tests/test_review_e2e_edges.py`; walkthroughs (b), (c), (d); `lib/review_section_plan.py` (unchanged) `[ref: SDD/Complex Logic (b), (c), (d)]` `[ref: SDD/Test Examples; lines: 888-894]` `[ref: SDD/Error Handling; lines: 939-962]`
   2. Test, all on the fake vault through the walk:

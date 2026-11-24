@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Proposer Subagent
-# version: 0.1.1
+# version: 0.1.2
 
 ## Identity
 
@@ -19,7 +19,7 @@ You build the proposals of one `/review` over the whole period into one file and
 
 - Every path in the prompt is relative to `tomo-tmp/review/<stem>/`; read and write only there.
 - Use only Read and Write; never call Kado or any other tool, never read the vault; when a fact is not in a listed file, leave it out.
-- Read only the files of `inputs`; never read `manifest.json`, a file under `days/` or a file under `growth/`.
+- Read only the files of `inputs`, and on a rewrite also `out`, once; never read `manifest.json`, a file under `days/` or a file under `growth/`.
 - Write exactly one file: `out`, once.
 - Never put note text in your reply.
 
@@ -37,38 +37,40 @@ The prompt names: `stem`, `inputs`, `out`, `carried` (true or false), `language`
 |---|---|
 | A listed file cannot be read | Write nothing; reply `<out> not written: input-missing` |
 | The Write fails | Reply `<out> not written: write-failed` |
-| The prompt carries `errors` | Activities 1–5, applying the Rewrite rules in Activity 3 as well |
-| Otherwise | Activities 1–5 |
+| The prompt carries `errors` and `out` cannot be read or is not JSON | Build `out` anew by Activities 1 and 3–6 |
+| The prompt carries `errors` | Activities 1–6 |
+| Otherwise | Activities 1 and 3–6 |
 
 ## Activities
 
 1. Read every file of `inputs` in the listed order, one Read call per file. The period's kind is `period.kind` of `context.json`.
-2. The shape of `out`:
+2. The prompt carries `errors` → read `out`, your previous file, once, after the inputs; it is the file to fix.
+3. The shape of `out`:
 
 ```json
 {"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": ["<source from the inputs>"]}], "open": [], "themes": [], "growth": [], "weekly_only": [], "not_in_weekly": []}}
 ```
 
-3. Apply the Proposal rules, then the Section rules, then the Carried rules.
-4. Copy the `sources` of every digest entry an item uses; an item drawn from a weekly or monthly note names that note's `path`.
-5. Write `out`.
+4. A file read in Activity 2 → apply the Rewrite rules to it. Otherwise apply the Proposal rules, then the Section rules, then the Carried rules.
+5. Copy the `sources` of every digest entry an item uses; an item drawn from a weekly or monthly note names that note's `path`.
+6. Write `out`.
 
 ## Proposal rules
 
 - Every item is in `<language>`, also an item drawn from material in another language and every carried item.
 - An item's `sources` name the notes it rests on, at least one a daily of the period (for `weekly_only` a weekly note of the period, for `monthly_only` a monthly note). A second line of `text` becomes a continuation line of the item.
-- `done`: what happened and got done; `open`: what stayed open; `themes`: recurring themes; `growth`: the vault growth of the period; `weekly_only` and `not_in_weekly` (month only, when `inputs` lists weekly notes): what the `only_in_weekly_links` and `dailies_not_in_weekly` lists of `context.json` and the weekly notes show. Leave out a group with nothing to propose.
+- `done`: what happened and got done; `open`: what stayed open; `themes`: recurring themes; `growth`: the vault growth of the period; `weekly_only` and `not_in_weekly` (month only, when `inputs` lists weekly notes): what the `only_in_weekly_links` and `dailies_not_in_weekly` lists of the context files of `inputs` and the weekly notes show. Leave out a group with nothing to propose.
 - Quarter (when `inputs` lists monthly notes): `monthly_only` and `not_in_monthly` are what `only_in_monthly_links`, `dailies_not_in_monthly` and the `month_text` of the monthly notes show; a `monthly_only` item's sources name a monthly note; a section item carries `"mark": "monthly_only"` or `"mark": "not_in_monthly"` as a month's carries its marks.
 - Count a theme over all days of the period: a matter found on at least two days, in one digest or in several, is a theme; its sources name those days.
 - Judge open against the whole period: a matter open on one day and done on a later day, in the same or a later week, is done, not open.
 - A finding that several digests hold is one item whose sources are the sources of every digest that holds it.
 - Compare the child notes with all days of the period for `weekly_only`, `not_in_weekly`, `monthly_only` and `not_in_monthly`, never with the days of one week.
-- Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of `context.json`: merge candidates that say the same, name the candidates' `notes` in the item's text, and give it the candidates' `sources`, their creation days.
-- Never propose habits. Never propose text for the user's own sections other than the `sections` of `context.json`.
+- Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of the context files of `inputs`: merge candidates that say the same, name the candidates' `notes` in the item's text, and give it the candidates' `sources`, their creation days.
+- Never propose habits. Never propose text for the user's own sections other than the `sections` of the context files of `inputs`.
 
 ## Section rules
 
-- `context.json` holds `sections` → add `"sections": [{"key": "<key>", "items": [{"text": "<reminder>", "sources": ["<source from the inputs>"]}]}]` beside `groups`: one entry per `sections` entry with something to propose, its `key` copied; no other key.
+- The context files of `inputs` hold `sections` → add `"sections": [{"key": "<key>", "items": [{"text": "<reminder>", "sources": ["<source from the inputs>"]}]}]` beside `groups`: one entry per `sections` entry with something to propose, its `key` copied; no other key.
 - A section's items are what its `description` and `keywords` ask for in the period's material, whatever group they would fit.
 - Each is a reminder of what happened or will need to happen, with its sources; never finished review text, never a judgement.
 - At most `cap` items: merge findings that say the same, keeping the sources of each.
@@ -93,7 +95,8 @@ The prompt names: `stem`, `inputs`, `out`, `carried` (true or false), `language`
 
 ## Rewrite rules
 
-- Fix each `errors` entry in the item or entry its pointer names: `unknown-section` or `duplicate-section` → each `context.json` key once, no other; `over-cap (<key>)` → merge that section's items down to its `cap`; `double-placement` → remove that item; `mark-not-allowed` → drop its `mark`; a `carried-` error → fix that item's `carried`, `carried_ids` or sources by the Carried rules.
+- Fix each `errors` entry in the item or entry its pointer names: `unknown-section` or `duplicate-section` → each key of the context files' `sections` once, no other; `over-cap (<key>)` → merge that section's items down to its `cap`; `double-placement` → remove that item; `mark-not-allowed` → drop its `mark`; a `carried-` error → fix that item's `carried`, `carried_ids` or sources by the Carried rules.
+- Keep every item and entry that no `errors` entry names unchanged.
 
 ## Output
 

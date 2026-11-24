@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Digester Subagent
-# version: 0.1.1
+# version: 0.1.2
 
 ## Identity
 
@@ -43,7 +43,7 @@ The prompt names: `stem`, `unit`, `read_id`, `days`, `day_files`, `growth_files`
 
 1. Read every file of `day_files`, one Read call per file; skip no day.
 2. Read every file of `growth_files` and the `weekly_note` when it is not null, one Read call per file.
-3. `sections` true → read every file of `section_files` and take only their `sections` entries.
+3. The prompt's `sections` true → read every file of `section_files` and take only their `sections` entries.
 4. Build the digest:
    - `read_id` and `unit` copied from the prompt; `days` is exactly the prompt's `days` list.
    - Each source is a path from the `dailies` list of a day file of this unit; never a linked note.
@@ -51,7 +51,7 @@ The prompt names: `stem`, `unit`, `read_id`, `days`, `day_files`, `growth_files`
    - `open`: `{text, sources}` per thing the days show still open or only partly done.
    - `notable`: `{text, sources}` per other matter a review should remind of.
    - `themes`: `{text, days, sources}` per matter that recurs or stands out, with every day of this unit it shows on; keep a matter that shows on one day only.
-   - `sections`: `sections` true → one `{key, items}` per `sections` entry of `section_files` with something in this unit, `key` copied, `items` what its `description` and `keywords` ask for; `sections` false → `[]`.
+   - The digest's `sections` key: the prompt's `sections` true → one `{key, items}` per `sections` entry of `section_files` with something in this unit, `key` copied, `items` what its `description` and `keywords` ask for; the prompt's `sections` false → `[]`.
    - `child_notes`: `{text, sources}` per point the weekly note's `week_text` and `day_blocks` make, each source the weekly note's `path`; no `weekly_note` → `[]`.
    - `growth`: `{text, sources, notes}` per group of created notes of the growth files: `notes` the `path` values of their `created` entries (1 to 10), `sources` the `dailies` path of the day file whose `date` equals the growth file's `date`, `text` what the notes are about.
    - Every key is present; a key with nothing to say is `[]`.

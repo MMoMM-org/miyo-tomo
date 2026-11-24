@@ -107,6 +107,26 @@ one rewrite is aimed: `unknown-section` / `duplicate-section` → each context k
 that item's `carried` / `carried_ids` / sources. A second refusal is shown and no document is written: looping on a
 schema the model cannot satisfy burns the user's time.
 
+## WHY a Rewrite Fixes the Previous File in Place
+
+WHY: on a rewrite the prompt carries `errors`, and the proposer reads `out` — its own previous `proposals.json` —
+once besides `inputs`, fixes each entry a pointer names and keeps every entry no error names. `review-doc.py write`
+raises `proposals-invalid` before it writes or discards anything, so the refused file is still on the stage; the
+skill's rewrite follows the refusal directly, with no `review-digest.py plan` in between (plan, which deletes a
+leftover `proposals.json`, runs once per run, before the first proposer dispatch). Fixing in place is cheaper than a
+rebuild — the pointers name the few broken entries — and it keeps the items that passed exactly as they were, so a
+rewrite cannot trade one error for a new one or drop an item that was fine. Reading `out` is the one exception to
+"read only `inputs`"; `plan` does not list it because it does not exist before the first run. When `out` cannot be
+read or is not JSON, there is nothing to keep and the proposer builds it anew from `inputs`.
+
+## WHY "the Context Files of `inputs`", Not `context.json`
+
+WHY: a context over the file ceiling is spilled by `review_stage` into `context-<n>.json` parts; the head keeps only
+`read_id` and `period` (and empty lists), so the sections, the child-note link lists and the growth counts may sit in
+a part. `plan` lists every context file in `inputs`, so the rules name "the context files of `inputs`" for that data;
+only the period's kind is read from `context.json` by name, because the head always keeps `period`. The same spill
+made the digester's bare `context.json` read unsafe (see [review-digester](review-digester.md)).
+
 ## WHY the Carried Rules (ADR-6, Feature 4)
 
 WHY: the carryover lists what the previous reviews left open, intended or recurring. Whether the period did it is a

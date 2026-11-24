@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_047_agents.py — the three /review agents (spec 047 T6.2; ADR-7; PRD F1-AC3, F1-AC4, F1-AC5, F2-AC3,
 F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC5, F4-AC6, F4-AC8, F4-AC10, F4-AC11, F6-AC2, F7-AC5).
 
@@ -29,6 +29,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import test_review_digest as trdg
 from review_cli_contract import REPO, load_script
 
 AGENTS_DIR = REPO / "tomo" / "dot_claude" / "agents"
@@ -61,7 +62,7 @@ def _count(agent: str, phrase: str) -> int:
 # ── frontmatter (ADR-7, F7-AC5) ──────────────────────────────────────────────
 
 
-VERSIONS = {"review-digester": "0.1.1", "review-carryover": "0.1.0", "review-proposer": "0.1.1"}
+VERSIONS = {"review-digester": "0.1.2", "review-carryover": "0.1.0", "review-proposer": "0.1.2"}
 
 
 @pytest.mark.parametrize("agent", AGENTS)
@@ -98,11 +99,16 @@ def test_the_runtime_text_holds_no_rationale_ids_dates_or_examples(agent):
 # ── the prompt fields are the job fields of `review-digest.py plan` ─────────
 
 
-def _job_keys(function: str) -> set:
-    source = DIGEST_SCRIPT.read_text(encoding="utf-8")
-    body = source[source.index(f"def {function}("):]
-    body = body[:body.index("\ndef ", 1)]
-    return set(re.findall(r'"([a-z_]+)":', body)) - {"agent"}
+@pytest.fixture
+def plan_out(tmp_path, capsys):
+    """A real ``review-digest.py plan`` on the W14 fixture stage of test_review_digest (one digester job and the
+    carryover job, both previous notes found)."""
+    return trdg._plan(capsys, trdg._w14_stage(tmp_path))
+
+
+def _job_keys(plan: dict, agent: str) -> set:
+    (keys,) = {frozenset(j) for r in plan["rounds"] for j in r if j["agent"] == agent}
+    return set(keys) - {"agent"}
 
 
 def _prompt_fields(agent: str) -> set:
@@ -110,18 +116,18 @@ def _prompt_fields(agent: str) -> set:
     return set(re.findall(r"`([a-z_]+)`", line))
 
 
-def test_the_digester_prompt_is_the_digester_job():
-    assert _prompt_fields("review-digester") - PROMPT_EXTRA == _job_keys("_digester_job")
+def test_the_digester_prompt_is_the_digester_job(plan_out):
+    assert _prompt_fields("review-digester") - PROMPT_EXTRA == _job_keys(plan_out, "review-digester")
     assert {"stem", "read_id", "language"} <= _prompt_fields("review-digester")
 
 
-def test_the_carryover_prompt_is_the_carryover_job():
-    assert _prompt_fields("review-carryover") - PROMPT_EXTRA == _job_keys("_carrier_job")
+def test_the_carryover_prompt_is_the_carryover_job(plan_out):
+    assert _prompt_fields("review-carryover") - PROMPT_EXTRA == _job_keys(plan_out, "review-carryover")
     assert {"stem", "read_id", "language"} <= _prompt_fields("review-carryover")
 
 
-def test_the_proposer_prompt_is_plans_proposer_entry():
-    assert _prompt_fields("review-proposer") - {"stem", "language", "errors"} == _job_keys("_proposer")
+def test_the_proposer_prompt_is_plans_proposer_entry(plan_out):
+    assert _prompt_fields("review-proposer") - {"stem", "language", "errors"} == set(plan_out["proposer"])
     assert {"stem", "language", "errors"} <= _prompt_fields("review-proposer")
 
 
@@ -183,6 +189,9 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     ("review-digester", "section-files",
      "`sections` true → read every file of `section_files` and take only their `sections` entries."),
     ("review-digester", "no-context-by-name", "never read a context file by name."),
+    ("review-digester", "digest-sections-key",
+     "The digest's `sections` key: the prompt's `sections` true → one `{key, items}` per `sections` entry of "
+     "`section_files`"),
     ("review-digester", "days-exactly", "`days` is exactly the prompt's `days` list."),
     ("review-digester", "daily-sources",
      "Each source is a path from the `dailies` list of a day file of this unit; never a linked note."),
@@ -208,6 +217,7 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     ("review-carryover", "cap", "Keep the file within `cap_bytes` bytes and at most 30 items"),
     # review-proposer: inputs and shape
     ("review-proposer", "inputs-in-order", "Read every file of `inputs` in the listed order, one Read call per file."),
+    ("review-proposer", "rewrite-reads-out", "and on a rewrite also `out`, once;"),
     ("review-proposer", "never-manifest",
      "never read `manifest.json`, a file under `days/` or a file under `growth/`."),
     ("review-proposer", "shape",
@@ -235,12 +245,16 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
      "Compare the child notes with all days of the period for `weekly_only`, `not_in_weekly`, `monthly_only` and "
      "`not_in_monthly`, never with the days of one week."),
     ("review-proposer", "growth-from-digests-and-context",
-     "Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of "
-     "`context.json`:"),
+     "Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of the "
+     "context files of `inputs`:"),
     ("review-proposer", "growth-creation-days", "give it the candidates' `sources`, their creation days."),
     ("review-proposer", "habits", "Never propose habits."),
     ("review-proposer", "own-sections",
-     "Never propose text for the user's own sections other than the `sections` of `context.json`."),
+     "Never propose text for the user's own sections other than the `sections` of the context files of `inputs`."),
+    ("review-proposer", "child-lists-from-context-files",
+     "what the `only_in_weekly_links` and `dailies_not_in_weekly` lists of the context files of `inputs` and the "
+     "weekly notes show."),
+    ("review-proposer", "sections-from-context-files", "The context files of `inputs` hold `sections` → add"),
     # review-proposer: the section rules (spec 046)
     ("review-proposer", "sections-beside-groups",
      "beside `groups`: one entry per `sections` entry with something to propose, its `key` copied; no other key."),
@@ -297,11 +311,19 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
 ]
 
 REWRITE_LINE = ("Fix each `errors` entry in the item or entry its pointer names: `unknown-section` or "
-                "`duplicate-section` → each `context.json` key once, no other; `over-cap (<key>)` → merge that "
+                "`duplicate-section` → each key of the context files' `sections` once, no other; `over-cap (<key>)` → merge that "
                 "section's items down to its `cap`; `double-placement` → remove that item; `mark-not-allowed` → "
                 "drop its `mark`; a `carried-` error → fix that item's `carried`, `carried_ids` or sources by the "
                 "Carried rules.")
-PINS.append(("review-proposer", "rewrite", REWRITE_LINE))
+PINS += [
+    ("review-proposer", "rewrite", REWRITE_LINE),
+    ("review-proposer", "rewrite-step",
+     "The prompt carries `errors` → read `out`, your previous file, once, after the inputs; it is the file to fix."),
+    ("review-proposer", "rewrite-in-activity", "A file read in Activity 2 → apply the Rewrite rules to it."),
+    ("review-proposer", "rewrite-keeps", "Keep every item and entry that no `errors` entry names unchanged."),
+    ("review-proposer", "rewrite-unreadable-out",
+     "| The prompt carries `errors` and `out` cannot be read or is not JSON | Build `out` anew by Activities 1 and 3–6 |"),
+]
 
 
 @pytest.mark.parametrize("agent,label,phrase", PINS, ids=[f"{a}-{lab}" for a, lab, _p in PINS])
@@ -348,7 +370,19 @@ def test_the_rewrite_names_a_fix_for_every_section_error_and_the_carried_errors(
 
 def test_the_rewrite_runs_only_with_errors():
     text = _flat(_text("review-proposer"))
-    assert "| The prompt carries `errors` | Activities 1–5, applying the Rewrite rules in Activity 3 as well |" in text
+    assert "| The prompt carries `errors` | Activities 1–6 |" in text
+    assert "| Otherwise | Activities 1 and 3–6 |" in text
+    assert text.index("`out` cannot be read or is not JSON") < text.index("| The prompt carries `errors` | Activities")
+
+
+def test_the_proposer_names_context_json_only_for_the_period_kind():
+    """Spilled context: every other context datum is named as "the context files of `inputs`"."""
+    lines = [ln for ln in _text("review-proposer").splitlines() if "`context.json`" in ln]
+    assert len(lines) == 1 and "`period.kind` of `context.json`" in lines[0], lines
+
+
+def test_the_digester_never_names_context_json():
+    assert "context.json" not in _text("review-digester")
 
 
 def test_the_proposer_groups_line_comes_before_the_quarter_line():

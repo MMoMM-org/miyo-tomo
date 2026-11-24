@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """review_privacy_fixture.py — the marked vault of the /review privacy walk
 (tests/test_review_privacy.py; spec 045 T5.4).
 
@@ -41,6 +41,17 @@ coverage passes. `condense_with(run, stage)` runs plan → those files → check
 through a caller's runner (the e2e walk's script calls); `condense(stage)` runs
 it in-process, without printing, for the tests that stage a read directly. The
 one builder for the privacy walk, the e2e walk and the review-doc tests.
+`carry` may also be a count (spec 047 T8.1): item k rests on found note k
+modulo their number, and `with_carried` gives the second a `still_open` and
+the third a `done` proposal (`CARRIED_KINDS`), each with the stage's first
+day as a further source; True stays the one `not_mentioned` item.
+
+The fixture proposer (spec 047 T8.1): `propose_from_inputs(props, stage,
+inputs)` stands in for the review-proposer over `check`'s `proposer.inputs`:
+it keeps each item of ``props`` whose every source reaches it — a day of an
+input digest, the stem of an input child note, or a note of the input
+carryover — and adds a "Vault growth" item per growth candidate of the input
+digests; an item whose material never reached it is dropped.
 """
 from __future__ import annotations
 
@@ -229,19 +240,20 @@ def _digest(job: dict, stage: Path, read_id: str, text: str) -> dict:
             "notable": [], "themes": [], "sections": [], "child_notes": [], "growth": growth[:15]}
 
 
-def _carryover(job: dict, stage: Path, read_id: str, text: str, carry: bool = False) -> dict:
+def _carryover(job: dict, stage: Path, read_id: str, text: str, carry: bool | int = False) -> dict:
     notes = [_stage_json(stage, name) for name in job["previous_files"]]
-    items = ([{"id": "c1", "type": "open", "text": f"carry {text}", "sources": [_stem(notes[0]["path"])]}]
-             if carry and notes else [])
+    count = int(carry) if notes else 0          # True is one item; item k rests on found note k mod len(notes)
+    items = [{"id": f"c{k + 1}", "type": "open", "text": f"carry {text}",
+              "sources": [_stem(notes[k % len(notes)]["path"])]} for k in range(count)]
     return {"read_id": read_id,
             "notes": [{"path": n["path"], "kind": n["kind"], "name": n["name"],
                        "items": sum(1 for i in items if _stem(n["path"]) in i["sources"])} for n in notes],
             "items": items}
 
 
-def condense_files(plan: dict, stage: Path, text: str = "condensed", carry: bool = False) -> dict:
+def condense_files(plan: dict, stage: Path, text: str = "condensed", carry: bool | int = False) -> dict:
     """``{stage-relative out path: data}`` the agents would write for every job of ``plan``; ``carry`` gives the
-    carryover its one item."""
+    carryover its one item (True) or that many."""
     files = {}
     for job in (j for r in plan["rounds"] for j in r):
         if job["agent"] == "review-digester":
@@ -251,15 +263,34 @@ def condense_files(plan: dict, stage: Path, text: str = "condensed", carry: bool
     return files
 
 
+# the carried proposal of carryover item k (CARRIED_KINDS[k], the last for every later k): (group, carried value,
+# whether its sources add a day of the period — done and still_open need one, not_mentioned must have none)
+CARRIED_KINDS = (("open", "not_mentioned", False), ("open", "still_open", True), ("done", "done", True))
+
+
+def _first_day(stage: Path) -> str:
+    """The stem of the first daily of the stage's days, in date order."""
+    for name in sorted(p.name for p in (stage / "days").glob("*.json")):
+        dailies = _stage_json(stage, f"days/{name}").get("dailies") or []
+        if dailies:
+            return _stem(str(dailies[0]))
+    raise AssertionError(f"no day with a daily in {stage}")
+
+
 def with_carried(props: dict, stage: Path) -> dict:
-    """``props`` plus one carried proposal per item of the stage's ``carryover.json`` (none without the file):
-    ``not_mentioned`` in ``open``, sourced by the item's previous notes, so the coverage rule passes."""
+    """``props`` plus one carried proposal per item of the stage's ``carryover.json`` (none without the file),
+    sourced by the item's previous notes, so the coverage rule passes: the first ``not_mentioned`` in
+    ``open``; with more items the second ``still_open`` in ``open`` and the third ``done`` in ``done``, both
+    with the stage's first day as a further source (``CARRIED_KINDS``)."""
     path = stage / "carryover.json"
     items = json.loads(path.read_text(encoding="utf-8"))["items"] if path.is_file() else []
     out = json.loads(json.dumps(props))
-    out.setdefault("groups", {}).setdefault("open", []).extend(
-        {"text": f"carried {item['id']} {PRP}", "sources": list(item["sources"]), "carried": "not_mentioned",
-         "carried_ids": [item["id"]]} for item in items)
+    for k, item in enumerate(items):
+        group, value, with_day = CARRIED_KINDS[min(k, len(CARRIED_KINDS) - 1)]
+        sources = list(item["sources"]) + ([_first_day(stage)] if with_day else [])
+        out.setdefault("groups", {}).setdefault(group, []).append(
+            {"text": f"carried {item['id']} {PRP}", "sources": sources, "carried": value,
+             "carried_ids": [item["id"]]})
     return out
 
 
@@ -283,7 +314,8 @@ def _digest_script():
     return _DIGEST_MOD[0]
 
 
-def condense_with(run: Callable[[str], dict], stage: Path, text: str = "condensed", carry: bool = False) -> dict:
+def condense_with(run: Callable[[str], dict], stage: Path, text: str = "condensed",
+                  carry: bool | int = False) -> dict:
     """plan → the agents' files → check on ``stage``, ``run(subcommand)`` calling review-digest.py; returns
     check's answer, or plan's refusal as it stands."""
     plan = run("plan")
@@ -295,7 +327,7 @@ def condense_with(run: Callable[[str], dict], stage: Path, text: str = "condense
     return out
 
 
-def condense(stage: Path, text: str = "condensed", carry: bool = False) -> dict:
+def condense(stage: Path, text: str = "condensed", carry: bool | int = False) -> dict:
     """``condense_with`` in-process and silent; a refused plan fails the test."""
     mod = _digest_script()
 
@@ -304,4 +336,39 @@ def condense(stage: Path, text: str = "condensed", carry: bool = False) -> dict:
 
     out = condense_with(call, stage, text, carry)
     assert out["status"] == "ok", out
+    return out
+
+
+# ---------------------------------------------------------------- the fixture proposer (spec 047 T8.1)
+
+def _reachable(stage: Path, inputs: list) -> tuple[set, list]:
+    """``(source stems the inputs carry, growth candidates of the input digests)``."""
+    stems: set = set()
+    growth: list = []
+    for name in inputs:
+        doc = _stage_json(stage, name)
+        if name.startswith("digests/"):
+            stems.update(doc["days"])
+            growth += doc.get("growth") or []
+        elif name.startswith("children/"):
+            stems.add(_stem(doc["path"]))
+        elif name == "carryover.json":
+            stems.update(_stem(n["path"]) for n in doc["notes"])
+    return stems, growth
+
+
+def propose_from_inputs(props: dict, stage: Path, inputs: list) -> dict:
+    """``props`` cut to what the proposer's ``inputs`` carry, plus the digests' growth candidates."""
+    stems, growth = _reachable(stage, inputs)
+
+    def kept(items: list) -> list:
+        return [item for item in items if all(str(s) in stems for s in item.get("sources") or [])]
+
+    out = json.loads(json.dumps(props))
+    out["groups"] = {group: kept(items) for group, items in (out.get("groups") or {}).items()}
+    if growth:
+        out["groups"].setdefault("growth", []).extend(
+            {"text": c["text"], "sources": list(c["sources"])} for c in growth)
+    if "sections" in out:
+        out["sections"] = [{**entry, "items": kept(entry.get("items") or [])} for entry in out["sections"]]
     return out

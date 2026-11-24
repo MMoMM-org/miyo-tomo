@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_047_baseline_e2e.py — the before-state of the /review document and of Pass 2 (spec 047 T1.3, ADR-11).
 
 Spec 047 rebuilds how /review reads a period; PRD F2-AC1 asks that the document keeps its shape and F2-AC2
@@ -39,6 +39,18 @@ the named differences Phase 8 (T8.1) passes for the new flow. Empty, it is stric
 names at the top. The instruction set is
 always compared strictly (F2-AC2). Every write a walk attempts is recorded per test and must lie under
 the inbox. All data is synthetic.
+
+The new flow with carried items (spec 047 T8.1, ADR-11): `test_the_new_flow_adds_only_what_spec_047_adds` runs
+each kind through read → plan → the fixture digests and carryover (W13 and 2026-03 with `CARRY` items) → check →
+the fixture proposer (`propose_from_inputs`) → write → approve → deliver, never writing a golden. The fingerprint
+differs from the golden in exactly `top_lines` and, per part a carried item lands in, `counts.<part>`,
+`marks.<part>` and `links.<part>` — always the dotted form, since `marks`, `counts` and `links` are dicts on both
+sides — and those values are the golden's plus one empty entry per carried item: the fingerprint reads no
+`carried_*` label as a mark and no link kind on a carried line (its label follows the link list), so the
+carried lines themselves are asserted from the document's text. The user leaves `c3` (done) ticked, edits `c2`
+(still open: its text and its mark) and unticks `c1` (not mentioned); every instruction file equals its golden
+byte for byte once the delivered carried lines (`c3` as written, `c2` as edited) and, where a group had no item
+before, that group's heading are inserted (`_expected_set`), timestamps and run ids masked as above.
 """
 from __future__ import annotations
 
@@ -61,7 +73,9 @@ from review_e2e_walk import (  # noqa: E402
     INBOX, MONTH, MONTH_DOC, MONTH_PERIOD, MONTH_STEM, QUARTER, QUARTER_DOC, QUARTER_PERIOD, QUARTER_STEM, WEEK,
     WEEK_DOC, WEEK_PERIOD, WEEK_STEM, Walk,
 )
-from review_privacy_fixture import CONFIG, QUARTER_CONFIG, proposals  # noqa: E402
+from review_privacy_fixture import (  # noqa: E402
+    CONFIG, PRP, QUARTER_CONFIG, condense_files, propose_from_inputs, proposals,
+)
 from review_doc_fingerprint import diff, fingerprint  # noqa: E402  (after the walk: it puts tomo/scripts on the path)
 
 GOLDEN_DIR = TESTS_DIR / "fixtures" / "047-baseline"
@@ -277,3 +291,215 @@ def test_a_missing_golden_fails_and_names_the_command(monkeypatch, tmp_path):
     with pytest.raises(pytest.fail.Exception, match=re.escape(REGEN)):
         _load(golden_paths(WEEK)[0])
     assert list(tmp_path.iterdir()) == [], "a normal run writes no golden"
+
+
+
+# ── the new flow with carried items (spec 047 T8.1) ──
+
+CARRY = 3                        # carryover items in W13 and 2026-03: c1 not_mentioned, c2 still_open, c3 done
+CARRIED_PARTS = ("done", "open")
+TOP_LINES = {
+    WEEK: ["> Previous review · week 2026-W12: found, 2 carried", "> Previous review · month 2026-02: found, 1 carried"],
+    MONTH: ["> Previous review · month 2026-02: found, 3 carried",
+            "> Previous review · quarter 2025-Q4: no note found for 2025-Q4"],
+    QUARTER: ["> Previous review · quarter 2025-Q4: no note found for 2025-Q4"],
+}
+FIRST_DAY = {WEEK: "2026-03-23", MONTH: "2026-03-01"}
+C2_NOTE = {WEEK: "2026-02", MONTH: "2026-02"}
+C3_NOTE = {WEEK: "2026-W12", MONTH: "2026-02"}
+C2_EDIT = ("still open (previous review)", "still open, ask again")
+_CARRIED_LINE = re.compile(r"^- \[([ x])\] (carried c\d+ .*?)\s*%%t\d+%%$")
+
+
+def _carried_lines(document: str) -> Dict[str, List[str]]:
+    """``{part heading: [carried item line without its id]}`` of the document."""
+    out: Dict[str, List[str]] = {}
+    heading = None
+    for line in document.split("\n"):
+        if line.startswith("## "):
+            heading = line[3:]
+        elif (m := _CARRIED_LINE.match(line)):
+            out.setdefault(heading, []).append(f"- [{m.group(1)}] {m.group(2)}")
+    return out
+
+
+def _expected_carried(kind: str) -> Dict[str, List[str]]:
+    day, c1_note = FIRST_DAY[kind], ("2026-W12" if kind == WEEK else "2026-02")
+    return {"Done": [f"- [x] carried c3 {PRP} ([[{C3_NOTE[kind]}]], [[{day}]]) · done (previous review)"],
+            "Open": [f"- [x] carried c1 {PRP} ([[{c1_note}]]) · not mentioned again (previous review)",
+                     f"- [x] carried c2 {PRP} ([[{C2_NOTE[kind]}]], [[{day}]]) · still open (previous review)"]}
+
+
+def _delivered(kind: str) -> Tuple[str, str]:
+    """The two carried lines Pass 2 delivers: ``c3`` as written, ``c2`` as the user edited it."""
+    day = FIRST_DAY[kind]
+    return (f"- carried c3 {PRP} ([[{C3_NOTE[kind]}]], [[{day}]]) · done (previous review)",
+            f"- carried c2 {PRP} rewritten ([[{C2_NOTE[kind]}]], [[{day}]]) · {C2_EDIT[1]}")
+
+
+def _user_edits(document: str) -> str:
+    """Untick ``c1``; edit ``c2``'s text and its mark; leave ``c3`` ticked."""
+    out = []
+    for line in document.split("\n"):
+        if line.startswith("- [x] carried c1 "):
+            line = line.replace("- [x]", "- [ ]", 1)
+        elif line.startswith("- [x] carried c2 "):
+            line = line.replace(f"c2 {PRP} ", f"c2 {PRP} rewritten ", 1).replace(*C2_EDIT)
+        out.append(line)
+    return "\n".join(out)
+
+
+def _item_ids(document: str) -> Dict[str, str]:
+    """``{carried id: document item id}``."""
+    return {m.group(1): m.group(2) for m in re.finditer(r"^- \[[ x]\] carried (c\d+) .*%%(t\d+)%%$", document, re.M)}
+
+
+def run_new_flow(w: Walk, case: Case, carry: int) -> Tuple[str, Dict[str, str], dict]:
+    """read → condense → fixture proposer → write → (user edits) → approve → deliver; ``(document as written,
+    files deliver wrote, parse answer)``."""
+    read = w.read(case.period, case.kind)
+    assert read["status"] == "ok" and read["nothing_to_review"] is False, read
+    out = w.write(case.stem, case.kind, case.proposals(), carry=carry, proposer=propose_from_inputs)
+    assert out["status"] == "written" and out["doc_path"] == case.doc and out["rejected"] == [], out
+    document = w.doc(case.doc)
+    if carry:
+        w.edit_document(case.doc, _user_edits(document))
+    w.approve(case.doc)
+    parsed = w.parse(case.stem)
+    assert parsed["approved"] is True and parsed["warnings"] == [], parsed
+    assert w.preview(case.stem)["problems"] == []
+    before = len(w.vault.recorded)
+    delivered = w.deliver(case.stem)
+    assert delivered["status"] == "delivered", delivered
+    written = [p for p in w.vault.recorded[before:] if p != case.doc]
+    assert written and all(p.startswith(INBOX) for p in written), written
+    return document, {path: w.vault.text(path) for path in written}, parsed
+
+
+def _escaped(line: str) -> str:
+    return json.dumps(line, ensure_ascii=False)[1:-1]
+
+
+def _expected_set(golden_set: dict, inserts: List[Tuple[str, List[str]]]) -> dict:
+    """The golden files with ``lines`` inserted after each ``anchor`` line — as a line of a Markdown file and,
+    escaped, inside the set JSON's ``content`` string; once per file, in at least one file."""
+    out = copy.deepcopy(golden_set)
+    for anchor, lines in inserts:
+        hits = 0
+        for path, file_lines in out.items():
+            for index, line in enumerate(file_lines):
+                if line == anchor:
+                    file_lines[index + 1:index + 1] = lines
+                    hits += 1
+                    break
+                needle = _escaped(anchor) + "\\n"
+                if path.endswith(".json") and needle in line:
+                    file_lines[index] = line.replace(needle, needle + "".join(_escaped(x) + "\\n" for x in lines), 1)
+                    hits += 1
+                    break
+        assert hits >= 1, f"anchor {anchor!r} is in no golden file"
+    return out
+
+
+def _inserts(kind: str) -> List[Tuple[str, List[str]]]:
+    c3, c2 = _delivered(kind)
+    if kind == WEEK:
+        return [(f"- Cleaned up {PRP} ([[2026-03-23]], [[2026-03-24]])", [c3]),
+                (f"- Taxes {PRP} ([[2026-03-26]])", [c2])]
+    return [(f"- March done {PRP} ([[2026-03-01]], [[2026-03-23]])", [c3, "### Open", c2])]   # Open had no item
+
+
+@pytest.mark.parametrize("kind", list(CASES))
+def test_the_new_flow_adds_only_what_spec_047_adds(kind, make_walk, monkeypatch):
+    monkeypatch.delenv(WRITE_ENV, raising=False)          # a carried run never becomes the golden
+    case = CASES[kind]
+    carry = 0 if kind == QUARTER else CARRY
+    document, files, parsed = run_new_flow(make_walk(case), case, carry)
+    fp_path, set_path = golden_paths(kind)
+    golden_fp, golden_set = _load(fp_path), _load(set_path)
+    actual_fp = json.loads(_dump(fingerprint(document)))
+
+    # the previous-note lines at the top, and the carried items with their marks (F2-AC1, F3-AC6, F5-AC2)
+    top = document.split("- [ ] Approved")[0].split("\n")
+    assert [line for line in top if line.startswith("> Previous review")] == TOP_LINES[kind]
+    parts = list(CARRIED_PARTS) if carry else []
+    expected_keys = sorted({"top_lines", *(f"{key}.{p}" for key in ("counts", "links", "marks") for p in parts)})
+    # every other key equal — habits, callout (reading report), parts, groups, sections, the growth group and the
+    # child marks (F2-AC1); the carried parts in the dotted form only, never the bare `marks`
+    assert diff(golden_fp, actual_fp) == expected_keys
+    assert actual_fp["top_lines"] == golden_fp["top_lines"] + len(TOP_LINES[kind])
+    added = {"done": 1, "open": 2} if carry else {}
+    for part, n in added.items():
+        assert actual_fp["counts"][part] == golden_fp["counts"][part] + n
+        assert actual_fp["marks"][part] == golden_fp["marks"][part] + [[]] * n
+        assert actual_fp["links"][part] == golden_fp["links"][part] + [[]] * n
+    assert _carried_lines(document) == (_expected_carried(kind) if carry else {})
+    if not carry:
+        assert "(previous review)" not in document
+
+    # Pass 2: c3 kept, c2 kept as edited (a mark edit is no item edit), c1 absent (F5-AC4, F5-AC5, F2-AC2)
+    if carry:
+        ids = _item_ids(document)
+        rows = {r["id"]: r for group in parsed["items"].values() for r in group}
+        assert [(rows[ids[c]]["kept"], rows[ids[c]]["edited"]) for c in ("c1", "c2", "c3")] == \
+            [(False, False), (True, False), (True, False)]
+    expected = _expected_set(golden_set, _inserts(kind) if carry else [])
+    actual = {path: mask(text) for path, text in files.items()}
+    changed = _instruction_diff(expected, actual)
+    assert changed == [], f"{set_path.name}: instruction files differ beyond the carried lines: {changed}"
+    if carry:
+        delivered = "\n".join(line for lines in actual.values() for line in lines)
+        assert "carried c1" not in delivered
+
+
+def test_a_quarter_day_reaches_the_proposer_with_the_material_of_a_week_read(make_walk):
+    """F1-AC2: 2026-03-23 read in the quarter and in its week: the same day file, the same digester job
+    material and that unit's digest among the proposer's inputs in both."""
+    seen = {}
+    for kind in (QUARTER, WEEK):
+        case = CASES[kind]
+        w = make_walk(case)
+        assert w.read(case.period, kind)["status"] == "ok"
+        plan = w.run("review-digest", "plan", "--stem", case.stem)
+        job = next(j for r in plan["rounds"] for j in r if "2026-03-23" in j.get("days", []))
+        files = condense_files(plan, w.stage(case.stem))
+        check = w.condense(case.stem)
+        stage = w.stage(case.stem)
+        day = json.loads((stage / "days" / "2026-03-23.json").read_text(encoding="utf-8"))
+        growth = [json.loads((stage / g).read_text(encoding="utf-8")) for g in job["growth_files"]]
+        for doc in (day, *growth):
+            doc.pop("read_id")
+        digest = {k: v for k, v in files[job["out"]].items() if k != "read_id"}
+        seen[kind] = (job["unit"], job["days"], job["day_files"], job["growth_files"], day, growth, digest)
+        assert job["out"] in check["proposer"]["inputs"], check["proposer"]
+    assert seen[QUARTER] == seen[WEEK]
+    assert seen[WEEK][0] == "2026-W13" and "monday" in json.dumps(seen[WEEK][4])
+
+
+MONTH_SECTION_ROW = {"id": "s1", "heading": "Theme", "level": 2, "parent": None, "occurrence": 1,
+                     "description": "what the month's theme was", "placement": "under"}
+
+
+def test_a_carried_section_item_shows_the_carried_mark_before_the_child_mark(make_walk):
+    """F5-AC2: on a section item the carried label comes first, then the child mark — in the document and as
+    delivered. Week and month are unmapped, so only a mapped month shows the two together."""
+    def config() -> dict:
+        out = copy.deepcopy(CONFIG)
+        out["review"]["monthly"]["sections"] = {"t_month.md": [dict(MONTH_SECTION_ROW)]}
+        return out
+
+    case = Case(MONTH, MONTH_PERIOD, MONTH_STEM, MONTH_DOC, False, config, lambda: proposals(MONTH))
+    w = make_walk(case)
+    assert w.read(case.period, MONTH)["status"] == "ok"
+    w.condense(case.stem, carry=1)
+    props = proposals(MONTH)
+    props["sections"] = [{"key": "s1", "items": [
+        {"text": f"theme carried {PRP}", "sources": ["2026-02", "2026-03-01"], "mark": "not_in_weekly",
+         "carried": "still_open", "carried_ids": ["c1"]}]}]
+    out = w.write(case.stem, MONTH, props, condense=False, proposer=propose_from_inputs)
+    assert out["status"] == "written" and out["rejected"] == [], out
+    line = f"theme carried {PRP} ([[2026-02]], [[2026-03-01]]) · still open (previous review) · in no weekly review"
+    assert re.search(rf"^- \[x\] {re.escape(line)} %%t\d+%%$", w.doc(case.doc), re.M), w.doc(case.doc)
+    w.approve(case.doc)
+    assert w.deliver(case.stem)["status"] == "delivered"
+    assert f"- {line}" in w.vault.text(f"{INBOX}{MONTH_PERIOD}.md").split("\n")

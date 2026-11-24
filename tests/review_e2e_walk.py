@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -42,7 +42,10 @@ before the proposals — `review-digest.py plan`, the agents' files built by the
 privacy fixture's `condense_files` (digests with growth candidates from the
 stage's `growth/` files, the carryover from its `previous/` files), `check` —
 unless `condense=False`; a stage `plan` refuses (no read) is left alone, so
-`write`'s own refusal still shows.
+`write`'s own refusal still shows. `condense` keeps `check`'s answer in
+`checked`; `write(..., proposer=)` hands the proposals, the stage and that
+answer's `proposer.inputs` to a fixture proposer (spec 047 T8.1) and writes
+what it returns. `carry` is the privacy fixture's opt-in: True or a count.
 """
 from __future__ import annotations
 
@@ -163,6 +166,7 @@ class Walk:
         for mod in self.mods.values():
             monkeypatch.setattr(mod, "KadoClient", self.vault, raising=False)   # review-digest has none
         self.writer = _load("vault-config-writer")
+        self.checked: dict | None = None          # the last condense's check answer
 
     # ── running the scripts the way the skill does ──
     def run(self, script: str, *argv: str) -> dict:
@@ -181,20 +185,25 @@ class Walk:
     def read(self, period: str, kind: str) -> dict:
         return self.run("review-read", "--period", period, "--kind", kind, "--stem", f"{period}_review")
 
-    def condense(self, stem: str, *, carry: bool = False) -> dict:
+    def condense(self, stem: str, *, carry: bool | int = False) -> dict:
         """Step 5 before the proposer: plan, the agents' files, check; ``plan``'s refusal as it stands.
-        ``carry``: the carryover holds one item (the privacy fixture's opt-in)."""
-        return condense_with(lambda command: self.run("review-digest", command, "--stem", stem), self.stage(stem),
-                             carry=carry)
+        ``carry``: the carryover holds one item, or that many (the privacy fixture's opt-in). The answer is
+        kept in ``checked``."""
+        self.checked = condense_with(lambda command: self.run("review-digest", command, "--stem", stem),
+                                     self.stage(stem), carry=carry)
+        return self.checked
 
     def write(self, stem: str, kind: str, props: dict | None = None, *, condense: bool = True,
-              carry: bool = False) -> dict:
-        """``carry``: condense with one carryover item and add its carried proposal (``with_carried``)."""
+              carry: bool | int = False, proposer=None) -> dict:
+        """``carry``: condense with that many carryover items and add their carried proposals (``with_carried``).
+        ``proposer(props, stage, inputs)``: the fixture proposer, given ``checked``'s ``proposer.inputs``."""
         if condense:
             self.condense(stem, carry=carry)
         props = props if props is not None else proposals(kind)
         if carry:
             props = with_carried(props, self.stage(stem))
+        if proposer is not None:
+            props = proposer(props, self.stage(stem), self.checked["proposer"]["inputs"])
         path = self.stage(stem) / "proposals.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(props), encoding="utf-8")

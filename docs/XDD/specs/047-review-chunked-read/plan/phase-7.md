@@ -1,6 +1,6 @@
 ---
 title: "Phase 7: Privacy, deletion, measurement and documentation"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 7
 ---

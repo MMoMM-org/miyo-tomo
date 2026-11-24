@@ -34,7 +34,7 @@ phase: 6
 
 Puts the three agents in place and makes the skill drive them, with the main session never reading the period itself.
 
-- [ ] **T6.1 WHY layer for the agents and the new step 4/5** `[activity: technical-writing]`
+- [x] **T6.1 WHY layer for the agents and the new step 4/5** `[activity: technical-writing]`
 
   1. Prime: `docs/tomo/dot_claude/skills/periodic-review.md`, `docs/tomo/dot_claude/agents/*.md` (existing mirror style), the current SKILL.md Rules (13-25, incl. line 21), step 4 (118-127), step 5 (129-165), STRICT (238); spec 046 close-out (grep fallback, four self-started helpers for $2.83) `[ref: SDD/ADR-7, ADR-8]` `[ref: SDD/Directory Map/Documentation; lines: 464-467]`
   2. Test: `test_review_why_docs.py` (extended in this task for agents) finds a mirror for each of the three agent files before they exist; the skill mirror names `review-digest.py`, `plan` and `check` (gotcha); every rationale now in SKILL.md step 5 that moves to the proposer has a home in `docs/tomo/dot_claude/agents/review-proposer.md` (checked by listing each moved rule against the doc in the commit message).

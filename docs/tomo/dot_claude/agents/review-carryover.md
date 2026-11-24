@@ -66,3 +66,22 @@ with the unchanged `settings.json` lets the Write land under `tomo-tmp/review/<s
 
 WHY: the reply lands in the main session; quoting previous-note text there would bring journal content into the main
 conversation. The reply is `<out> written` or `<out> not written: <reason word>`; `check` judges the file.
+
+## WHY the Notes List and Stems as Sources
+
+WHY: `check` refuses a carryover whose `notes` are not exactly the found previous notes (`carryover-notes-mismatch`,
+compared by `path`, `kind`, `name`), so the agent copies the three from each previous file it read. Each note's
+`items` counts the items resting on it, which the script recounts after dropping a failed note's items. An item's
+`sources` are the previous notes' stems (the schema's form; `check` accepts path or stem), and the proposer copies
+them into the carried item, where `lib/review_carried.py` matches them against the ids' sources.
+
+## WHY Nothing Is Written When a Listed File Cannot Be Read
+
+WHY: a carryover without one of the found notes fails `carryover-notes-mismatch` anyway; writing nothing makes the
+attempt a plain missing file that `check` retries once and then reports as a failed carry (F6-AC2), instead of a
+file that claims a note it never read.
+
+## WHY `effort: medium`
+
+WHY: the effort follows the model choice of ADR-7: telling open items, intentions and themes from prose is a
+reading judgement on small input, between the digester's recording and the proposer's whole-period work.

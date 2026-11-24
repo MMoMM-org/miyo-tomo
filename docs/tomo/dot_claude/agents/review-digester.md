@@ -86,3 +86,30 @@ keeps out of it — and grow the main context by up to 16 units. The reply is `<
 WHY: the prompt names the stem, unit, `read_id`, the file list, `out`, `cap_bytes` and the review language, never note
 text: the main session must not read a stage file, so it has no note text to pass, and `read_id` lets `check` refuse a
 digest written for another read (`read-id-mismatch`).
+
+## WHY Section Items Read `context.json`
+
+WHY: with a section mapping, the job's `sections` is true and a digest may hold `sections` entries, whose `key` must
+be a row id of the read's section definitions (`unknown-section` otherwise). The definitions (key, description,
+keywords) sit in `context.json`, not in the job, so the digester reads that one extra file when `sections` is true
+and only then. It sorts the unit's material by each row's description and keywords already at the unit level because
+a section can ask for something no fixed group holds (what was challenging, what to stop doing); a digest without
+it would leave the proposer nothing to fill such a section from. Without a mapping `sections` is an empty list.
+
+## WHY Sources Are Daily Paths
+
+WHY: `check` resolves a digest source through the read's dailies (`review_sources.Sources.daily_of`: a daily's path
+or its stem). A day file's `date` equals the daily's stem only when the daily is named by its date, so the
+digester copies a path from the day file's `dailies` list; the weekly note's source is that note's `path`. A linked
+note is not a source: it does not resolve to a day and `check` refuses it as `source-outside-unit`.
+
+## WHY Nothing Is Written When a Listed File Cannot Be Read
+
+WHY: a digest that leaves out a day it could not read would still list every day in `days` (the prompt gives them)
+and pass `check`, so the review would claim a day it never condensed — the partial read F1-AC1 forbids. Writing
+nothing makes the missing file a `digest-missing` attempt, which `check` retries once and then names as not condensed.
+
+## WHY `effort: low`
+
+WHY: the effort follows the model choice of ADR-7: recording without judgement needs no long reasoning, and 14–16
+digesters run per quarter, so the thinking budget multiplies like the model price.

@@ -165,3 +165,15 @@ Agent, so it sees only what the read took from the vault and cannot write anywhe
 with the unchanged `settings.json` lets the Write land under `tomo-tmp/review/<stem>/` without a prompt. Its one-line
 reply (`<out> written` or `<out> not written: <reason word>`) keeps the period's content out of the main session's
 context; the main session learns what was proposed only from `write`'s counts.
+
+## WHY a Growth Item Names Its Notes in the Text
+
+WHY: a proposal item has only `text` and `sources`, and the renderer links only sources that resolve to a day, a
+child note or a previous note; a created note's path is no such source and would be dropped from the links. So the
+growth item keeps the candidates' creation days as sources (the day-source rule of `review_doc.check_item`) and names
+the created notes in its text, where the user sees which notes the item is about.
+
+## WHY `effort: high`
+
+WHY: the effort follows the model choice of ADR-7: the proposer is the one judgement-heavy step and runs once per
+review, so a longer reasoning budget buys quality at the cost of one run.

@@ -59,7 +59,7 @@ Lets a proposal carry an item from a previous note, proves its mark and sources 
   4. Validate: tests green; module ≤ 300 lines; ruff clean.
   5. Success: a carried item appears once, with one mark, linked to its previous note, and is never dropped `[ref: PRD/F4-AC6, F4-AC7, F4-AC10, F5-AC3]`
 
-- [ ] **T5.4 Call sites: groups, sections and `review-doc.py write`** `[activity: backend-api]`
+- [x] **T5.4 Call sites: groups, sections and `review-doc.py write`** `[activity: backend-api]`
 
   1. Prime: `lib/review_doc.check_items`, `lib/review_sections.py` (`check` with mark 95-136, `_double_placements` 167-180, `part_items` suffix 224-231), `lib/review_mapping.py` (off-limits rows), `review-doc.py` `render_and_write` 270-325 `[ref: SDD/Implementation Examples; lines: 800-805, 862-869]` `[ref: SDD/Internal API Changes; lines: 628-634]`
   2. Test: an explicit carried branch at both call sites (groups `in_section=False`, sections `in_section=True` with the item's mark); carried failures appear in `errors` and never in `rejected`; `overflow` runs before `over-cap` is counted; `coverage` runs once over the whole document; the rendered suffix is `" · " + carried label` then `" · " + child mark` (F5-AC2, both SDD example lines byte-exact); a carried item can never land in an off-limits heading, because an off-limits heading is never a mapped section, and the best fit off-limits goes to the next fitting section or its group (F4-AC5); `written` gains `previous [{kind, name, state, carried}]`, `not_condensed`, `carry_failed` and the `carried-moved` notice, counts only; a carried proposal with a non-passed carryover is refused `carried-without-carryover`; the baseline e2e (no carried items in its fixture proposals) is still GREEN.

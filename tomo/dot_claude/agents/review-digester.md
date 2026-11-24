@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Digester Subagent
-# version: 0.1.2
+# version: 0.1.3
 
 ## Identity
 
@@ -29,7 +29,7 @@ Done when `out` holds the digest of every listed day file, growth file and weekl
 
 ## Input
 
-The prompt names: `stem`, `unit`, `read_id`, `days`, `day_files`, `growth_files`, `weekly_note` (a path or null), `sections` (true or false), `section_files`, `out`, `cap_bytes`, `language`.
+The prompt names: `stem`, `unit`, `read_id`, `days`, `day_files`, `growth_files`, `weekly_note` (a path or null), `sections` (true or false), `section_files`, `out`, `cap_bytes`, `language`, and on a retry `errors`.
 
 ## Decision: Inputs
 
@@ -37,6 +37,7 @@ The prompt names: `stem`, `unit`, `read_id`, `days`, `day_files`, `growth_files`
 |---|---|
 | A listed file cannot be read | Write nothing; reply `<out> not written: input-missing` |
 | The Write fails | Reply `<out> not written: write-failed` |
+| The prompt carries `errors` | Activities 1–8, building `out` anew from the inputs; avoid in it what each `errors` entry names, in the field its pointer names; never read `out` |
 | Otherwise | Activities 1–8 |
 
 ## Activities

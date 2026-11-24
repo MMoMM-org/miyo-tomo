@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_047_agents.py — the three /review agents (spec 047 T6.2; ADR-7; PRD F1-AC3, F1-AC4, F1-AC5, F2-AC3,
 F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC5, F4-AC6, F4-AC8, F4-AC10, F4-AC11, F6-AC2, F7-AC5).
 
@@ -9,7 +9,8 @@ scripts' and schemas' own:
 - frontmatter: one ``# version:`` line, the owner's model, ``permissionMode: acceptEdits``, ``tools: Read, Write``
   only (no Bash, no ``mcp__*``, no Agent, no skills) — F7-AC5
 - no rationale, spec ids, dates or examples in the runtime text (their WHY lives in docs/tomo/dot_claude/agents/)
-- the prompt fields each agent names are the job fields ``review-digest.py plan`` prints
+- the prompt fields each agent names are the job fields ``review-digest.py plan`` prints, plus the optional
+  ``errors`` of a retry (digester, carryover) or a rewrite (proposer) (T6.3 fix round)
 - the schema field names of the file each agent writes are named
 - one prose pin per rule (``PINS``), each a literal phrase on the one line that owns it, matched EXACTLY once;
   deleting that line fails the row (proven by a sweep outside the repo, see the T6.2 report)
@@ -38,6 +39,7 @@ MODELS = {"review-digester": "haiku", "review-carryover": "sonnet", "review-prop
 AGENTS = sorted(MODELS)
 DIGEST_SCRIPT = REPO / "tomo" / "scripts" / "review-digest.py"
 PROMPT_EXTRA = {"stem", "read_id", "language"}          # given by the skill's template beside the job's fields
+RETRY_FIELD = "errors"                                  # the optional last line of a retry or a rewrite
 
 
 def _text(agent: str) -> str:
@@ -62,7 +64,7 @@ def _count(agent: str, phrase: str) -> int:
 # ── frontmatter (ADR-7, F7-AC5) ──────────────────────────────────────────────
 
 
-VERSIONS = {"review-digester": "0.1.2", "review-carryover": "0.1.0", "review-proposer": "0.1.2"}
+VERSIONS = {"review-digester": "0.1.3", "review-carryover": "0.1.1", "review-proposer": "0.1.2"}
 
 
 @pytest.mark.parametrize("agent", AGENTS)
@@ -117,18 +119,18 @@ def _prompt_fields(agent: str) -> set:
 
 
 def test_the_digester_prompt_is_the_digester_job(plan_out):
-    assert _prompt_fields("review-digester") - PROMPT_EXTRA == _job_keys(plan_out, "review-digester")
-    assert {"stem", "read_id", "language"} <= _prompt_fields("review-digester")
+    assert _prompt_fields("review-digester") - PROMPT_EXTRA - {RETRY_FIELD} == _job_keys(plan_out, "review-digester")
+    assert {"stem", "read_id", "language", RETRY_FIELD} <= _prompt_fields("review-digester")
 
 
 def test_the_carryover_prompt_is_the_carryover_job(plan_out):
-    assert _prompt_fields("review-carryover") - PROMPT_EXTRA == _job_keys(plan_out, "review-carryover")
-    assert {"stem", "read_id", "language"} <= _prompt_fields("review-carryover")
+    assert _prompt_fields("review-carryover") - PROMPT_EXTRA - {RETRY_FIELD} == _job_keys(plan_out, "review-carryover")
+    assert {"stem", "read_id", "language", RETRY_FIELD} <= _prompt_fields("review-carryover")
 
 
 def test_the_proposer_prompt_is_plans_proposer_entry(plan_out):
-    assert _prompt_fields("review-proposer") - {"stem", "language", "errors"} == set(plan_out["proposer"])
-    assert {"stem", "language", "errors"} <= _prompt_fields("review-proposer")
+    assert _prompt_fields("review-proposer") - {"stem", "language", RETRY_FIELD} == set(plan_out["proposer"])
+    assert {"stem", "language", RETRY_FIELD} <= _prompt_fields("review-proposer")
 
 
 # ── the schema field names of each output file are named ────────────────────
@@ -203,6 +205,10 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     ("review-digester", "no-judgement", "Record what the days say; never rank, judge or drop a finding"),
     ("review-digester", "language", "Write every `text` in `language`, one short statement each."),
     ("review-digester", "cap", "Keep the file within `cap_bytes` bytes and the schema's item limits"),
+    ("review-digester", "retry-rebuilds",
+     "| The prompt carries `errors` | Activities 1–8, building `out` anew from the inputs; avoid in it what each "
+     "`errors` entry names, in the field its pointer names; never read `out` |"),
+    ("review-digester", "retry-field", "`cap_bytes`, `language`, and on a retry `errors`."),
     # review-carryover
     ("review-carryover", "every-previous-file", "Read every file of `previous_files`, one Read call per file."),
     ("review-carryover", "user-text-and-tomo-blocks",
@@ -215,6 +221,10 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     ("review-carryover", "both-notes-one-item", "The same matter in both notes is one item with both stems in `sources`."),
     ("review-carryover", "language", "Write every `text` in `language`, as the matter stands in the note"),
     ("review-carryover", "cap", "Keep the file within `cap_bytes` bytes and at most 30 items"),
+    ("review-carryover", "retry-rebuilds",
+     "| The prompt carries `errors` | Activities 1–6, building `out` anew from the previous files; avoid in it what "
+     "each `errors` entry names, in the field its pointer names; never read `out` |"),
+    ("review-carryover", "retry-field", "`cap_bytes`, `language`, and on a retry `errors`."),
     # review-proposer: inputs and shape
     ("review-proposer", "inputs-in-order", "Read every file of `inputs` in the listed order, one Read call per file."),
     ("review-proposer", "rewrite-reads-out", "and on a rewrite also `out`, once;"),

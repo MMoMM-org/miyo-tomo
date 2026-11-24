@@ -574,11 +574,10 @@ step 5 only orchestrates, and every decision of the orchestration is a script's:
   note text (the main session has none to give). The reply is one line per agent.
 - **`review-digest.py check --stem`** judges every file the agents wrote and spends one attempt per open job: the first
   failure comes back in `retry` with its errors, and its job — the one `plan` listed for that `agent` and `unit` —
-  is sent again by its template unchanged, all retries in one message; the second is `failed`. Then `check` again.
-  So a run is `plan` once, then `check` at most twice. The errors are not put into the retry prompt: `errors` is
-  no field of the digester's or the carryover's `## Input` line (only the proposer's rewrite takes them), and an
-  agent writes its file anew from the inputs on every run, so a fresh attempt is the retry; the errors are
-  `check`'s to judge.
+  is sent again by its template with the errors verbatim (`errors: <errors>` as the last prompt line, the pattern of
+  the proposer's rewrite), all retries in one message; the second is `failed`. Then `check` again. So a run is
+  `plan` once, then `check` at most twice. The digester and the carryover rebuild their file from the inputs and
+  avoid what the errors name (see their WHY documents).
 - **All rounds, then one `check`.** `check` spends an attempt on every open job, so it runs after the last round,
   never between rounds: a job of round 2 not yet sent would count as a failed first attempt. An empty `rounds` (a
   continued read whose units all passed) runs no agent and goes to the proposer with `plan`'s own `proposer`.

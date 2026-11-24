@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_047_skill_contract.py — the periodic-review skill's step 4 and step 5 on the stage (spec 047 T6.3; ADR-8,
 ADR-10; PRD F3-AC6, F3-AC8, F6-AC1, F6-AC2, F6-AC3, F6-AC4, F6-AC5, F6-AC6, F6-AC8).
 
@@ -14,7 +14,8 @@ in tomo/dot_claude/skills/periodic-review/SKILL.md and that the names it uses ar
   with ``proposer.inputs`` → ``write`` → one rewrite with ``errors``; ``condense-incomplete`` reruns from ``plan``
   once; ``stopped nothing-condensed`` names every week; the run report repeats the previous-note lines and names
   the not-condensed weeks and a failed carry
-- the agent prompt templates carry exactly the fields of each agent's ``## Input`` line, and no note text
+- the agent prompt templates carry exactly the fields of each agent's ``## Input`` line, and no note text; the
+  optional ``errors`` field is the last line a retry (digester, carryover) or the rewrite (proposer) adds
 - the four STRICT blocks of step 5, each one line with a one-line ``Why:``
 - the Pass 1 abort runs only ``review-doc.py replace --stem <stem> --abort``
 - every ``review-digest.py`` call parses with the script's own argparse parser
@@ -137,8 +138,8 @@ PINS = [
      "of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written."),
     (STEP5, "retry",
      "- `ok` with a non-empty `retry` → send the job of each entry again, the job of `plan`'s `rounds` with the same "
-     "`agent` and `unit`, by its template unchanged, all in one message; then run `check` once more and branch on it "
-     "by this list."),
+     "`agent` and `unit`, by its template with the line `errors: <errors>` added last, `<errors>` the entry's "
+     "`errors` verbatim as JSON, all in one message; then run `check` once more and branch on it by this list."),
     (STEP5, "check-twice", "Run `check` at most twice; after the second, go on to the proposer."),
     (STEP5, "proposer",
      "- `ok` with an empty `retry` → dispatch `review-proposer` once with the `proposer` of this output."),
@@ -269,14 +270,15 @@ def test_the_template_is_the_agents_input_line(agent):
     assert "run_in_background: false" in head and head.endswith("prompt:")
     keys = [k for k, _v in fields]
     assert len(keys) == len(set(keys))
-    expected = _input_fields(agent) - ({"errors"} if agent == "review-proposer" else set())
-    assert set(keys) == expected
+    assert set(keys) == _input_fields(agent) - {"errors"}           # `errors` is the retry / rewrite line
     assert all(v == f"<{k}>" for k, v in fields), fields          # a placeholder per key, never text
 
 
-def test_the_rewrite_adds_the_proposers_errors_field():
-    assert "errors" in _input_fields("review-proposer")
-    assert "with the line `errors: <errors>` added last" in _section(STEP5)
+@pytest.mark.parametrize("agent", ["review-digester", "review-carryover", "review-proposer"])
+def test_the_retry_and_the_rewrite_add_the_agents_errors_field(agent):
+    """The one optional `## Input` field the templates leave out is the `errors` line of a retry or a rewrite."""
+    assert "errors" in _input_fields(agent)
+    assert _section(STEP5).count("by its template with the line `errors: <errors>` added last") == 2
 
 
 def test_the_templates_are_plans_jobs(tmp_path, capsys):

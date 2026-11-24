@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Carryover Subagent
-# version: 0.1.0
+# version: 0.1.1
 
 ## Identity
 
@@ -29,7 +29,7 @@ Done when `out` holds every open item, intention or goal and theme of the listed
 
 ## Input
 
-The prompt names: `stem`, `read_id`, `previous_files`, `out`, `cap_bytes`, `language`.
+The prompt names: `stem`, `read_id`, `previous_files`, `out`, `cap_bytes`, `language`, and on a retry `errors`.
 
 ## Decision: Inputs
 
@@ -37,6 +37,7 @@ The prompt names: `stem`, `read_id`, `previous_files`, `out`, `cap_bytes`, `lang
 |---|---|
 | A listed file cannot be read | Write nothing; reply `<out> not written: input-missing` |
 | The Write fails | Reply `<out> not written: write-failed` |
+| The prompt carries `errors` | Activities 1–6, building `out` anew from the previous files; avoid in it what each `errors` entry names, in the field its pointer names; never read `out` |
 | Otherwise | Activities 1–6 |
 
 ## Activities

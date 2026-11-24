@@ -184,7 +184,7 @@ python3 scripts/review-digest.py check --stem <stem>
 Run `check` at most twice; after the second, go on to the proposer. Branch on `status` first:
 - `refused` → the `refused` lines of `plan` above.
 - `stopped` with `nothing-condensed` → say that no week of the period could be condensed and name every entry of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written.
-- `ok` with a non-empty `retry` → send the job of each entry again, the job of `plan`'s `rounds` with the same `agent` and `unit`, by its template unchanged, all in one message; then run `check` once more and branch on it by this list.
+- `ok` with a non-empty `retry` → send the job of each entry again, the job of `plan`'s `rounds` with the same `agent` and `unit`, by its template with the line `errors: <errors>` added last, `<errors>` the entry's `errors` verbatim as JSON, all in one message; then run `check` once more and branch on it by this list.
 - `ok` with an empty `retry` → dispatch `review-proposer` once with the `proposer` of this output.
 
 ```text

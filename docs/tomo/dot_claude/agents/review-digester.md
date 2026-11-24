@@ -87,6 +87,24 @@ WHY: the prompt names the stem, unit, `read_id`, the file list, `out`, `cap_byte
 text: the main session must not read a stage file, so it has no note text to pass, and `read_id` lets `check` refuse a
 digest written for another read (`read-id-mismatch`).
 
+## WHY the Retry Gets the Errors Verbatim and Rebuilds `out`
+
+WHY: ADR-4 and the SDD error table: a digest that `check` refuses the first time comes back in `check`'s `retry` with
+its errors, and the skill re-dispatches the same job once with `errors` added verbatim — the pattern of the proposer's
+rewrite. The errors are `"<pointer>: <code>"` strings (`digest-missing`, `not-json`, `schema (<pointer>)`,
+`source-outside-unit`, `days-mismatch`, `unknown-section`, `digest-too-large`, …): codes and field paths, never note
+text, so they may pass through the main session. A blind second run of a model that slipped once tends to slip the
+same way; the code names the rule it broke.
+
+The digester does **not** read its previous `out`. It writes the digest anew from its inputs on every run, and the
+failed file is often useless or absent: the most common failure is `digest-missing` or `not-json` (a throttled or
+cut-off run), where there is nothing to read. Where a file exists, reading it would carry its faults into the new
+file and cost one more Read of up to `cap_bytes`, for nothing the inputs do not hold. So the errors say what to avoid,
+by code and by the field their pointer names (an index in the old file means nothing in the new one); the inputs are
+read again in full. This differs from the proposer on purpose: the proposer fixes in place because its file is the
+judgement over the whole period and its errors point at single items the rest of the file must keep
+([review-proposer](review-proposer.md) "WHY the Rewrite Gets the Errors Verbatim").
+
 ## WHY Section Items Come From `section_files`
 
 WHY: with a section mapping, the job's `sections` is true and a digest may hold `sections` entries, whose `key` must

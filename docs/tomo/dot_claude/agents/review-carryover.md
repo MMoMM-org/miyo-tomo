@@ -75,6 +75,17 @@ compared by `path`, `kind`, `name`), so the agent copies the three from each pre
 `sources` are the previous notes' stems (the schema's form; `check` accepts path or stem), and the proposer copies
 them into the carried item, where `lib/review_carried.py` matches them against the ids' sources.
 
+## WHY the Retry Gets the Errors Verbatim and Rebuilds `out`
+
+WHY: ADR-4 and the SDD error table: a carryover that `check` refuses the first time (`digest-missing` for a missing
+file, `not-json`, `schema (<pointer>)`, `read-id-mismatch`, `carryover-notes-mismatch`, `carry-source-unknown`,
+`carry-id-duplicate`, `carryover-too-large`) comes back in `check`'s `retry` with its errors, and the skill
+re-dispatches the job once with `errors` added verbatim, as for the digester and the proposer. The errors are codes
+and field paths, never note text. The agent writes `carryover.json` anew from the previous files and avoids what each
+error names; it does not read its previous `out`, for the digester's reasons ([review-digester](review-digester.md)
+"WHY the Retry Gets the Errors Verbatim and Rebuilds `out`"): a missing or broken file has nothing to give, and an
+existing one would carry its faults over.
+
 ## WHY Nothing Is Written When a Listed File Cannot Be Read
 
 WHY: a carryover without one of the found notes fails `carryover-notes-mismatch` anyway; writing nothing makes the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_047_baseline_e2e.py — the before-state of the /review document and of Pass 2 (spec 047 T1.3, ADR-11).
 
 Spec 047 rebuilds how /review reads a period; PRD F2-AC1 asks that the document keeps its shape and F2-AC2
@@ -437,7 +437,9 @@ def test_the_new_flow_adds_only_what_spec_047_adds(kind, make_walk, monkeypatch)
     if not carry:
         assert "(previous review)" not in document
 
-    # Pass 2: c3 kept, c2 kept as edited (a mark edit is no item edit), c1 absent (F5-AC4, F5-AC5, F2-AC2)
+    # Pass 2: c3 kept, c2 kept, c1 absent (F5-AC4, F5-AC5, F2-AC2). `edited` is False for c2: parse sets it
+    # only when an item's link stems change, so c2's text edit is checked through its delivered line
+    # (`_delivered`, compared in the instruction files below), never through the `edited` flag
     if carry:
         ids = _item_ids(document)
         rows = {r["id"]: r for group in parsed["items"].values() for r in group}

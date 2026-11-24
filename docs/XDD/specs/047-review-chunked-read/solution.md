@@ -504,6 +504,7 @@ tests/
 ├── review_doc_fingerprint.py                 # NEW: structural fingerprint of a review document (ADR-11)
 ├── test_review_doc_fingerprint.py            # NEW (implemented, spec 047 T1.1): equal without wording, unequal per structural field, no item text
 ├── test_047_baseline_e2e.py                  # NEW, FIRST: week/month/quarter fingerprints green on the old flow, then on the new
+├── test_047_e2e_failures.py                  # NEW (spec 047 T8.2): failure, resume, re-review and vault growth end to end on the new flow
 ├── review_privacy_fixture.py                 # MODIFY: QUARTERLY folder + quarter config, previous notes (W12, 2026-02), digests/carryover fixtures
 ├── review_e2e_walk.py                        # MODIFY: quarter, the condense stage (fixture agents), --fresh
 ├── test_review_stage.py                      # NEW (replaces test_review_read_parts.py)

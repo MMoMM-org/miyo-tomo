@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.6.1
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -46,6 +46,8 @@ unless `condense=False`; a stage `plan` refuses (no read) is left alone, so
 `checked`; `write(..., proposer=)` hands the proposals, the stage and that
 answer's `proposer.inputs` to a fixture proposer (spec 047 T8.1) and writes
 what it returns. `carry` is the privacy fixture's opt-in: True or a count.
+`read(period, kind, *flags)` passes the skill's extra flags, e.g. `--fresh` on a start over
+(spec 047 T8.2).
 """
 from __future__ import annotations
 
@@ -182,8 +184,9 @@ class Walk:
     def start(self, request: str = "") -> dict:
         return self.run("review-session", "start", f"--args={request}", "--today", TODAY)
 
-    def read(self, period: str, kind: str) -> dict:
-        return self.run("review-read", "--period", period, "--kind", kind, "--stem", f"{period}_review")
+    def read(self, period: str, kind: str, *flags: str) -> dict:
+        """``flags``: what the skill adds, e.g. ``--fresh`` on a start over."""
+        return self.run("review-read", "--period", period, "--kind", kind, "--stem", f"{period}_review", *flags)
 
     def condense(self, stem: str, *, carry: bool | int = False) -> dict:
         """Step 5 before the proposer: plan, the agents' files, check; ``plan``'s refusal as it stands.

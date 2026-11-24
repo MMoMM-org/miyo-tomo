@@ -306,7 +306,7 @@ def test_proposer_doc_holds_the_moved_rule(proposer_doc, label, pattern):
 SKILL_STEP_4_5 = [
     ("plan-mention", r"`review-digest\.py plan"),
     ("check-mention", r"`review-digest\.py check"),
-    ("plan-once-check-twice", r"`plan` once per run"),
+    ("plan-once-check-twice", r"\*\*`plan` once per run\.\*\* `plan` resets every failed unit"),
     ("failed-twice-stays-failed", r"fails twice stays failed until the next session"),
     ("read-stale", r"`read-stale`"),
     ("continued-read", r"`continued: true`"),

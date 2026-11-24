@@ -602,11 +602,15 @@ WHY: a `STRICT` block is only for a deviation actually observed (see "Why STRICT
 one, and its `Why:` line is that failure mode in one line:
 
 - **One message per round.** Failure mode: agents sent one per message run one after another, so a quarter's 16
-  digesters take 16 agent times. Observed in the `/inbox` fan-out, which is why `suggest-handling` carries the same
-  STRICT; the review dispatch copies that pattern.
+  digesters take 16 agent times. Observed in the `/inbox` fan-out: `suggestion-conductor` 0.2.0 said "Dispatch all
+  items in ONE message so they run concurrently", and Sonnet dispatched 18 analysts sequentially, one `Agent` call per
+  turn; 0.3.0 added a STRICT that names the mechanism (all `Agent()` calls in one message run concurrently, one per
+  message runs them one after another). The batch STRICT of `suggest-handling` (step "BATCH dispatch") is the pattern
+  the review dispatch copies.
 - **`subagent_type` on every call.** Failure mode: an `Agent()` call that names the agent only in its prompt or
   description starts a `general-purpose` agent, which has every tool (Kado included) and none of the review agent's
-  rules. Observed in earlier Tomo agent dispatches.
+  rules. Observed in `/inbox`: see [suggest-handling](suggest-handling.md) "Why the dispatch template says
+  `subagent_type`, not `name`".
 - **`run_in_background: false`.** Failure mode: the CLI started a dispatched agent in the background without being
   asked (spec 043: `claude` 2.1.316 backgrounded the conductor, 3 of 307 traces), so the reply arrived as a later task
   notification and the run went on, or ended, before the file existed. `/inbox` passes the flag since then; step 5

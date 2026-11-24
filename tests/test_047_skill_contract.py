@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_047_skill_contract.py — the periodic-review skill's step 4 and step 5 on the stage (spec 047 T6.3; ADR-8,
 ADR-10; PRD F3-AC6, F3-AC8, F6-AC1, F6-AC2, F6-AC3, F6-AC4, F6-AC5, F6-AC6, F6-AC8).
 
@@ -103,9 +103,9 @@ PINS = [
     ("Rules", "abort-except-pass1",
      "- On Abort at any question, run no further script and write nothing, except the Pass 1 Abort below;"),
     ("Rules", "pass1-abort",
-     "- An Abort answered after step 4 read the period and before step 5 wrote the document is a Pass 1 Abort: run "
-     "`python3 scripts/review-doc.py replace --stem <stem> --abort` and nothing else, and say in one line that the "
-     "read is discarded and no document was written."),
+     "- When the user writes that they want to abort or stop after step 4 read the period and before step 5 wrote the "
+     "document, that is the Pass 1 Abort: run `python3 scripts/review-doc.py replace --stem <stem> --abort` and nothing "
+     "else, and say in one line that the read is discarded and no document was written."),
     (STEP4, "fresh",
      "Add `--fresh` to the call when this step follows a Start over answer or a `read-stale` refusal of step 5."),
     (STEP4, "continued",
@@ -120,8 +120,8 @@ PINS = [
     (STEP5, "plan-once", "Run `plan` once after each run of step 4; the only other `plan` is the `condense-incomplete` "
      "line below."),
     (STEP5, "read-stale",
-     "- `refused` with `read-stale` → run step 4 with `--fresh`, once per run, and continue there; a second "
-     "`read-stale` → show it and stop."),
+     "- `refused` with `read-stale` → run step 4 with `--fresh`, once per run, counted over `plan`, `check` and `write` "
+     "together, and continue there; a second `read-stale` → show it and stop."),
     (STEP5, "stage-missing",
      "- `refused` with `stage-missing` or `stage-invalid` → run step 4 again, once, and continue there; a second "
      "refusal → show `problems` verbatim and stop."),
@@ -137,12 +137,17 @@ PINS = [
      "- `stopped` with `nothing-condensed` → say that no week of the period could be condensed and name every entry "
      "of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written."),
     (STEP5, "retry",
-     "- `ok` with a non-empty `retry` → send the job of each entry again, the job of `plan`'s `rounds` with the same "
-     "`agent` and `unit`, by its template with the line `errors: <errors>` added last, `<errors>` the entry's "
-     "`errors` verbatim as JSON, all in one message; then run `check` once more and branch on it by this list."),
-    (STEP5, "check-twice", "Run `check` at most twice; after the second, go on to the proposer."),
+     "- `ok` with a non-empty `retry` from the first `check` → send the job of each entry again, the job of `plan`'s "
+     "`rounds` with the same `agent`, and the same `unit` when the entry has one, by its template with the line "
+     "`errors: <errors>` added last, `<errors>` the entry's `errors` verbatim as JSON, all in one message; then run "
+     "`check` once more and branch on it by this list."),
+    (STEP5, "second-retry",
+     "- `ok` with a non-empty `retry` from the second `check` → send no agent; those units are not condensed. Go on "
+     "with the next bullet."),
+    (STEP5, "check-twice", "Run `check` at most twice after each `plan`."),
     (STEP5, "proposer",
-     "- `ok` with an empty `retry` → dispatch `review-proposer` once with the `proposer` of this output."),
+     "- `ok` with an empty `retry`, or after the second `check` → dispatch `review-proposer` once with the `proposer` "
+     "of this output."),
     (STEP5, "proposer-reply", "A reply other than `<out> written` → show it and stop; the read stays for the next "
      "`/review`."),
     (STEP5, "rewrite",
@@ -150,8 +155,8 @@ PINS = [
      "template with the line `errors: <errors>` added last, `<errors>` the `errors` of `write` verbatim as JSON, and "
      "rerun `write`; a second `proposals-invalid` → show it and stop; no document is written."),
     (STEP5, "condense-incomplete",
-     "- `refused` with `condense-incomplete` → run this step again from `plan`, once; a second "
-     "`condense-incomplete` → show it and stop."),
+     "- `refused` with `condense-incomplete` → run this step again from `plan`, once: a new `plan` with its own "
+     "rounds and at most two `check` calls; a second `condense-incomplete` → show it and stop."),
     (STEP5, "write-read-stale", "- `refused` with `read-stale` → the `read-stale` line of `plan` above."),
     (STEP5, "report-previous",
      "Then one line per entry of `previous`: its `kind`, `name` and `state` as step 4 said them, and that its items "
@@ -221,8 +226,9 @@ def test_step5_order():
         "- `ok` → `<read_id>` is its `read_id`. Send each entry of `rounds`",
         'Agent(subagent_type: "review-digester"',
         "python3 scripts/review-digest.py check --stem <stem>",
-        "- `ok` with a non-empty `retry` →",
-        "- `ok` with an empty `retry` → dispatch `review-proposer`",
+        "- `ok` with a non-empty `retry` from the first `check` →",
+        "- `ok` with a non-empty `retry` from the second `check` →",
+        "- `ok` with an empty `retry`, or after the second `check` → dispatch `review-proposer`",
         'Agent(subagent_type: "review-proposer"',
         "python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<stem>/proposals.json",
         "- `refused` with `proposals-invalid` →",

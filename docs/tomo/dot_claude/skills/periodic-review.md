@@ -463,7 +463,8 @@ costs 15–17 agent runs, so reading Kado again and condensing from scratch woul
 - **`read-stale`.** `review-digest.py plan`, `review-digest.py check` and `review-doc.py write` refuse `read-stale` when
   a stage file belongs to another read than `manifest.json` names (a half-replaced stage). Nothing on the stage can be
   trusted then, so the skill runs step 4 with `--fresh`, once; a second `read-stale` is shown and stops, because then
-  something else writes the stage under the run.
+  something else writes the stage under the run. The "once" is one budget per run, shared by `plan`, `check` and
+  `write`: a second `read-stale` from any of them after the fresh read means the same thing.
 - **A changed mapping reads anew.** The script compares the section mapping itself and reads anew
   (`discarded: sections-changed`); the skill needs no branch for it.
 - **Kado unreachable stores nothing.** A `stopped` read writes nothing (with `--fresh` the old read was discarded
@@ -576,7 +577,10 @@ step 5 only orchestrates, and every decision of the orchestration is a script's:
   failure comes back in `retry` with its errors, and its job — the one `plan` listed for that `agent` and `unit` —
   is sent again by its template with the errors verbatim (`errors: <errors>` as the last prompt line, the pattern of
   the proposer's rewrite), all retries in one message; the second is `failed`. Then `check` again. So a run is
-  `plan` once, then `check` at most twice. The digester and the carryover rebuild their file from the inputs and
+  `plan` once, then `check` at most twice. The second `check` normally holds no `retry` (every retried job is then
+  `passed` or `failed`); the step still names the branch, so a literal model that sees a `retry` there goes on to
+  the proposer instead of sending a third attempt, and those units are named as not condensed. The retry entry of
+  the carryover has no `unit` (`check` lists it by `agent` alone), so its job is found by `agent` only. The digester and the carryover rebuild their file from the inputs and
   avoid what the errors name (see their WHY documents).
 - **All rounds, then one `check`.** `check` spends an attempt on every open job, so it runs after the last round,
   never between rounds: a job of round 2 not yet sent would count as a failed first attempt. An empty `rounds` (a
@@ -612,7 +616,8 @@ step 5 only orchestrates, and every decision of the orchestration is a script's:
   verbatim, a second is shown and no document is written (F6-AC3; see "Why Pass 1 Proposes by Section").
 - **`condense-incomplete`.** `write` refuses when `condensed.json` is missing or a unit is still pending — the skill
   skipped or cut short the condensing. The answer is step 5 again from `plan`, once; it is the one second `plan` of a
-  run, bounded by "once", and the units that failed in this run are offered once more.
+  run, bounded by "once", and the units that failed in this run are offered once more. That `plan` starts its own
+  count: its rounds, then at most two `check` calls, as after the first `plan`.
 
 ## Why Step 5's STRICT Blocks (Spec 047 ADR-8)
 
@@ -652,7 +657,10 @@ nothing behind in Pass 1 worth deleting. Since spec 047 step 4 writes a stage th
 and a stage left behind is a read the next `/review` of the period continues on (F6-AC4) — the opposite of what the
 user asked for. F6-AC6: an Abort during Pass 1 runs no further step, writes no document, deletes the material at once
 (F7-AC1) and cannot be continued. So an Abort answered after step 4 wrote a stage and before step 5 wrote the document
-runs `review-doc.py replace --stem --abort` and nothing else: the one exception to the abort rule. The call
+runs `review-doc.py replace --stem --abort` and nothing else: the one exception to the abort rule. No numbered
+question between step 4 and `write` offers Abort (the `review-exists` question is Replace or Keep it, and Keep it
+already runs `replace --abort`), so the trigger is the user's own words: a message that says to abort or stop in
+that span. The call
 discards the stage content through `review_stage.discard` and keeps only the content-free `meta.json` and
 `payloads.json`; it writes nothing to the vault. An Abort before step 4 has no stage to discard, and an Abort after
 `write` is Pass 2's Abort (unchanged).

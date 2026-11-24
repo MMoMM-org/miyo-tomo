@@ -21,7 +21,7 @@ Review one finished week, month or quarter with the user: Pass 1 writes a review
 - Never quote a stage file (a file under `tomo-tmp/review/<stem>/`), a daily note, a journal answer or a tracker value in your reply; print the scripts' reports and `section_md` only.
 - Never say a folder is empty or a note does not exist: `kado-none`, `kado_empty` and an empty result may mean the Kado key cannot read the folder; say so.
 - On Abort at any question, run no further script and write nothing, except the Pass 1 Abort below; say in one line what stays as it is.
-- An Abort answered after step 4 read the period and before step 5 wrote the document is a Pass 1 Abort: run `python3 scripts/review-doc.py replace --stem <stem> --abort` and nothing else, and say in one line that the read is discarded and no document was written.
+- When the user writes that they want to abort or stop after step 4 read the period and before step 5 wrote the document, that is the Pass 1 Abort: run `python3 scripts/review-doc.py replace --stem <stem> --abort` and nothing else, and say in one line that the read is discarded and no document was written.
 - Ask in the language the user writes in.
 
 ## 1. Start
@@ -139,7 +139,7 @@ python3 scripts/review-digest.py plan --stem <stem>
 ```
 
 Run `plan` once after each run of step 4; the only other `plan` is the `condense-incomplete` line below. Branch on `status` first:
-- `refused` with `read-stale` → run step 4 with `--fresh`, once per run, and continue there; a second `read-stale` → show it and stop.
+- `refused` with `read-stale` → run step 4 with `--fresh`, once per run, counted over `plan`, `check` and `write` together, and continue there; a second `read-stale` → show it and stop.
 - `refused` with `stage-missing` or `stage-invalid` → run step 4 again, once, and continue there; a second refusal → show `problems` verbatim and stop.
 - `ok` → `<read_id>` is its `read_id`. Send each entry of `rounds`, in order, as one message that holds one `Agent()` call per job, built by the template of the job's `agent` below. After the last round run `check`. `rounds` empty → run no agent and go to the proposer with this output's `proposer`.
 
@@ -181,11 +181,12 @@ python3 scripts/review-digest.py check --stem <stem>
 
 # STRICT — never read a stage file or search the day files with `grep` or Bash in this session, and never start an agent `plan` did not list; a unit without a passed digest is named as not condensed. Why: a grep fallback and self-started helpers reviewed a sample of the period while claiming the whole.
 
-Run `check` at most twice; after the second, go on to the proposer. Branch on `status` first:
+Run `check` at most twice after each `plan`. Branch on `status` first:
 - `refused` → the `refused` lines of `plan` above.
 - `stopped` with `nothing-condensed` → say that no week of the period could be condensed and name every entry of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written.
-- `ok` with a non-empty `retry` → send the job of each entry again, the job of `plan`'s `rounds` with the same `agent` and `unit`, by its template with the line `errors: <errors>` added last, `<errors>` the entry's `errors` verbatim as JSON, all in one message; then run `check` once more and branch on it by this list.
-- `ok` with an empty `retry` → dispatch `review-proposer` once with the `proposer` of this output.
+- `ok` with a non-empty `retry` from the first `check` → send the job of each entry again, the job of `plan`'s `rounds` with the same `agent`, and the same `unit` when the entry has one, by its template with the line `errors: <errors>` added last, `<errors>` the entry's `errors` verbatim as JSON, all in one message; then run `check` once more and branch on it by this list.
+- `ok` with a non-empty `retry` from the second `check` → send no agent; those units are not condensed. Go on with the next bullet.
+- `ok` with an empty `retry`, or after the second `check` → dispatch `review-proposer` once with the `proposer` of this output.
 
 ```text
 Agent(subagent_type: "review-proposer", run_in_background: false, description: "Propose the review", prompt:
@@ -205,7 +206,7 @@ python3 scripts/review-doc.py write --stem <stem> --proposals tomo-tmp/review/<s
 Branch on `status` first:
 - `stopped` → the stopped rule; `problems` `kado-write-failed` → say nothing was written and stop.
 - `refused` with `proposals-invalid` → show `errors` verbatim, dispatch `review-proposer` once more by its template with the line `errors: <errors>` added last, `<errors>` the `errors` of `write` verbatim as JSON, and rerun `write`; a second `proposals-invalid` → show it and stop; no document is written.
-- `refused` with `condense-incomplete` → run this step again from `plan`, once; a second `condense-incomplete` → show it and stop.
+- `refused` with `condense-incomplete` → run this step again from `plan`, once: a new `plan` with its own rounds and at most two `check` calls; a second `condense-incomplete` → show it and stop.
 - `refused` with `read-stale` → the `read-stale` line of `plan` above.
 - `refused` with `doc-name-taken` → say `doc_path` is a note that is not Tomo's review document and nothing was overwritten; stop.
 - `refused` with `review-exists` → say Tomo's review document for the period already exists at `doc_path` and that replacing it discards the user's edits in it; ask `1 Replace · 2 Keep it`. Replace → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` and branch on its `status` by this list, `replaced` as `written`. Keep it → run `python3 scripts/review-doc.py replace --stem <stem> --abort` and say in one line that the document is kept.

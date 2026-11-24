@@ -220,14 +220,41 @@ def test_every_review_agent_has_its_why_mirror(agent):
     assert mirror.is_file(), f"missing WHY document: {mirror.relative_to(REPO)}"
 
 
-@pytest.mark.parametrize("agent", sorted(REVIEW_AGENTS))
-def test_agent_mirror_names_its_frontmatter_and_reply(agent):
-    text = _flat(_doc(AGENTS_DOCS / f"{agent}.md"))
-    assert f"tomo/dot_claude/agents/{agent}.md" in text, "the mirror must name its runtime file"
-    assert f"`{REVIEW_AGENTS[agent]}`" in text, f"the mirror must give the model `{REVIEW_AGENTS[agent]}` and why"
-    assert "`tools: Read, Write`" in text and "`permissionMode: acceptEdits`" in text
-    assert re.search(r"one[- ]line reply|replies (?:with )?one line", text, re.I), "the mirror must give why the reply is one line"
-    assert "Kado" in text, "the mirror must give why the agent never reaches Kado or the vault"
+MIRROR_FACTS = [
+    # (agent, label, pattern) — each anchored to the sentence that owns the fact, matched exactly once
+    ("review-digester", "runtime-file", r"Rationale for decisions in `tomo/dot_claude/agents/review-digester\.md`"),
+    ("review-digester", "model", r"WHY `haiku` WHY: ADR-7\. The digester records what the days say"),
+    ("review-digester", "tools", r"The digester reads stage files the read already took from the vault and writes exactly its `out` path; no Bash, no MCP"),
+    ("review-digester", "permission-mode", r"`permissionMode: acceptEdits` with the `Edit\(tomo-tmp/\*\)` allow rule"),
+    ("review-digester", "one-line-reply", r"The reply is `<out> written` or `<out> not written: <reason word>`; whether the file is any good"),
+    ("review-digester", "never-kado", r"an agent with a Kado tool could read days the read's report does not account for"),
+    ("review-carryover", "runtime-file", r"Rationale for decisions in `tomo/dot_claude/agents/review-carryover\.md`"),
+    ("review-carryover", "model", r"WHY `sonnet` WHY: ADR-7\. Telling an open item, an intention or a goal and a theme"),
+    ("review-carryover", "tools", r"The agent reads the stage files of the previous notes and writes exactly `carryover\.json`; no Bash, no MCP"),
+    ("review-carryover", "permission-mode", r"`permissionMode: acceptEdits` with the unchanged `settings\.json` lets the Write land"),
+    ("review-carryover", "one-line-reply", r"quoting previous-note text there would bring journal content into the main conversation"),
+    ("review-carryover", "never-kado", r"WHY `tools: Read, Write` and Never Kado WHY: ADR-7, F7-AC5\. The agent reads"),
+    ("review-proposer", "runtime-file", r"Rationale for decisions in `tomo/dot_claude/agents/review-proposer\.md`"),
+    ("review-proposer", "model", r"WHY `opus` \(ADR-7\) WHY: the proposer is the one judgement-heavy step"),
+    ("review-proposer", "tools", r"The proposer reads stage files and writes exactly `proposals\.json`; no Bash, no MCP"),
+    ("review-proposer", "permission-mode", r"`permissionMode: acceptEdits` with the unchanged `settings\.json` lets the Write land"),
+    ("review-proposer", "one-line-reply", r"Its one-line reply \(`<out> written` or `<out> not written: <reason word>`\)"),
+    ("review-proposer", "never-kado", r"WHY `tools: Read, Write`, Never Kado, and a One-Line Reply"),
+]
+
+
+@pytest.mark.parametrize("agent,label,pattern", MIRROR_FACTS, ids=[f"{a}-{lab}" for a, lab, _p in MIRROR_FACTS])
+def test_agent_mirror_names_its_frontmatter_and_reply(agent, label, pattern):
+    """The mirror gives the runtime file, the model and why, the tool pair, the permission mode, the one-line reply
+    and the no-Kado rule, each in the one sentence that owns it."""
+    found = len(re.findall(pattern, _flat(_doc(AGENTS_DOCS / f"{agent}.md"))))
+    assert found == 1, f"{agent}.md: {label} ({pattern!r}) must match exactly once, matched {found}"
+
+
+def test_mirror_facts_cover_every_agent():
+    assert {a for a, _l, _p in MIRROR_FACTS} == set(REVIEW_AGENTS)
+    for agent, model in REVIEW_AGENTS.items():
+        assert any(lab == "model" and f"`{model}`" in pat for a, lab, pat in MIRROR_FACTS if a == agent), agent
 
 
 @pytest.fixture(scope="module")
@@ -253,43 +280,49 @@ def test_skill_doc_names_no_digest_subcommand_the_parser_lacks(skill_doc, digest
     assert not bad, f"flags a review-digest.py subcommand does not take: {bad}"
 
 
+# Every row below is anchored to the one sentence or bullet head that owns its rule, and must match exactly once:
+# a second match would let the owning sentence be deleted while the row stays green (a hollow pin).
+# (label, pattern searched in the whitespace-collapsed document.)
+
 # The rationale that leaves SKILL.md step 5 for review-proposer.md, and the carried / growth / input rules
-# added since the plan. (label, pattern searched in the whitespace-collapsed document.)
+# added since the plan.
 PROPOSER_RULES = [
-    ("opus-adr-7", r"`opus`.*ADR-7|ADR-7.*`opus`"),
-    ("only-proposals-json", r"only `proposals\.json`"),
-    ("themes-over-all-days-f1-ac3", r"F1-AC3"),
-    ("open-against-later-weeks-f1-ac4", r"F1-AC4"),
-    ("one-item-across-weeks-f1-ac5", r"F1-AC5"),
-    ("child-marks-whole-period-f2-ac3", r"F2-AC3"),
-    ("sources-a-daily-of-the-period", r"at least one (?:link to )?a? ?daily"),
-    ("continuation-line", r"continuation line"),
-    ("habits-computed", r"[Hh]abits are computed"),
-    ("own-sections", r"user's own sections"),
-    ("key-copied-unknown-section", r"`unknown-section`"),
-    ("description-and-keywords", r"description and keywords"),
-    ("groups-starting-point-f2-ac7", r"F2-AC7"),
-    ("reminders-not-finished-text", r"[Rr]eminders, not finished text"),
-    ("cap-by-merging-over-cap", r"`over-cap"),
-    ("one-place-double-placement", r"`double-placement`"),
-    ("analysis-rows", r"`analysis: true`"),
-    ("marks-mark-not-allowed", r"`mark-not-allowed`"),
-    ("quarter-marks", r"`monthly_only`"),
-    ("review-language-f4-ac11", r"F4-AC11"),
-    ("rewrite-fixes", r"errors verbatim"),
-    ("carried-adr-6", r"ADR-6"),
-    ("script-checks-marks-model-matches", r"model owns the match"),
-    ("carried-marks-f4-ac2", r"F4-AC2"),
-    ("theme-never-done-f4-ac3", r"F4-AC3"),
-    ("placement-f4-ac4", r"F4-AC4"),
-    ("off-limits-f4-ac5", r"F4-AC5"),
-    ("one-item-nowhere-else-f4-ac6", r"F4-AC6"),
-    ("carried-again-no-age-f4-ac8", r"F4-AC8"),
-    ("same-mark-merge-f4-ac10", r"F4-AC10"),
-    ("carried-false", r"`carried: false`"),
-    ("growth-candidates", r"growth candidates"),
-    ("growth-counts-and-moc-lists", r"growth counts and (?:the )?MOC lists"),
-    ("never-manifest-json", r"never reads? `manifest\.json`"),
+    ("opus-adr-7", r"WHY `opus` \(ADR-7\)"),
+    ("opus-rationale", r"WHY: the proposer is the one judgement-heavy step of `/review`"),
+    ("only-proposals-json", r"WHY It Writes Only `proposals\.json` \(Spec 045 ADR-12\)"),
+    ("themes-over-all-days-f1-ac3", r"\*\*Themes over all days \(F1-AC3\)\.\*\*"),
+    ("open-against-later-weeks-f1-ac4", r"\*\*Open against later weeks \(F1-AC4\)\.\*\*"),
+    ("one-item-across-weeks-f1-ac5", r"\*\*One item across weeks \(F1-AC5\)\.\*\*"),
+    ("child-marks-whole-period-f2-ac3", r"\*\*Child marks over the whole period \(F2-AC3\)\.\*\*"),
+    ("sources-a-daily-of-the-period", r"\*\*Sources\.\*\* Every item names the notes it rests on, at least one a daily"),
+    ("continuation-line", r"\*\*A second line of `text`\*\* becomes a continuation line"),
+    ("habits-computed", r"\*\*Habits are computed by the script; never proposed\.\*\*"),
+    ("own-sections", r"\*\*The user's own sections\.\*\* The proposer never writes text"),
+    ("key-copied-unknown-section", r"\*\*The key is copied, never invented\.\*\*.{0,200}refused `unknown-section`"),
+    ("description-and-keywords", r"\*\*What a section receives follows its description and keywords \(046 F1-AC2\)\.\*\*"),
+    ("groups-starting-point-f2-ac7", r"\*\*A row's `groups` are its starting point \(046 F2-AC7\)\.\*\*"),
+    ("reminders-not-finished-text", r"\*\*Reminders, not finished text \(046 F1-AC3, F1-AC4\)\.\*\*"),
+    ("cap-by-merging-over-cap", r"\*\*The cap by merging \(046 F1-AC5\)\.\*\* Over `cap` the script refuses `over-cap"),
+    ("one-place-double-placement", r"\*\*One place per finding \(046 F1-AC6, F1-AC7\)\.\*\*.{0,120}`double-placement` refuses"),
+    ("analysis-rows", r"\*\*Analysis rows as overviews \(046 F2-AC12\)\.\*\* A row marked `analysis: true`"),
+    ("marks-mark-not-allowed", r"\*\*Marks stay on the items \(046 F1-AC9\)\.\*\*"),
+    ("quarter-marks", r"a quarter's carries `monthly_only` / `not_in_monthly`"),
+    ("review-language-f4-ac11", r"\*\*Item text in the review language \(F4-AC11\)\.\*\*"),
+    ("rewrite-fixes", r"WHY the Rewrite Gets the Errors Verbatim"),
+    ("rewrite-fix-mapping", r"so the one rewrite is aimed: `unknown-section` / `duplicate-section` → each context key once"),
+    ("carried-adr-6", r"WHY the Carried Rules \(ADR-6, Feature 4\)"),
+    ("script-checks-marks-model-matches", r"the model owns the match of each carried item to the days"),
+    ("carried-marks-f4-ac2", r"\*\*The marks \(F4-AC2\)\.\*\* A carried open item or intention is `done`"),
+    ("theme-never-done-f4-ac3", r"\*\*A theme is never done \(F4-AC3\)\.\*\*"),
+    ("placement-f4-ac4", r"\*\*Placement \(F4-AC4\)\.\*\* A carried item goes into the mapped section"),
+    ("off-limits-f4-ac5", r"\*\*Never under an off-limits heading \(F4-AC5\)\.\*\*"),
+    ("one-item-nowhere-else-f4-ac6", r"\*\*One item, nowhere else \(F4-AC6, F4-AC7\)\.\*\*"),
+    ("carried-again-no-age-f4-ac8", r"\*\*Carried again, no age \(F4-AC8\)\.\*\*"),
+    ("same-mark-merge-f4-ac10", r"\*\*Same-mark merge, never across marks \(F4-AC10\)\.\*\*"),
+    ("carried-false", r"\*\*`carried: false` means no carried item \(F6-AC2\)\.\*\*"),
+    ("growth-candidates", r"builds the \"Vault growth\" group from the digests' growth candidates"),
+    ("growth-counts-and-moc-lists", r"from `context\.json`'s growth counts and MOC lists"),
+    ("never-manifest-json", r"The proposer never reads `manifest\.json`"),
 ]
 
 
@@ -300,38 +333,42 @@ def proposer_doc() -> str:
 
 @pytest.mark.parametrize("label,pattern", PROPOSER_RULES, ids=[label for label, _p in PROPOSER_RULES])
 def test_proposer_doc_holds_the_moved_rule(proposer_doc, label, pattern):
-    assert re.search(pattern, proposer_doc, re.I), f"review-proposer.md has no home for {label} ({pattern!r})"
+    found = len(re.findall(pattern, proposer_doc))
+    assert found == 1, f"review-proposer.md: {label} ({pattern!r}) must match exactly once, matched {found}"
 
 
 SKILL_STEP_4_5 = [
-    ("plan-mention", r"`review-digest\.py plan"),
-    ("check-mention", r"`review-digest\.py check"),
+    ("plan-mention", r"\*\*`review-digest\.py plan --stem`\*\* lists the jobs still to run"),
+    ("check-mention", r"\*\*`review-digest\.py check --stem`\*\* judges every file the agents wrote"),
     ("plan-once-check-twice", r"\*\*`plan` once per run\.\*\* `plan` resets every failed unit"),
     ("failed-twice-stays-failed", r"fails twice stays failed until the next session"),
-    ("read-stale", r"`read-stale`"),
-    ("continued-read", r"`continued: true`"),
-    ("fresh-on-start-over", r"`review-read\.py --period --kind --stem --fresh`"),
-    ("pass-1-abort", r"`review-doc\.py replace --stem --abort`"),
-    ("abort-exception", r"and nothing else"),
-    ("agent-in-allowed-tools", r"`Agent`"),
-    ("one-message-batch", r"one message"),
-    ("subagent-type-general-purpose", r"`general-purpose`"),
-    ("subagent-type", r"`subagent_type`"),
-    ("run-in-background-false", r"`run_in_background: false`"),
-    ("spec-043-backgrounded", r"backgrounded"),
-    ("grep-fallback", r"`grep`"),
-    ("four-self-started-helpers", r"four .{0,40}subagents.{0,80}\$2\.83|\$2\.83.{0,80}four"),
-    ("never-an-agent-plan-did-not-list", r"`plan` did not list"),
-    ("not-condensed-named", r"not condensed"),
-    ("condense-incomplete", r"`condense-incomplete`"),
-    ("nothing-condensed", r"`nothing-condensed`"),
-    ("proposer-rules-moved", r"review-proposer\.md"),
+    ("read-stale", r"\*\*`read-stale`\.\*\* `review-digest\.py plan`"),
+    ("continued-read", r"prints `continued: true` with the stored `read_id` and `read_at`"),
+    ("fresh-on-start-over", r"\*\*`--fresh` on every Start-over route\.\*\*"),
+    ("fresh-mention", r"`review-read\.py --period --kind --stem --fresh` discards the stored material"),
+    ("pass-1-abort", r"`review-doc\.py replace --stem --abort` and nothing else: the one exception to the abort rule"),
+    ("abort-heading", r"WHY: the Rules say \"on Abort at any question, run no further script and write nothing\""),
+    ("agent-in-allowed-tools", r"plus `Agent` since spec 047 for the three review agents"),
+    ("one-message-batch", r"All jobs of a round go out as `Agent\(\)` calls in ONE message"),
+    ("one-message-strict", r"\*\*One message per round\.\*\* Failure mode"),
+    ("subagent-type", r"\*\*`subagent_type` on every call\.\*\* Failure mode"),
+    ("subagent-type-general-purpose", r"starts a `general-purpose` agent, which has every tool"),
+    ("run-in-background-false", r"\*\*`run_in_background: false`\.\*\* Failure mode"),
+    ("spec-043-backgrounded", r"`claude` 2\.1\.316 backgrounded the conductor"),
+    ("grep-fallback", r"fell back to `grep` over parts of the read files"),
+    ("four-self-started-helpers", r"four `general-purpose` subagents it started itself \(\$2\.83"),
+    ("never-an-agent-plan-did-not-list", r"never start an agent `plan` did not list; a unit without a passed digest"),
+    ("not-condensed-named", r"\*\*Not condensed is named, never read instead\.\*\*"),
+    ("condense-incomplete", r"\*\*`condense-incomplete`\.\*\* `write` refuses"),
+    ("nothing-condensed", r"`check` answers `stopped` `nothing-condensed` naming every week"),
+    ("proposer-rules-moved", r"every proposal rule now lives in \[review-proposer\]\(\.\./agents/review-proposer\.md\)"),
 ]
 
 
 @pytest.mark.parametrize("label,pattern", SKILL_STEP_4_5, ids=[label for label, _p in SKILL_STEP_4_5])
 def test_skill_doc_holds_the_step_4_5_decision(skill_doc, label, pattern):
-    assert re.search(pattern, _flat(skill_doc)), f"periodic-review.md has no WHY for {label} ({pattern!r})"
+    found = len(re.findall(pattern, _flat(skill_doc)))
+    assert found == 1, f"periodic-review.md: {label} ({pattern!r}) must match exactly once, matched {found}"
 
 
 def test_skill_doc_no_longer_says_no_step_dispatches_a_subagent(skill_doc):

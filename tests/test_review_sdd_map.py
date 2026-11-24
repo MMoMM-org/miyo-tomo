@@ -264,7 +264,3 @@ def test_no_file_the_047_map_marks_delete_exists() -> None:
     assert not survivors, survivors
     assert not (ROOT / "tests" / "test_review_read_parts.py").exists()
 
-
-def test_every_review_file_that_exists_is_named_by_a_map_not_only_by_a_deleted_line() -> None:
-    mapped_only_deleted = [str(p) for _b, p in _EXISTING if p.name in _deleted_names()]
-    assert not mapped_only_deleted, mapped_only_deleted

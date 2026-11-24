@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.2
+# version: 0.6.0
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -53,6 +53,20 @@ which marker kinds it may carry and why. The walk then asserts:
   digests and a carryover whose text carries the daily marker; `digests/` and `carryover.json` are content files
   like the stage's, `condensed.json` stays under the guard; a `plan` on a stem without a stage is refused;
   one forced exception and one bad invocation of `review-digest.py` join the lists.
+- (spec 047 T7.2, F7-AC4) `_digest_paths` runs `review-digest.py` over every answer it has on a stage of its
+  own whose files carry the daily marker: a `check` that sends jobs back (`retry` with `errors`), a second
+  `check` that stops on `nothing-condensed`, and `plan` and `check` refused with `stage-invalid` (a day file
+  that is not JSON) and `read-stale` (a day file of another read); `review-read.py --measure` runs for the
+  week and the month. The general stdout, stderr and working-file checks cover every one of those calls.
+- (spec 047 T7.2, ADR-10) the working-file allowlist is `STAGE_CONTENT`, exactly `days/`, `growth/`,
+  `children/`, `previous/`, `digests/`, `context*.json`, `weeks.json`, `carryover.json` and `proposals.json`;
+  `payloads.json` is the separate spec 046 T6.3 exemption (`DELIVERY_PAYLOADS`), not stage content.
+  `manifest.json`, `condensed.json` and `meta.json` stay under the guard.
+- (spec 047 T7.2) every agent prompt step 5 of the periodic-review skill would send for the walk's `plan`
+  and `check` answers (its `Agent()` templates filled with the job's fields, a retry with its `errors`
+  line) holds no marker and not the readable value.
+- (spec 047 T7.2, F7-AC4) a cost record: `scripts/tomo-session-stats.py`, run as a black box on a
+  synthetic session whose messages, tool calls and agent transcript carry every marker, prints none.
 - (spec 046 T5.7) the mapped walk (`_mapped`, its own instance): a mapped heading, the note's text,
   the section's items and a user-added item carry markers through `review-doc.py write` and `parse`,
   a clean `preview`, a renamed heading (`preview`, refused `deliver`), a moved block (`preview`,
@@ -69,8 +83,11 @@ from __future__ import annotations
 
 import argparse
 import copy
+import fnmatch
 import importlib.util
 import json
+import re
+import subprocess
 import sys
 import traceback
 from contextlib import contextmanager
@@ -188,15 +205,22 @@ def _patched(obj, name: str, value):
         setattr(obj, name, original)
 
 
-CONTENT_DIRS = ("days", "growth", "children", "previous", "digests")
+# The stage content files (spec 047 ADR-10): they hold note text by design while a stage lives, and
+# review_stage.discard deletes them. A folder entry ends in `/`; a file entry is an fnmatch pattern on the name.
+STAGE_CONTENT = ("days/", "growth/", "children/", "previous/", "digests/", "context*.json", "weeks.json",
+                 "carryover.json", "proposals.json")
+# Not stage content: an open delivery's stored set and note text (spec 046 T6.3, owner decision 2026-11-18),
+# exempt on its own and gone once the delivery is finished or withdrawn (test_no_stored_payload_outlives_...).
+DELIVERY_PAYLOADS = "payloads.json"
 
 
 def _content_file(path: Path) -> bool:
-    """A file that holds note or proposal text by design (the stage content, proposals.json, payloads.json)."""
-    if path.parent.name in CONTENT_DIRS and path.parent.parent.parent.name == "review":
+    """A file that holds note or proposal text by design: stage content (`STAGE_CONTENT`) or payloads.json."""
+    if path.name == DELIVERY_PAYLOADS:
         return True
-    return path.name in ("proposals.json", "payloads.json", "carryover.json") or (
-        path.name.startswith("context") and path.name.endswith(".json"))
+    if f"{path.parent.name}/" in STAGE_CONTENT and path.parent.parent.parent.name == "review":
+        return True
+    return any(fnmatch.fnmatchcase(path.name, entry) for entry in STAGE_CONTENT if not entry.endswith("/"))
 
 
 class Walk:
@@ -223,8 +247,8 @@ class Walk:
 
     def _tmp_leaks(self) -> list:
         """Markers or the readable value in any file under tomo-tmp/review/ except the stage's content files
-        (spec 047 T2.4: days/, growth/, children/, previous/, context*.json), proposals.json and payloads.json,
-        which hold note text by design; manifest.json and weeks.json stay under the guard."""
+        (`STAGE_CONTENT`) and payloads.json (`DELIVERY_PAYLOADS`), which hold note text by design;
+        manifest.json, condensed.json and meta.json stay under the guard."""
         leaks = []
         for path in sorted((self.root / "tomo-tmp").rglob("*")):
             if path.is_file() and not _content_file(path):
@@ -303,6 +327,7 @@ def walk(tmp_path, monkeypatch, capsys):
     _session(w)
     _week(w)
     _month(w)
+    _digest_paths(w)
     _forced_exceptions(w)
     _bad_invocations(w)
     w.mapped = _mapped(tmp_path / "mapped", monkeypatch, capsys, mods)
@@ -360,7 +385,14 @@ def _session(w: Walk) -> None:
     assert (w.root / "tomo-tmp" / "review" / "rows-week.json").is_file()
 
 
+def _measure(w: Walk, period: str, kind: str) -> None:
+    """spec 047 T7.2: `--measure` prints counts and bytes of the stage it would write, and writes no file."""
+    rc, out = w.run("review-read", "-", ["--period", period, "--kind", kind, "--measure", "--today", TODAY])
+    assert rc == 0 and out["status"] == "ok" and out["measure"]["bytes"] and out["measure"]["units"], out
+
+
 def _week(w: Walk) -> None:
+    _measure(w, "2026-W13", "week")
     rc, out = w.run("review-read", "-", ["--period", "2026-W13", "--kind", "week", "--today", TODAY])
     assert rc == 0 and out["status"] == "ok" and out["nothing_to_review"] is False, out
     assert out["report"]["days"][2]["linked"][0]["state"] == "read"
@@ -432,6 +464,7 @@ def _condense(w: Walk, stem: str = MONTH_STEM, carried: bool = True) -> None:
 
 
 def _month(w: Walk) -> None:
+    _measure(w, "2026-03", "month")
     path = _month_read(w)
     rc, out = w.run("review-doc", "write", ["write", "--stem", MONTH_STEM, "--proposals", str(path),
                                             "--run-id", "r-month", "--today", TODAY])
@@ -474,6 +507,53 @@ def _month(w: Walk) -> None:
     assert rc == 0 and out["status"] == "withdrawn" and "note" in out["paths"], out
     rc, out = w.run("review-instructions", "status", ["status", "--stem", MONTH_STEM])
     assert rc == 0 and out == {"state": None, "stem": MONTH_STEM}, out
+
+
+DIGEST_STEM = "2026-W13_digest"       # a stage of its own for review-digest.py's other answers
+
+
+def _digest(w: Walk, sub: str) -> dict:
+    rc, out = w.run("review-digest", sub, [sub, "--stem", DIGEST_STEM])
+    assert rc == 0, out
+    return out
+
+
+def _read_digest_stage(w: Walk, *flags: str) -> None:
+    rc, out = w.run("review-read", "-", ["--period", "2026-W13", "--kind", "week", "--stem", DIGEST_STEM, *flags,
+                                         "--today", TODAY])
+    assert rc == 0 and out["status"] == "ok" and out["stage"], out
+
+
+def _rewrite_day(w: Walk, text_of) -> None:
+    """Replace the first day file of the stage with ``text_of(its data)``; the data carries the daily marker."""
+    path = sorted((w.stage(DIGEST_STEM) / "days").glob("*.json"))[0]
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert DAY in json.dumps(data, ensure_ascii=False), "the day file holds the daily text"
+    path.write_text(text_of(data), encoding="utf-8")
+
+
+def _digest_paths(w: Walk) -> None:
+    """spec 047 T7.2: review-digest.py's retry, stop and refusals on a stage whose files carry the markers."""
+    _read_digest_stage(w)
+    plan = _digest(w, "plan")
+    assert plan["status"] == "ok" and plan["rounds"], plan
+    files = condense_files(plan, w.stage(DIGEST_STEM), text=DAY, carry=True)
+    for data in files.values():
+        data["read_id"] = f"other {DAY}"          # every agent file fails: read-id-mismatch, its text a marker
+    put_files(w.stage(DIGEST_STEM), files)
+    out = _digest(w, "check")
+    assert out["status"] == "ok" and out["retry"] and all(r["errors"] for r in out["retry"]), out
+    out = _digest(w, "check")
+    assert out["status"] == "stopped" and out["problems"] == ["nothing-condensed"], out
+    _rewrite_day(w, lambda data: f"not json {json.dumps(data, ensure_ascii=False)}")
+    for sub in ("plan", "check"):
+        out = _digest(w, sub)
+        assert out["status"] == "refused" and out["problems"] == ["stage-invalid"], out
+    _read_digest_stage(w, "--fresh")
+    _rewrite_day(w, lambda data: json.dumps({**data, "read_id": "another-read"}, ensure_ascii=False))
+    for sub in ("plan", "check"):
+        out = _digest(w, sub)
+        assert out["status"] == "refused" and out["problems"] == ["read-stale"], out
 
 
 def _raise_with(message_of):
@@ -767,3 +847,138 @@ def test_the_mapped_walk_is_live_and_its_records_hold_no_marker(walk):
     assert {(c["script"], c["sub"]) for c in m.calls} == {
         ("review-doc", "write"), ("review-doc", "parse"), ("review-instructions", "preview"),
         ("review-instructions", "deliver")}
+
+
+# ── spec 047 T7.2: the allowlist, the digest answers, the agent prompts, a cost record ──────
+
+
+def test_the_allowlist_is_exactly_the_stage_content_files_and_payloads_stays_apart():
+    """ADR-10: the nine stage content files and nothing else; payloads.json is spec 046 T6.3's own exemption."""
+    assert sorted(STAGE_CONTENT) == sorted(("days/", "growth/", "children/", "previous/", "context*.json",
+                                            "weeks.json", "digests/", "carryover.json", "proposals.json"))
+    assert DELIVERY_PAYLOADS == "payloads.json" and DELIVERY_PAYLOADS not in STAGE_CONTENT
+    stage = Path("tomo-tmp/review/2026-W13_review")
+    allowed = ["days/2026-03-23.json", "growth/2026-03-23-2.json", "children/weekly-2026-W12.json",
+               "previous/week-2026-W12.json", "digests/2026-W13.json", "context.json", "context-2.json",
+               "weeks.json", "carryover.json", "proposals.json", "payloads.json"]
+    guarded = ["manifest.json", "condensed.json", "meta.json", "read.json", "read-2026-03.json",
+               "days.json", "notes/2026-03-23.json"]
+    assert [n for n in allowed if not _content_file(stage / n)] == []
+    assert [n for n in guarded if _content_file(stage / n)] == []
+    assert not _content_file(Path("tomo-tmp/review/rows-week.json"))
+
+
+def test_review_digest_gave_every_answer_in_the_walk(walk):
+    """Each refusal and the stop of plan and check ran (their output is under the walk's general checks)."""
+    seen = set()
+    for c in walk.calls:
+        if c["script"] == "review-digest":
+            out = _payload(c["stdout"])
+            seen.add((c["sub"], out["status"], tuple(out.get("problems") or ())))
+            if out.get("retry"):
+                seen.add((c["sub"], "retry", ()))
+    assert seen >= {("plan", "ok", ()), ("check", "ok", ()), ("check", "retry", ()),
+                    ("check", "stopped", ("nothing-condensed",)), ("plan", "refused", ("stage-missing",))} | {
+        (sub, "refused", (problem,)) for sub in ("plan", "check") for problem in ("stage-invalid", "read-stale")}
+    measured = [c for c in walk.calls if c["script"] == "review-read" and "--measure" in c["argv"]]
+    assert len(measured) == 2 and all(_payload(c["stdout"])["measure"]["bytes"] for c in measured)
+
+
+SKILL = TESTS_DIR.parent / "tomo" / "dot_claude" / "skills" / "periodic-review" / "SKILL.md"
+_TEMPLATE_RE = re.compile(r'```text\n(Agent\(subagent_type: "(review-[a-z]+)".*?\))\n```', re.S)
+
+
+def _templates() -> dict:
+    found = {agent: text for text, agent in _TEMPLATE_RE.findall(SKILL.read_text(encoding="utf-8"))}
+    assert set(found) == {"review-digester", "review-carryover", "review-proposer"}, sorted(found)
+    return found
+
+
+def _fill(template: str, values: dict) -> str:
+    """Step 5's rule: each `<key>` is the job's value written as JSON; stem, read_id, language are the run's."""
+    def value(match):
+        key = match.group(1)
+        assert key in values, f"no value for <{key}>"
+        return values[key] if key in ("stem", "read_id", "language") else json.dumps(values[key])
+    return re.sub(r"<([a-z_]+)>", value, template)
+
+
+def _prompts(calls: list) -> list[tuple[str, str]]:
+    """Every prompt step 5 would send for the walk's review-digest answers: the jobs of each plan, the jobs a
+    check sends back with their `errors` line, the proposer of each check and of a plan with no rounds."""
+    templates, prompts, jobs = _templates(), [], {}
+    run = {"language": CONFIG["review"]["language"]}
+    for c in calls:
+        if c["script"] != "review-digest":
+            continue
+        out = _payload(c["stdout"])
+        if out.get("status") != "ok":
+            continue
+        stem = c["argv"][c["argv"].index("--stem") + 1]
+        if c["sub"] == "plan":
+            jobs[stem] = (out["read_id"], [j for r in out["rounds"] for j in r])
+        read_id, planned = jobs[stem]
+        values = {**run, "stem": stem, "read_id": read_id}
+        if c["sub"] == "plan":
+            prompts += [(job["agent"], _fill(templates[job["agent"]], {**values, **job})) for job in planned]
+        for entry in out.get("retry") or []:
+            job = next(j for j in planned if j["agent"] == entry["agent"] and j.get("unit") == entry.get("unit"))
+            text = _fill(templates[job["agent"]], {**values, **job})
+            prompts.append((job["agent"], f"{text}\nerrors: {json.dumps(entry['errors'])}"))
+        if c["sub"] == "check" or not out["rounds"]:
+            prompts.append(("review-proposer", _fill(templates["review-proposer"], {**values, **out["proposer"]})))
+    return prompts
+
+
+def test_no_agent_prompt_built_from_plan_and_check_holds_note_text(walk):
+    """The prompts carry the job's fields only (stage-relative paths, dates, counts); the files they name hold
+    the markers (test_every_marker_reached_the_scripts), the prompts never."""
+    prompts = _prompts(walk.calls)
+    agents = [agent for agent, _ in prompts]
+    assert {"review-digester", "review-carryover", "review-proposer"} <= set(agents), agents
+    assert any("\nerrors: " in text for _, text in prompts), "a retry prompt was built"
+    leaks = [(agent, sorted(_kinds_and_readable(text))) for agent, text in prompts if _kinds_and_readable(text)]
+    assert leaks == []
+
+
+STATS = TESTS_DIR.parent / "scripts" / "tomo-session-stats.py"
+
+
+def _transcript_line(kind: str, n: int, content) -> dict:
+    line = {"type": kind, "timestamp": f"2026-11-24T10:00:{n:02d}Z", "message": {"role": kind, "content": content}}
+    if kind == "assistant":
+        line["message"].update(id=f"msg_{n}", model="claude-opus-4-1",
+                               usage={"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100,
+                                      "cache_creation_input_tokens": 20})
+    return line
+
+
+def _marked_session(root: Path) -> Path:
+    """A session whose user text, assistant text, tool call and tool result, and agent transcript carry every
+    marker and the readable value."""
+    text = f"{DAY} {ANS} {TRK} {PRP} {WKL} {READABLE}"
+    main = [_transcript_line("user", 1, f"/review {text}"),
+            _transcript_line("assistant", 2, [{"type": "text", "text": text},
+                                              {"type": "tool_use", "id": "t1", "name": "Agent",
+                                               "input": {"subagent_type": "review-digester", "prompt": text}}]),
+            {**_transcript_line("user", 3, [{"type": "tool_result", "tool_use_id": "t1", "content": text}]),
+             "toolUseResult": {"content": text}}]
+    session = root / "s1.jsonl"
+    session.write_text("".join(json.dumps(line) + "\n" for line in main), encoding="utf-8")
+    sub = root / "s1" / "subagents"
+    sub.mkdir(parents=True)
+    agent = [_transcript_line("user", 4, text), _transcript_line("assistant", 5, [{"type": "text", "text": text}])]
+    (sub / "agent-a1.jsonl").write_text("".join(json.dumps(line) + "\n" for line in agent), encoding="utf-8")
+    (sub / "agent-a1.meta.json").write_text(json.dumps({"agentType": "review-digester"}), encoding="utf-8")
+    return session
+
+
+def test_a_cost_record_of_a_marked_session_holds_no_marker(tmp_path):
+    """F7-AC4: the per-step cost record of the live walk (scripts/tomo-session-stats.py, run as a black box)
+    names counts, models and costs only."""
+    done = subprocess.run([sys.executable, str(STATS), "--session", str(_marked_session(tmp_path))],
+                          capture_output=True, text=True, timeout=60, cwd=tmp_path)
+    assert done.returncode == 0, done.stderr
+    assert re.search(r"\$\s*\d", done.stdout) and "review-digester" in done.stdout, done.stdout
+    record = done.stdout + done.stderr
+    assert sorted(_kinds_and_readable(record)) == [], record

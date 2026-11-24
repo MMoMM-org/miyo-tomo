@@ -335,19 +335,26 @@ refusal for non-carried items only (spec 046). Without a carryover nothing
 moves: every carried item is then `carried-without-carryover` at the place
 the proposer put it, so the error pointers name the proposer's own file.
 
-WHY a move is written back to `proposals.json` before the checks: every
-error pointer (`/sections/<i>/items/<j>`, `/groups/<g>/<k>`) is computed on
-the proposals as checked, and the proposer fixes a refused file in place by
-those pointers (`review-proposer.md`, Rewrite rules). Checking the moved
-copy in memory while the file on disk still held the original order made
-a pointer behind a moved item name its neighbour: the proposer edited the
-wrong entry. The move is deterministic, so persisting it loses nothing the
-proposer meant; the file then equals what was checked, and the rewrite
-starts from the moved state, so the same item is not moved again on the
-next `write`. The write goes to the file `write` loaded (`--proposals`,
-default the stage's), atomically and in the stage's JSON encoding
-(`review_stage_codec.encode`). Without a move the file is not touched, byte
-for byte: a refusal with nothing moved leaves the proposer's own text.
+WHY a move is written back to `proposals.json` on a `proposals-invalid`
+refusal, and only there: every error pointer (`/sections/<i>/items/<j>`,
+`/groups/<g>/<k>`) is computed on the proposals as checked, and the
+proposer fixes a refused file in place by those pointers
+(`review-proposer.md`, Rewrite rules). Checking the moved copy in memory
+while the file on disk still held the original order made a pointer behind
+a moved item name its neighbour: the proposer edited the wrong entry. The
+move is deterministic, so persisting it loses nothing the proposer meant;
+the file then equals what was checked exactly when a rewrite reads it. The
+write goes to the file `write` loaded (`--proposals`, default the
+stage's), atomically and in the stage's JSON encoding
+(`review_stage_codec.encode`), just before the refusal is raised.
+Everywhere else the file stays byte-identical: on success it is deleted
+anyway, and on any other exit (`review-exists`, `doc-name-taken`,
+`sections-changed`, `kado-write-failed`) the next run — `replace
+--confirm`, a retry — must find the carried item where the proposer put it,
+so its own overflow moves it again and `carried_moved` still reports the
+move. A first version persisted the move before the checks on every path;
+after `write` → `review-exists` → `replace --confirm` the second run found
+nothing to move and the notice vanished.
 
 WHY `coverage` runs once, after both checks: it is a rule over the whole
 document (every carryover id exactly once over groups and sections), not

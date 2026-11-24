@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_047_t5_4_carried_write.py — carried items through ``review-doc.py write`` (spec 047 T5.4).
 
 SDD ADR-6, ADR-12, Internal API Changes (the `carried-*` errors, the `carried-moved` notice, the new
@@ -16,8 +16,10 @@ found previous note under the fixture's opt-in ``carry=True``, sourced by its st
   `carried-without-carryover`; with no found note there is no carry-failed line;
 - with a mapping, `overflow` runs before `over-cap` is counted: a carried item of a full section moves to
   the group of its mark and is reported in `carried_moved`; a full section without a carried item is
-  still refused `over-cap`; a move reaches `proposals.json` before the checks, so a refusal's pointer
-  names the entry of the file on disk the proposer fixes, and without a move the file stays byte-identical;
+  still refused `over-cap`; on a `proposals-invalid` refusal a move is written back to `proposals.json`, so
+  a pointer names the entry of the file on disk the proposer fixes; without a move, and on every other exit
+  (`review-exists` → `replace --confirm`, `kado-write-failed` → retry), the file stays byte-identical and
+  the next run still reports `carried_moved`;
 - F6-AC2 partly: a found note whose own carry failed (the carryover passed for the other) says "found, not
   taken into account" while the other's item stays carried; with the whole carryover not passed every found
   note says so, beside the one carry-failed line.
@@ -303,3 +305,44 @@ def test_a_refusal_without_a_move_leaves_the_file_byte_identical(script, mapped_
                          ReviewFakeVault(dict(TARGET)))
     assert out["problems"] == ["proposals-invalid"], out
     assert path.read_bytes() == before
+
+
+def _moving() -> dict:
+    return {"language": "de", "groups": {},
+            "sections": [{"key": "s1", "items": [PLAIN, carried("Lief", "done", "2026-W12", "2026-03-24")]}]}
+
+
+DONE_LINE = "- [x] Lief ([[2026-W12]], [[2026-03-24]]) · erledigt (letzter Rückblick) %%t2%%"
+
+
+def test_review_exists_then_replace_confirm_still_reports_the_move(script, mapped_inst, monkeypatch, capsys):
+    doc_path = f"{trd.INBOX}2026-W13 Review.md"
+    own = ReviewFakeVault({**TARGET, doc_path: "---\ntomo:\n  doc_type: review\n  run_id: old\n---\n# old\n"})
+    stem, path = trd.stage(mapped_inst, _mapped(PREV), _moving(), carry=True)
+    before = path.read_bytes()
+    _, out, _ = trd._run(script, monkeypatch, capsys,
+                         ["write", "--stem", stem, "--proposals", str(path), "--run-id", "r-1"], own)
+    assert out["problems"] == ["review-exists"], out
+    assert path.read_bytes() == before, "only a proposals-invalid refusal writes the move back"
+    _, out, _ = trd._run(script, monkeypatch, capsys,
+                         ["replace", "--stem", stem, "--confirm", "--run-id", "r-2"], own)
+    assert out["status"] == "replaced", out
+    assert out["carried_moved"] == [{"key": "s1", "to": "done", "count": 1}]
+    assert DONE_LINE in split_frontmatter(own.text(doc_path))[1].splitlines()
+
+
+def test_a_failed_kado_write_then_a_retry_still_reports_the_move(script, mapped_inst, monkeypatch, capsys):
+    doc_path = f"{trd.INBOX}2026-W13 Review.md"
+    fake = ReviewFakeVault(dict(TARGET))
+    fake.fail[("write_note", doc_path)] = trd.KadoToolError("kado-write returned an error: denied")
+    stem, path = trd.stage(mapped_inst, _mapped(PREV), _moving(), carry=True)
+    before = path.read_bytes()
+    argv = ["write", "--stem", stem, "--proposals", str(path), "--run-id", "r-1"]
+    _, out, _ = trd._run(script, monkeypatch, capsys, argv, fake)
+    assert out["problems"] == ["kado-write-failed"], out
+    assert path.read_bytes() == before, "only a proposals-invalid refusal writes the move back"
+    fake.fail.clear()
+    _, out, _ = trd._run(script, monkeypatch, capsys, argv, fake)
+    assert out["status"] == "written", out
+    assert out["carried_moved"] == [{"key": "s1", "to": "done", "count": 1}]
+    assert DONE_LINE in _lines(fake)

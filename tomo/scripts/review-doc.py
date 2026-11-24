@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.10.2
+# version: 0.10.3
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
@@ -67,10 +67,11 @@ Rules:
     ``failed`` unit (``review_digest.not_condensed`` over ``review_stage.units``)
     are no sources. With a passed carryover, ``review_carried.overflow`` first
     moves the carried items of a full section into the group of their mark
-    (``carried_moved``) and writes the moved proposals back to their file, so every
-    error pointer names an entry of the file as it now stands (untouched when
-    nothing moved); then the group and section checks run, each carried
+    (``carried_moved``); then the group and section checks run, each carried
     failure an error, and ``review_carried.coverage`` once over the document.
+    A ``proposals-invalid`` refusal after a move writes the moved proposals
+    back to their file, so every error pointer names an entry of the file as
+    it now stands; every other exit leaves the file byte-identical.
     ``carry_failed``: a previous note was found and the carryover did not pass.
     A part lands where its configured row
     says; for a new note the template (or its ``_tomo`` variant) is read and
@@ -84,7 +85,7 @@ Rules:
     ``review-exists`` with its ``doc_path``; only ``replace --confirm``
     writes over it, from the kept stage, and resets ``meta.json``. A refused
     or failed write keeps the stage, ``proposals.json`` and ``meta.json``
-    as they were, but for a carried move written back to ``proposals.json``.
+    as they were, but for a carried move written back on ``proposals-invalid``.
     ``replace --abort`` deletes the stage content and
     ``proposals.json`` and touches neither the document, ``meta.json`` nor
     ``payloads.json``.
@@ -329,12 +330,12 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
     moved: List[dict] = []
     if carryover is not None:
         proposals, moved = rcar.overflow(proposals, defs or {}, carryover)
-    if moved:
-        atomic_write_text(proposals_path, encode(proposals))
     accepted, rejected, errors = rd.check_items(proposals, read)
     sections = rs.check(proposals, read)
     errors = sections.errors + errors + rcar.coverage(proposals, carryover)
     if errors:
+        if moved:
+            atomic_write_text(proposals_path, encode(proposals))
         raise Refused("proposals-invalid", errors=errors)
     try:
         parts = rs.parts(defs or {}, setup.sections, sections.accepted)

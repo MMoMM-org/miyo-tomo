@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_047_t5_4_carried_write.py — carried items through ``review-doc.py write`` (spec 047 T5.4).
 
 SDD ADR-6, ADR-12, Internal API Changes (the `carried-*` errors, the `carried-moved` notice, the new
@@ -16,7 +16,8 @@ found previous note under the fixture's opt-in ``carry=True``, sourced by its st
   `carried-without-carryover`; with no found note there is no carry-failed line;
 - with a mapping, `overflow` runs before `over-cap` is counted: a carried item of a full section moves to
   the group of its mark and is reported in `carried_moved`; a full section without a carried item is
-  still refused `over-cap`;
+  still refused `over-cap`; a move reaches `proposals.json` before the checks, so a refusal's pointer
+  names the entry of the file on disk the proposer fixes, and without a move the file stays byte-identical;
 - F6-AC2 partly: a found note whose own carry failed (the carryover passed for the other) says "found, not
   taken into account" while the other's item stays carried; with the whole carryover not passed every found
   note says so, beside the one carry-failed line.
@@ -243,3 +244,62 @@ def test_one_of_two_notes_failing_its_carry_is_named_and_the_others_item_stays(s
     assert out["previous"] == [
         {"kind": "week", "name": "2026-W12", "state": "found", "carried": 1},
         {"kind": "month", "name": "2026-02", "state": "found", "carried": 0, "carry_failed": True}]
+
+
+# ---------------------------------------------------------------- the moved proposals reach the file the pointers name
+
+BAD_MARK = {**trd.item("Falsch markiert", "2026-03-24"), "mark": "not_in_weekly"}
+
+
+def _write_kept(script, monkeypatch, capsys, inst, read, props):
+    """Like ``_write``, also returning the proposals file the refusal keeps."""
+    stem, path = trd.stage(inst, read, props, carry=True)
+    fake = ReviewFakeVault(dict(TARGET))
+    code, out, _ = trd._run(script, monkeypatch, capsys,
+                            ["write", "--stem", stem, "--proposals", str(path), "--run-id", "r-test"], fake)
+    assert code == 0
+    return out, fake, path
+
+
+def _entry(doc, pointer: str):
+    node = doc
+    for part in pointer.strip("/").split("/"):
+        node = node[int(part)] if isinstance(node, list) else node[part]
+    return node
+
+
+def _moved_and_bad() -> dict:
+    return {"language": "de", "groups": {},
+            "sections": [{"key": "s1", "items": [carried("Lief", "done", "2026-W12", "2026-03-24"), BAD_MARK]}]}
+
+
+def test_a_pointer_after_a_move_names_the_invalid_entry_of_the_file_on_disk(script, mapped_inst, monkeypatch,
+                                                                            capsys):
+    out, fake, path = _write_kept(script, monkeypatch, capsys, mapped_inst, _mapped(PREV), _moved_and_bad())
+    assert out["problems"] == ["proposals-invalid"] and fake.writes == [], out
+    [error] = out["errors"]
+    pointer, reason = error.split(": ", 1)
+    assert reason == "mark-not-allowed" and pointer.endswith("/mark"), error
+    on_disk = json.loads(path.read_text(encoding="utf-8"))
+    assert _entry(on_disk, pointer.rsplit("/", 1)[0]) == BAD_MARK
+
+
+def test_a_refusal_after_a_move_leaves_the_moved_item_in_its_group_on_disk(script, mapped_inst, monkeypatch, capsys):
+    out, _, path = _write_kept(script, monkeypatch, capsys, mapped_inst, _mapped(PREV), _moved_and_bad())
+    assert out["problems"] == ["proposals-invalid"], out
+    on_disk = json.loads(path.read_text(encoding="utf-8"))
+    assert [i["text"] for i in on_disk["groups"]["done"]] == ["Lief"]
+    assert [i["text"] for i in on_disk["sections"][0]["items"]] == ["Falsch markiert"]
+    assert "mark" not in on_disk["groups"]["done"][0]
+
+
+def test_a_refusal_without_a_move_leaves_the_file_byte_identical(script, mapped_inst, monkeypatch, capsys):
+    props = {"language": "de", "groups": {"open": [carried("Jana", "not_mentioned", "2026-W12")]},
+             "sections": [{"key": "s1", "items": [BAD_MARK]}]}
+    stem, path = trd.stage(mapped_inst, _mapped(PREV), props, carry=True)
+    before = path.read_bytes()
+    _, out, _ = trd._run(script, monkeypatch, capsys,
+                         ["write", "--stem", stem, "--proposals", str(path), "--run-id", "r-test"],
+                         ReviewFakeVault(dict(TARGET)))
+    assert out["problems"] == ["proposals-invalid"], out
+    assert path.read_bytes() == before

@@ -335,6 +335,20 @@ refusal for non-carried items only (spec 046). Without a carryover nothing
 moves: every carried item is then `carried-without-carryover` at the place
 the proposer put it, so the error pointers name the proposer's own file.
 
+WHY a move is written back to `proposals.json` before the checks: every
+error pointer (`/sections/<i>/items/<j>`, `/groups/<g>/<k>`) is computed on
+the proposals as checked, and the proposer fixes a refused file in place by
+those pointers (`review-proposer.md`, Rewrite rules). Checking the moved
+copy in memory while the file on disk still held the original order made
+a pointer behind a moved item name its neighbour: the proposer edited the
+wrong entry. The move is deterministic, so persisting it loses nothing the
+proposer meant; the file then equals what was checked, and the rewrite
+starts from the moved state, so the same item is not moved again on the
+next `write`. The write goes to the file `write` loaded (`--proposals`,
+default the stage's), atomically and in the stage's JSON encoding
+(`review_stage_codec.encode`). Without a move the file is not touched, byte
+for byte: a refusal with nothing moved leaves the proposer's own text.
+
 WHY `coverage` runs once, after both checks: it is a rule over the whole
 document (every carryover id exactly once over groups and sections), not
 over an item. The errors are joined in one list — section errors, group

@@ -402,6 +402,7 @@ graph LR
 | `lib/review_habits.py` | Unchanged: habits over every read day of the loader's `days` |
 | `lib/review_doc_parse.py` | Unchanged code; a regression test pins that a carried suffix is item text, never an edit or a done mark |
 | `schemas/review-digest.schema.json`, `review-carryover.schema.json` (new), `review-proposals.schema.json` | The agents' file contracts |
+| `scripts/tomo-session-stats.py` (MODIFY 0.2.1, T7.3 deviation, owner told) | Per-step cost, wall time and peak context of a live run, counts only: per-model pricing from `tomo-token-usage.py`'s `PRICE` (imported; an unknown model falls back to the default rate and is marked) and a per-step block (main session + each subagent by `agentType`); F8-AC1 needed per-step figures and 0.1.1 had one flat Sonnet rate and aggregate subagent totals. Peak = input + cache_read (spec 046 peaks also counted cache_write) |
 | Unchanged, named for the boundary: `lib/review_mapping.py`, `lib/review_section_plan.py`, `review-session.py` | Off-limits resolution (F4-AC5); Pass 2 block replacement (F5-AC6); `start` and the open-review listing — no code change |
 | Reused without change: `lib/run_id.py`, `lib/review_md.py`, `lib/review_reader.py` | The read id; the markdown helpers behind the cutter; the `PacedReader` the previous notes go through |
 

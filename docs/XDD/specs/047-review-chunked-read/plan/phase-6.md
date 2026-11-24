@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Agents, skill dispatch and STRICT rules"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 6
 ---

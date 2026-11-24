@@ -126,6 +126,24 @@ wrong for an emptied set, but the review is unlisted and no step leads there. A 
 signature is `drop`'s. On a stem whose delivery never began the same file
 stays `set-exists` — a file this delivery did not write, whatever it holds.
 
+### WHY `drop` of a Begun Delivery Discards the Stage Content (spec 047 ADR-10)
+
+Owner decision 2026-11-24, logged in the spec 047 README as an ADR-9
+exception. Spec 047 CON-3 and ADR-10 say that stage files holding note text
+are deleted on drop. A drop of a delivery that never began removes the whole
+stage. A drop of a begun delivery keeps the stage, because `meta.json` records
+the withdrawal. Before this fix that path removed only `payloads.json`. The
+stage can still hold a later read, for example a new `/review` of the period
+that read and condensed and was then interrupted before `write`. Its
+`days/`, `growth/`, `children/`, `previous/`, `digests/`, `context*.json`,
+`weeks.json`, `carryover.json`, `proposals.json`, `condensed.json` and
+`manifest.json` then stayed on disk after a drop.
+`tests/test_review_e2e_cleanup.py` found this. The withdrawn path now calls
+`review_stage.discard(stage)`, the same discard that `write` and
+`replace --abort` use. It keeps `meta.json` (the withdrawal record) and
+`payloads.json` (removed right after by `remove_payloads`). Nothing else in
+Pass 2 changes: the set, its MD peer and the wire stay the same.
+
 ## WHY the Steps Are `note → set_json → set_md → doc_mark` (ADR-11)
 
 The order is the order of harm. The new note (only in `new-note` mode) is

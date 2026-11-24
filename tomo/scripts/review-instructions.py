@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.6.0
+# version: 0.6.1
 """Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
 
 ``preview`` builds the plan from the approved document and the target note as they are now and prints it; nothing is
@@ -87,6 +87,7 @@ from lib import review_instructions_args as rargs  # noqa: E402
 from lib import review_instructions_deliver as rid  # noqa: E402
 from lib import review_instructions_run as rir  # noqa: E402
 from lib import review_kado_conflict as rkc  # noqa: E402
+from lib import review_stage  # noqa: E402
 from lib import review_state as rs  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.review_doc_read import doc_path_of, read_document  # noqa: E402
@@ -170,6 +171,7 @@ def drop(args: argparse.Namespace) -> dict:
     meta.data["withdrawn"] = True
     meta.failed_step = ""
     rdl.save_meta(stage, meta)
+    review_stage.discard(stage)
     rdl.remove_payloads(stage)
     return {"status": "withdrawn", "stem": args.stem, "paths": rdl.public_paths(paths)}
 

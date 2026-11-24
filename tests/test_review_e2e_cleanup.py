@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test_review_e2e_cleanup.py — a review set's MD peer names what Hashi's cleanup may trash (spec 046 T6.3).
 
 Hashi's cleanup after a full apply (Hashi ADR-018 §4, #146) reads `tomo.sources[]` from the MD peer's
@@ -10,13 +10,22 @@ set's peer lists nothing (`sources: []`). After the cleanup the review is not li
 `not-found`, and a later `/review` of the period starts fresh and delivers against the note as it is. A
 cleanup that stopped midway (document gone, set left; set gone, document left) never reads as
 `failed-delivery` and never blocks the next run. The cleanup is simulated on the fake's files, the way the
-walk simulates Hashi's apply. Named `test_review_e2e_*` so the shared inbox sweep
+walk simulates Hashi's apply.
+
+Spec 047 T7.2 (F7-AC1 end to end, ADR-10): for the week, the month and the quarter, no stage file but
+`meta.json` and `payloads.json` is left after the document is written, after a Pass 1 abort
+(`replace --abort` after the read and the condensing), after a drop of a written review with a later read,
+after a drop of a delivered review, and after a drop of a delivered review whose stage holds a later read
+(the leak this test found: `drop` of a begun delivery now runs `review_stage.discard`). Named
+`test_review_e2e_*` so the shared inbox sweep
 (`review_e2e_walk.sweep_writes_under_inbox`) covers its writes. All data is synthetic.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -26,9 +35,10 @@ if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
 from review_e2e_walk import (  # noqa: E402
-    CONFIG, INBOX, MONTH, MONTH_DOC, MONTH_PERIOD, MONTH_STEM, MONTH_TARGET, WEEK, WEEK_DOC, WEEK_PERIOD,
-    WEEK_STEM, WEEK_TARGET, Walk, frontmatter, tomo_sections,
+    CONFIG, INBOX, MONTH, MONTH_DOC, MONTH_PERIOD, MONTH_STEM, MONTH_TARGET, QUARTER, QUARTER_DOC, QUARTER_PERIOD,
+    QUARTER_STEM, TODAY, WEEK, WEEK_DOC, WEEK_PERIOD, WEEK_STEM, WEEK_TARGET, Walk, frontmatter, tomo_sections,
 )
+from review_privacy_fixture import QUARTER_CONFIG, proposals, with_carried  # noqa: E402
 from lib import review_actions as ra  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 
@@ -198,3 +208,115 @@ def test_the_review_target_is_never_a_source_even_when_a_path_names_it():
     plan.note_path = "In/2026-03.md"
     meta = rdl.ReviewMeta({"run_id": "r", "generated": "2026-11-17T08:00:00Z", "doc_path": "In/2026-03.md"})
     assert rdl.peer_sources(plan, meta, "In") == []
+
+
+# ── spec 047 T7.2: no content file outlives the document (F7-AC1 end to end) ──────────────
+
+KEPT_FILES = ("meta.json", "payloads.json")      # Tomo's own records of a stage; every other file holds content
+
+
+def content_files(walk: Walk, stem: str) -> list[str]:
+    """Every file under the stem's stage but meta.json and payloads.json, stage-relative; [] without a stage."""
+    stage = walk.stage(stem)
+    return sorted(str(p.relative_to(stage)) for p in stage.rglob("*") if p.is_file() and p.name not in KEPT_FILES)
+
+
+@dataclass(frozen=True)
+class Kind:
+    kind: str
+    period: str
+    stem: str
+    doc: str
+    quarter: bool
+    config: dict
+
+
+KINDS = {WEEK: Kind(WEEK, WEEK_PERIOD, WEEK_STEM, WEEK_DOC, False, CONFIG),
+         MONTH: Kind(MONTH, MONTH_PERIOD, MONTH_STEM, MONTH_DOC, False, CONFIG),
+         QUARTER: Kind(QUARTER, QUARTER_PERIOD, QUARTER_STEM, QUARTER_DOC, True, QUARTER_CONFIG)}
+
+
+@pytest.fixture
+def kind_walk(tmp_path, monkeypatch, capsys, request):
+    k = KINDS[request.param]
+    w = Walk(tmp_path, monkeypatch, capsys, request.node.nodeid, config=k.config, quarter=k.quarter)
+    yield k, w
+    outside = [p for p in w.vault.recorded if not p.startswith(INBOX)]
+    assert outside == [], f"Tomo wrote outside the inbox: {outside}"
+
+
+def _staged(walk: Walk, k: Kind) -> list[str]:
+    """Step 4 and step 5 up to the proposer's file: the read, the condensing with a carried item where a previous
+    note was found, proposals.json; returns the content files the stage then holds."""
+    out = walk.read(k.period, k.kind)
+    assert out["status"] == "ok" and out["nothing_to_review"] is False, out
+    walk.condense(k.stem, carry=True)
+    path = walk.stage(k.stem) / "proposals.json"
+    path.write_text(json.dumps(with_carried(proposals(k.kind), walk.stage(k.stem))), encoding="utf-8")
+    files = content_files(walk, k.stem)
+    for name in ("manifest.json", "weeks.json", "context.json", "condensed.json", "proposals.json"):
+        assert name in files, (name, files)
+    for folder in ("days/", "digests/"):
+        assert any(f.startswith(folder) for f in files), (folder, files)
+    return files
+
+
+def _written(walk: Walk, k: Kind) -> None:
+    _staged(walk, k)
+    path = walk.stage(k.stem) / "proposals.json"
+    out = walk.run("review-doc", "write", "--stem", k.stem, "--proposals", str(path), "--today", TODAY)
+    assert out["status"] == "written" and out["doc_path"] == k.doc, out
+
+
+ALL_KINDS = pytest.mark.parametrize("kind_walk", list(KINDS), indirect=True)
+
+
+@ALL_KINDS
+def test_no_content_file_is_left_after_the_document_is_written(kind_walk):
+    k, walk = kind_walk
+    _written(walk, k)
+    assert content_files(walk, k.stem) == []
+    assert (walk.stage(k.stem) / "meta.json").is_file(), "the write kept its record"
+
+
+@ALL_KINDS
+def test_no_content_file_is_left_after_a_pass1_abort(kind_walk):
+    """An Abort after step 4 wrote the stage and before the document: `replace --abort` and nothing else."""
+    k, walk = kind_walk
+    staged = _staged(walk, k)
+    assert any(f == "carryover.json" for f in staged) or k.kind == QUARTER, staged   # no 2025-Q4 note to carry
+    assert walk.replace(k.stem, "--abort")["status"] == "aborted"
+    assert content_files(walk, k.stem) == []
+    assert k.doc not in walk.vault.files, "an abort writes no document"
+
+
+@ALL_KINDS
+def test_no_content_file_is_left_after_a_drop_of_a_written_review_with_a_new_read(kind_walk):
+    """The document written, a start over read and condensed, then Drop from the listing: the stage is gone."""
+    k, walk = kind_walk
+    _written(walk, k)
+    _staged(walk, k)
+    assert walk.drop(k.stem)["status"] == "dropped"
+    assert content_files(walk, k.stem) == [] and not walk.stage(k.stem).exists()
+
+
+@ALL_KINDS
+def test_no_content_file_is_left_after_a_drop_of_a_delivered_review(kind_walk):
+    k, walk = kind_walk
+    _written(walk, k)
+    walk.approve(k.doc)
+    assert walk.deliver(k.stem)["status"] == "delivered"
+    assert walk.drop(k.stem)["status"] == "withdrawn"
+    assert content_files(walk, k.stem) == []
+
+
+@ALL_KINDS
+def test_no_content_file_is_left_after_a_drop_of_a_delivered_review_with_a_new_read(kind_walk):
+    """Delivered, then a start over read and condensed that never reached the document, then Drop."""
+    k, walk = kind_walk
+    _written(walk, k)
+    walk.approve(k.doc)
+    assert walk.deliver(k.stem)["status"] == "delivered"
+    _staged(walk, k)
+    assert walk.drop(k.stem)["status"] == "withdrawn"
+    assert content_files(walk, k.stem) == []

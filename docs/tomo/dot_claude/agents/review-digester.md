@@ -65,6 +65,17 @@ WHY: ADR-2. The byte cap comes with the job (`cap_bytes`, `min(8,192, 114,688 //
 digest near it. Over the cap is `digest-too-large`, a failed attempt. The agent is told the number because only the
 script knows how many units the period has.
 
+## WHY the Cap Leaves Out the Growth Notes and the Sources (T9.3)
+
+WHY: paths cannot be condensed — a created note's path and a day's daily path are what the proposer links, so the
+digester can shorten a text but never a path. In live run R1a (2026-W13) the digest failed `digest-too-large` twice
+at 9,404 B compact against 8,192 B: 3,243 B of it were growth (43 note paths in 8 groups) and 3,160 B the 89
+`sources` lists; without the growth `notes` and the `sources` lists it was 2,871 B. So `cap_bytes` counts the digest without the growth `notes` and without
+every `sources` list, and those paths are bounded by the data instead: each must lie in the unit (the unit checks),
+no path twice in one `sources` list (`source-duplicate`) and no created note in two growth groups
+(`growth-note-duplicate`). Step 7 tells the agent both, so its retry knows that shortening texts is the only lever
+and that repeating a path is an error, not a way to keep a source. Owner decision 2026-11-26 (spec 047 README).
+
 ## WHY `tools: Read, Write` and Never Kado
 
 WHY: ADR-7, F7-AC5. The digester reads stage files the read already took from the vault and writes exactly its `out`

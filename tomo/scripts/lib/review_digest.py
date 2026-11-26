@@ -1,5 +1,5 @@
 # review_digest.py — file checks of a /review unit digest and the carryover; the condensed.json job state.
-# version: 0.1.1
+# version: 0.2.0
 """Digest and carryover checks for ``/review`` condensing (spec 047 T4.2; PRD F1-AC1, F6-AC1, F6-AC2; ADR-4).
 
 ``check_digest(text, unit, read, *, read_id, cap_bytes)`` gives the errors of
@@ -15,6 +15,12 @@ notes, the notes' ``items`` recounted.
 Errors: the file-level ``digest-missing``, ``not-json``, ``schema (<pointer>)``,
 ``digest-too-large``, ``carryover-too-large`` bare; every other code as
 ``<pointer>: <code>``. No error holds a value of the file.
+
+Size: ``cap_bytes`` counts the UTF-8 bytes of the digest as compact JSON
+without the growth ``notes`` and without every ``sources`` list; those paths
+are bound by ``source-duplicate`` (a path twice in one ``sources`` list) and
+``growth-note-duplicate`` (a created note listed twice in ``growth``) beside
+the unit checks. ``CARRYOVER_CAP`` counts the carryover's bytes as written.
 
 Job state (``condensed.json``): ``new_state(read_id, units, *, carryover)``;
 ``advance(job, errors, *, count)`` and ``advance_carryover(job, check, *,
@@ -53,6 +59,7 @@ READ_ID, UNIT, DAYS = "read-id-mismatch", "unit-mismatch", "days-mismatch"
 SOURCE_OUTSIDE, THEME_DAY_OUTSIDE, UNKNOWN_SECTION = (
     "source-outside-unit", "theme-day-outside-unit", "unknown-section")
 GROWTH_NOTE_OUTSIDE, GROWTH_SOURCE_NOT_CREATED = "growth-note-outside-unit", "growth-source-not-created-day"
+SOURCE_DUPLICATE, GROWTH_NOTE_DUPLICATE = "source-duplicate", "growth-note-duplicate"
 NOTES_MISMATCH, CARRY_SOURCE_UNKNOWN, CARRY_ID_DUPLICATE = (
     "carryover-notes-mismatch", "carry-source-unknown", "carry-id-duplicate")
 
@@ -77,20 +84,38 @@ def _schema_errors(data: Any, schema_path: Path) -> List[str]:
     return [f"schema ({p})" for p in sorted({_pointer(e.absolute_path) for e in validator.iter_errors(data)})]
 
 
-def _parse(text: Optional[str], cap: int, too_large: str, schema: Path):
+def _bytes_as_written(text: str, _data: Any) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _parse(text: Optional[str], cap: int, too_large: str, schema: Path, size=_bytes_as_written):
     """``(data or None, file-level errors)``: data only when the text is schema-valid JSON."""
     if text is None:
         return None, [MISSING]
-    errors = [too_large] if len(text.encode("utf-8")) > cap else []
     try:
         data = json.loads(text)
     except ValueError:
         return None, [NOT_JSON]
+    errors = [too_large] if size(text, data) > cap else []
     problems = _schema_errors(data, schema)
     return (None, errors + problems) if problems else (data, errors)
 
 
 # ---------------------------------------------------------------- digests
+
+def _without_paths(value: Any, drop: Sequence[str] = ("sources",)) -> Any:
+    if isinstance(value, dict):
+        return {k: _without_paths(v, ("sources", "notes") if k == "growth" else drop)
+                for k, v in value.items() if k not in drop}
+    if isinstance(value, list):
+        return [_without_paths(v, drop) for v in value]
+    return value
+
+
+def digest_bytes(_text: str, data: Any) -> int:
+    """What ``cap_bytes`` measures: the compact UTF-8 JSON without growth ``notes`` and ``sources`` lists."""
+    return len(json.dumps(_without_paths(data), ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
 
 def taking_part_days(unit: Mapping[str, Any], read: Mapping[str, Any]) -> List[str]:
     """The unit's days that take part (``review_weeks.takes_part``), in date order."""
@@ -125,13 +150,24 @@ class _Unit:
         return day if day in self.days else None
 
 
+def _duplicates(at: List[Any], values: Sequence[str], seen: Set[str], code: str) -> List[str]:
+    """One ``<pointer>: <code>`` per value already in ``seen``; ``seen`` grows."""
+    errors = []
+    for j, value in enumerate(values):
+        if value.strip() in seen:
+            errors.append(_err(at + [j], code))
+        seen.add(value.strip())
+    return errors
+
+
 def _check_sources(scope: _Unit, at: List[Any], sources: List[str], weekly_ok: bool) -> List[str]:
     return [_err(at + [j], SOURCE_OUTSIDE) for j, s in enumerate(sources)
-            if scope.day_of(s) is None and not (weekly_ok and s.strip() in scope.weekly)]
+            if scope.day_of(s) is None and not (weekly_ok and s.strip() in scope.weekly)
+            ] + _duplicates(at, sources, set(), SOURCE_DUPLICATE)
 
 
-def _check_growth(scope: _Unit, i: int, candidate: dict) -> List[str]:
-    errors: List[str] = []
+def _check_growth(scope: _Unit, i: int, candidate: dict, listed: Set[str]) -> List[str]:
+    errors = _duplicates(["growth", i, "notes"], candidate["notes"], listed, GROWTH_NOTE_DUPLICATE)
     created_days = set()
     for j, path in enumerate(candidate["notes"]):
         if path in scope.created:
@@ -144,13 +180,13 @@ def _check_growth(scope: _Unit, i: int, candidate: dict) -> List[str]:
             errors.append(_err(["growth", i, "sources", j], SOURCE_OUTSIDE))
         elif day not in created_days:
             errors.append(_err(["growth", i, "sources", j], GROWTH_SOURCE_NOT_CREATED))
-    return errors
+    return errors + _duplicates(["growth", i, "sources"], candidate["sources"], set(), SOURCE_DUPLICATE)
 
 
 def check_digest(text: Optional[str], unit: Mapping[str, Any], read: Mapping[str, Any], *, read_id: str,
                  cap_bytes: int) -> List[str]:
     """The errors of one unit's digest text; ``[]`` when it may be used."""
-    data, errors = _parse(text, cap_bytes, DIGEST_TOO_LARGE, DIGEST_SCHEMA)
+    data, errors = _parse(text, cap_bytes, DIGEST_TOO_LARGE, DIGEST_SCHEMA, size=digest_bytes)
     if data is None:
         return errors
     scope = _Unit(unit, read)
@@ -173,8 +209,9 @@ def check_digest(text: Optional[str], unit: Mapping[str, Any], read: Mapping[str
             errors.append(_err(["sections", i, "key"], UNKNOWN_SECTION))
         for k, entry in enumerate(section["items"]):
             errors += _check_sources(scope, ["sections", i, "items", k, "sources"], entry["sources"], False)
+    listed: Set[str] = set()
     for i, candidate in enumerate(data["growth"]):
-        errors += _check_growth(scope, i, candidate)
+        errors += _check_growth(scope, i, candidate, listed)
     return errors
 
 

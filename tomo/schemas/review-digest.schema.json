@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://miyo.tomo/schemas/review-digest.schema.json",
   "title": "Review digest (model output of a review-digester, one unit)",
-  "description": "digests/<unit>.json, written by the review-digester agent for one unit of the period (spec 047 ADR-4). Every entry names its sources. The stage-dependent checks (read_id, unit = file name, days = the unit's taking-part days, every source inside the unit, theme days inside the unit, section keys known, growth notes among the unit's created notes, the byte cap) are lib/review_digest.py's.",
+  "description": "digests/<unit>.json, written by the review-digester agent for one unit of the period (spec 047 ADR-4). Every entry names its sources. The stage-dependent checks (read_id, unit = file name, days = the unit's taking-part days, every source inside the unit, theme days inside the unit, section keys known, growth notes among the unit's created notes, no path twice in one sources list, no created note twice in growth, the byte cap on the compact digest without growth notes and sources lists) are lib/review_digest.py's.",
   "type": "object",
   "required": ["read_id", "unit", "days", "done", "open", "notable", "themes", "sections", "child_notes", "growth"],
   "additionalProperties": false,

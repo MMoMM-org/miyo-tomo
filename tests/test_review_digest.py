@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """test_review_digest.py — spec 047 T4.2/T4.3: digest and carryover file checks, the condensed.json job state,
 the ``review-digest.py plan | check`` CLI.
 
@@ -19,7 +19,9 @@ Mechanisms a mutation of ``lib/review_digest.py`` falsifies:
 - growth ``notes`` ⊆ the unit's created notes and each growth source a day on
   which one of its notes was created — a growth source outside the unit is
   refused as outside, not as a day without a created note;
-- the byte caps (digest ``cap_bytes``, carryover ``CARRYOVER_CAP``);
+- the byte caps: digest ``cap_bytes`` on the compact digest without its growth ``notes`` and ``sources``
+  lists (T9.3, R1a), carryover ``CARRYOVER_CAP`` on the bytes as written; no path twice in one ``sources``
+  list, no created note in two growth groups;
 - carryover notes == the found previous notes, sources among them, ids unique;
 - the state model: 1st counted failure ``retry``, 2nd ``failed``; a valid file
   passes, without an attempt when not counted; an invalid one is not touched
@@ -205,6 +207,13 @@ DIGEST_CASES = [
      ["/growth/0/sources/2: growth-source-not-created-day"]),
     ("growth-source-outside-unit", lambda d: d["growth"][0]["sources"].__setitem__(0, "2026-03-30"),
      ["/growth/0/sources/0: source-outside-unit"]),
+    ("source-duplicate", lambda d: d["done"][0]["sources"].append("2026-03-24"),
+     ["/done/0/sources/1: source-duplicate"]),
+    ("source-duplicate-growth", lambda d: d["growth"][0]["sources"].append("2026-03-25"),
+     ["/growth/0/sources/2: source-duplicate"]),
+    ("growth-note-duplicate", lambda d: d["growth"].append(
+        {"text": "Alpha again", "sources": ["2026-03-25"], "notes": ["Notes/Alpha.md"]}),
+     ["/growth/1/notes/0: growth-note-duplicate"]),
 ]
 
 
@@ -218,11 +227,72 @@ def test_not_json():
     assert rd.check_digest("[1, 2]", W13, READ, read_id=R, cap_bytes=CAP) == ["schema (/)"]
 
 
-def test_digest_too_large_counts_the_bytes_as_written():
-    text = _text(W13_DIGEST)
-    size = len(text.encode("utf-8"))
-    assert rd.check_digest(text, W13, READ, read_id=R, cap_bytes=size) == []
-    assert rd.check_digest(text, W13, READ, read_id=R, cap_bytes=size - 1) == ["digest-too-large"]
+def _without_paths(value, drop=("sources",)):
+    """The digest as ``cap_bytes`` measures it: no ``sources`` list anywhere, no growth ``notes``."""
+    if isinstance(value, dict):
+        return {k: _without_paths(v, ("sources", "notes") if k == "growth" else drop)
+                for k, v in value.items() if k not in drop}
+    if isinstance(value, list):
+        return [_without_paths(v, drop) for v in value]
+    return value
+
+
+def _measured(data) -> int:
+    return len(json.dumps(_without_paths(data), ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def test_growth_notes_and_sources_do_not_count_toward_the_cap():
+    size = _measured(W13_DIGEST)
+    assert len(_text(W13_DIGEST).encode("utf-8")) > size
+    assert rd.check_digest(_text(W13_DIGEST), W13, READ, read_id=R, cap_bytes=size) == []
+
+
+def test_the_text_alone_over_the_cap_is_digest_too_large():
+    size = _measured(W13_DIGEST)
+    assert rd.check_digest(_text(W13_DIGEST), W13, READ, read_id=R, cap_bytes=size - 1) == ["digest-too-large"]
+
+
+def test_indentation_does_not_count_toward_the_cap():
+    size = _measured(W13_DIGEST)
+    for indent in (None, 1, 8):
+        text = json.dumps(W13_DIGEST, indent=indent, ensure_ascii=False)
+        assert rd.check_digest(text, W13, READ, read_id=R, cap_bytes=size) == [], indent
+
+
+R1A_NOTE = "Notes/2026-03 Import/Created note number {:02d} of the bulk import.md"
+R1A_GROUPS = [6, 6, 6, 5, 5, 5, 5, 5]   # 43 created notes in 8 growth groups
+
+
+def _r1a():
+    """A 2026-W13 read and digest shaped like live run R1a: 43 created notes in 8 growth groups, 89 sources lists."""
+    read = copy.deepcopy(READ)
+    notes, groups = iter(range(sum(R1A_GROUPS))), []
+    read["growth"]["created"] = []
+    for g, size in enumerate(R1A_GROUPS):
+        day = W13_TAKING[g % len(W13_TAKING)]
+        paths = [R1A_NOTE.format(next(notes)) for _ in range(size)]
+        read["growth"]["created"] += [{"path": p, "links": [], "day": day} for p in paths]
+        groups.append({"text": f"Import {g}", "sources": [DAILY.format(day)], "notes": paths})
+    content = [d for d in W13_TAKING if d != "2026-03-29"]
+
+    def entries(n, word):
+        return [{"text": f"{word} {i}", "sources": [DAILY.format(content[i % 5]), DAILY.format(content[(i + 1) % 5])]}
+                for i in range(n)]
+
+    digest = {"read_id": R, "unit": "2026-W13", "days": W13_TAKING,
+              "done": entries(25, "Done"), "open": entries(25, "Open"), "notable": entries(15, "Note"),
+              "themes": [dict(e, days=[content[i % 5]]) for i, e in enumerate(entries(10, "Theme"))],
+              "sections": [{"key": "s1", "items": entries(6, "Calm")}], "child_notes": [], "growth": groups}
+    return read, digest
+
+
+def test_an_r1a_shaped_week_passes_the_cap():
+    read, digest = _r1a()
+    text = _text(digest)
+    lists = sum(len(digest[g]) for g in ("done", "open", "notable", "themes", "growth")) + 6
+    assert (lists, sum(len(g["notes"]) for g in digest["growth"])) == (89, 43)
+    assert len(text.encode("utf-8")) > CAP and _measured(digest) < 3_500
+    assert rd.check_digest(text, W13, read, read_id=R, cap_bytes=CAP) == []
 
 
 def test_the_weekly_stem_of_another_unit_is_outside():

@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Digester Subagent
-# version: 0.1.3
+# version: 0.1.4
 
 ## Identity
 
@@ -58,7 +58,7 @@ The prompt names: `stem`, `unit`, `read_id`, `days`, `day_files`, `growth_files`
    - Every key is present; a key with nothing to say is `[]`.
 5. Record what the days say; never rank, judge or drop a finding because it seems minor.
 6. Write every `text` in `language`, one short statement each.
-7. Keep the file within `cap_bytes` bytes and the schema's item limits: shorten texts and merge entries that say the same, keeping the sources of each.
+7. Keep the file within `cap_bytes` bytes and the schema's item limits: shorten texts and merge entries that say the same, keeping the sources of each. `cap_bytes` counts the file without the growth `notes` and the `sources` lists. Never list a path twice in one `sources` list, nor a created note in two growth groups.
 8. Write `out`.
 
 ## Output

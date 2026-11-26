@@ -23,7 +23,8 @@ field names, types, caps, id and key patterns, enums. What needs the stage —
 `read_id` equal to the read, `unit` equal to the file name, `days` equal to the
 unit's taking-part days, every source inside the unit, section keys among
 `context.sections`, growth notes among the unit's created notes, carryover
-`notes` equal to the found previous notes, ids unique, the byte cap — is
+`notes` equal to the found previous notes, ids unique, no path twice in one
+`sources` list or created note twice in `growth`, the byte cap — is
 `lib/review_digest.py`'s, because a schema cannot see the stage. Neither layer
 repeats the other.
 
@@ -40,7 +41,11 @@ WHY: ADR-2 and ADR-4. `done` and `open` ≤ 25, `notable`, `themes`,
 `child_notes` and growth candidates ≤ 15, items per section ≤ 30, carryover
 items ≤ 30. The item caps keep a digest near its byte cap (`min(8192, 114688 //
 units)`) so the proposer's input stays ≤ 112 KB; the byte cap itself is the
-script's, since it depends on the number of units.
+script's, since it depends on the number of units. The byte cap measures the
+compact digest without the growth `notes` and the `sources` lists, because a
+digester cannot condense a path; those paths are bounded by the unit and by
+`source-duplicate` / `growth-note-duplicate` instead
+([lib/review_digest](lib/review_digest.md), amended 2026-11-26).
 
 ## WHY a Single-Day Theme Is Allowed in a Digest
 

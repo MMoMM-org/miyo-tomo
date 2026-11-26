@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_047_agents.py — the three /review agents (spec 047 T6.2; ADR-7; PRD F1-AC3, F1-AC4, F1-AC5, F2-AC3,
 F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC5, F4-AC6, F4-AC8, F4-AC10, F4-AC11, F6-AC2, F7-AC5).
 
@@ -64,7 +64,7 @@ def _count(agent: str, phrase: str) -> int:
 # ── frontmatter (ADR-7, F7-AC5) ──────────────────────────────────────────────
 
 
-VERSIONS = {"review-digester": "0.1.3", "review-carryover": "0.1.1", "review-proposer": "0.1.2"}
+VERSIONS = {"review-digester": "0.1.4", "review-carryover": "0.1.1", "review-proposer": "0.1.2"}
 
 
 @pytest.mark.parametrize("agent", AGENTS)
@@ -205,6 +205,9 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     ("review-digester", "no-judgement", "Record what the days say; never rank, judge or drop a finding"),
     ("review-digester", "language", "Write every `text` in `language`, one short statement each."),
     ("review-digester", "cap", "Keep the file within `cap_bytes` bytes and the schema's item limits"),
+    ("review-digester", "cap-measure", "`cap_bytes` counts the file without the growth `notes` and the `sources` lists."),
+    ("review-digester", "no-path-twice",
+     "Never list a path twice in one `sources` list, nor a created note in two growth groups."),
     ("review-digester", "retry-rebuilds",
      "| The prompt carries `errors` | Activities 1–8, building `out` anew from the inputs; avoid in it what each "
      "`errors` entry names, in the field its pointer names; never read `out` |"),

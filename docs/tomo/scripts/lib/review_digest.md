@@ -87,12 +87,40 @@ section errors use.
 `digest-missing` names a missing carryover file too: the SDD error list has
 one missing-file code, and the carryover agent's retry prompt names the file.
 
-## WHY Size Counts the Bytes as Written
+## WHY the Digest Cap Measures the Compact Digest Without Its Paths
 
 The caps bound what the opus proposer reads (`digest_cap`, 8,192 B down to
-7,168 B per unit; 12,288 B for carryover). They count the UTF-8 bytes of the
-file the agent wrote, not a re-encoding, because that file is what the
-proposer reads. A file over its cap is retried like any other failure.
+7,168 B per unit; 12,288 B for carryover). A file over its cap is retried like
+any other failure.
+
+The carryover cap counts the UTF-8 bytes of the file as written. The digest
+cap (amended 2026-11-26, owner, T9.2 R1a / T9.3) counts `digest_bytes`: the
+UTF-8 bytes of the digest as compact JSON (`separators=(",", ":")`, no
+indentation) without the growth `notes` arrays and without every `sources`
+list (entries of `done`, `open`, `notable`, `child_notes`, `themes`, section
+items and growth). Why: the digester can shorten a text but never a path, and
+paths are what the proposer links. In R1a (2026-W13) the digest was 9,871 B
+raw / 9,404 B compact against 8,192 B, with 3,243 B of growth note paths (43
+notes, 8 groups) and 3,160 B of `sources`; without them it was 2,871 B. The
+quarter's per-unit cap (114,688 // 15 = 7,645 B) would have failed the same
+way, so raising the constant alone was no fix. Indentation does not count
+because the digester's layout is not content.
+
+The paths left out of the measure are bounded by the data instead. Each is
+already bound to the unit (`source-outside-unit`, `growth-note-outside-unit`);
+two count checks add the rest:
+
+- `source-duplicate` — a path that appears a second time in one `sources`
+  list, at the pointer of the second occurrence (compared after `strip()`).
+- `growth-note-duplicate` — a created note listed a second time in `growth`,
+  in another group or in the same one, at the pointer of the second
+  occurrence.
+
+So the paths of a digest are at most the unit's dailies (path and stem) and
+weekly note per `sources` list, and each created note of the unit once.
+`digest-too-large` keeps its name and stays a bare file-level code; the size
+is measured only once the text parses as JSON (`not-json` alone otherwise,
+as before).
 
 ## WHY the Carryover Has Two Failure Levels
 

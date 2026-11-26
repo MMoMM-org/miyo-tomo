@@ -56,6 +56,27 @@ $2.80 (guidance ≤ $0.80: over by $2.00, the proposer alone $1.95).
 
 Finding F-R1-2 (owner, after reading the R1b document → T9.3): the callout's previous-note lines name the note as a link (`Letzter Rückblick · Woche [[2026-W12]]: …`; not found stays plain text) and the callout gets a blank line before and after it. Fixed in da12572a (`review_doc.py` 0.6.3; spec 046 T4.2 unmapped-doc golden re-recorded, +2 blank lines per file only). Spec review PASS, code review PASS; full suite 12,407 passed, 1 known failure. R1 Pass 1 redone on the new format (R1c), Pass 2 of R1b skipped.
 
+### R1c — week 2026-W13 (2026-11-26, session 74652cb2) — Pass 1 written
+
+Instance at 12e9a7bc (F-R1-2 synced).
+
+| Row | Count |
+|---|---|
+| Days read / not read (size / other) | 7 / 0 (0 / 0) |
+| Previous notes found | 2; carryover items 21 (2026-W12 12, 2026-02 9) |
+| Units dispatched per message | 1 digester + 1 carryover in one message; proposer alone |
+| Agents self-started | 0 |
+| Main-session Read/Grep/Bash on stage files | 0 (only `review-doc.py write --proposals <stage file>`) |
+| `check` rounds / retries | 1 / 0 (digest 10,278 B raw) |
+| Carried items placed / per mark | 20 / still open 12, not mentioned again 7, done 1 |
+| Proposals | groups open 5, themes 2 (no `done`, no `growth`); sections 26 items |
+| Vault growth | 8 candidates / 43 notes; 33 named in the proposals, no growth group, 10 not named (same as R1b) |
+| Interruption | the container's login expired while the digester ran (~9 min wait); the digest was already written and `check` passed it |
+| Content files after write | 0 |
+
+Cost / time per step: main sonnet $0.53, 962 s (incl. the login wait), peak 89,280; digester haiku $0.13 / 76 s;
+carryover sonnet $0.12 / 18 s / 16,112; proposer opus $2.06 / 142 s / 21,571; Pass 1 total $2.84.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
@@ -65,7 +86,7 @@ Finding F-R1-2 (owner, after reading the R1b document → T9.3): the callout's p
 | Main-session reads of stage files | 0 | hard | 0 | | | | |
 | Carried items placed twice / without previous link | 0 / 0 | quality | — (R1a no document) | | | | |
 | Content files left after write, abort, drop | 0 | quality | 0 after write | | | | |
-| Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.80 (R1b; R1a $1.25 failed) | — | — | | — |
+| Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.84 (R1c; R1b $2.80; R1a $1.25 failed) | — | — | | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | | — | — | |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | | — | — |
 | Pass 2 cost | ≤ $0.85 | guidance | | | | | |

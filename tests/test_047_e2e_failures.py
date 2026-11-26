@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_047_e2e_failures.py — failure, resume and re-review of /review end to end on the new flow
 (spec 047 T8.2; PRD F3-AC1, F3-AC11, F4-AC9, F5-AC6, F6-AC1..F6-AC8, F7-AC2, F2-AC1; SDD Complex Logic (b), (c),
 (d), Error Handling).
@@ -38,7 +38,8 @@ The growth group's "before" (T8.1 carry-over): no pre-047 growth path remains to
 was model-written from read.json's `growth.created` (path and links, no creation day), so there is no 046
 renderer input to replay. The expected group is derived explicitly instead: the created notes the period
 reader lists (`review-read.py`'s `_read`, `growth.created`) by the creation day of their `created` stamp, one
-item per day sourced by that day's daily, in day order.
+item per day (the fixture digester's one candidate per day) linking that day's notes and then its daily, in day
+order. Since spec 047 T9.3 (F-R1-3) `review-doc.py write` builds this group; the fixture proposer proposes none.
 
 All data is synthetic. Every write a walk attempts lies under the inbox (the `make_walk` fixture).
 """
@@ -567,5 +568,8 @@ def test_vault_growth_reaches_the_proposer_per_unit_and_is_the_group_the_read_li
     assert seen == {"2026-W11": [(["2026-03-10"], ["Notes/Kettle descaling.md"])],
                     "2026-W13": [(["2026-03-24"], ["Notes/Bike chain.md", "Notes/Bike tyres.md"])]}
     days = sorted({CREATED[c["path"]] for c in listed})
-    assert _growth_lines(w.doc(MONTH_DOC)) == [f"- [x] created condensed ([[{day}]])" for day in days]
-    assert fingerprint(w.doc(MONTH_DOC))["links"]["growth"] == [["daily"], ["daily"]]
+    notes = {day: sorted(Path(c["path"]).stem for c in listed if CREATED[c["path"]] == day) for day in days}
+    assert _growth_lines(w.doc(MONTH_DOC)) == [
+        f"- [x] created condensed ({', '.join(f'[[{n}]]' for n in notes[day])}, [[{day}]])" for day in days]
+    assert fingerprint(w.doc(MONTH_DOC))["links"]["growth"] == [["other"] * len(notes[day]) + ["daily"]
+                                                               for day in days]

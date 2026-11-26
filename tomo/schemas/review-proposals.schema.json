@@ -19,7 +19,7 @@
         "done": {"$ref": "#/$defs/items"},
         "open": {"$ref": "#/$defs/items"},
         "themes": {"$ref": "#/$defs/items"},
-        "growth": {"$ref": "#/$defs/items"},
+        "growth": {"type": "array", "description": "Ignored: review-doc.py write builds the Vault growth group from the created notes and the digests' growth candidates (spec 047 T9.3). Kept so a proposals file that still carries it is not refused."},
         "weekly_only": {"$ref": "#/$defs/items"},
         "not_in_weekly": {"$ref": "#/$defs/items"},
         "monthly_only": {"$ref": "#/$defs/items"},

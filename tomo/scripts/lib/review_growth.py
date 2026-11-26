@@ -1,0 +1,105 @@
+# review_growth.py — the "Vault growth" group of the /review document, built from the created notes of the period.
+# version: 0.1.0
+"""The Vault growth group of the Pass 1 document (spec 047 T9.3, F-R1-3; PRD F2-AC1).
+
+Every note created in the period is in the group exactly once, whatever a section item or the proposer says
+about it. ``candidates(stage, read)`` loads the growth candidates ``{text, notes}`` of every digest whose unit
+``condensed.json`` marks passed (unit order, then digest order); a digest that is missing, not JSON or of
+another read gives none. ``group(read, candidates)`` builds the items ``{text, links}``:
+
+- the created notes are ``read["growth"]["created"]`` (each with its creation ``day``);
+- a candidate becomes one item: its ``text``, its notes that are created notes and not yet in an earlier item;
+  a candidate left without a note is dropped (so notes of several units' digests are merged, none twice);
+- a created note in no candidate gets an item of its own whose text is the note's link and nothing else;
+- an item's links: the links of its notes when the text is not a note link, then the stems of the dailies of
+  the notes' creation days (the read's ``Sources``, so a day of a not-condensed unit links no daily);
+- a note's link is its stem, or its path without ``.md`` when another created note has the same stem;
+- notes in an item by (creation day, path); items by (their first note's creation day, its path).
+
+No created note → ``[]`` (the group renders empty as before). The texts of the candidates are the digester's
+words; they reach the written document only, never stdout, stderr or ``meta.json``.
+
+No Kado, no model; reads the stage's ``digests/`` files only.
+
+Design notes: docs/tomo/scripts/lib/review_growth.md
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Dict, List, Sequence, Tuple
+
+from lib.review_sources import Sources, note_stem
+
+DIGESTS = "digests"
+PASSED = "passed"
+
+
+def candidates(stage: Path, read: dict) -> List[dict]:
+    """The growth candidates ``{text, notes}`` of the passed units' digests, in unit order, then digest order."""
+    condensed = read.get("condensed") or {}
+    read_id = condensed.get("read_id")
+    out: List[dict] = []
+    for unit, job in (condensed.get("units") or {}).items():
+        if (job or {}).get("state") != PASSED:
+            continue
+        try:
+            data = json.loads((Path(stage) / DIGESTS / f"{unit}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or data.get("read_id") != read_id:
+            continue
+        for candidate in data.get("growth") or []:
+            if isinstance(candidate, dict):
+                out.append({"text": str(candidate.get("text") or ""),
+                            "notes": [str(n) for n in candidate.get("notes") or []]})
+    return out
+
+
+def _links_of(created: Dict[str, str]) -> Dict[str, str]:
+    """Created-note path → its link: the stem, or the path without ``.md`` when the stem is not unique."""
+    stems: Dict[str, int] = {}
+    for path in created:
+        stems[note_stem(path)] = stems.get(note_stem(path), 0) + 1
+    return {path: (note_stem(path) if stems[note_stem(path)] == 1 else path[:-3] if path.endswith(".md") else path)
+            for path in created}
+
+
+def _day_links(read: dict) -> Dict[str, List[str]]:
+    """Day → the stems of its dailies that may be a source (``Sources``: none of a not-condensed unit's day)."""
+    out: Dict[str, List[str]] = {}
+    for day, stem in Sources.of(read).dailies.values():
+        stems = out.setdefault(day.isoformat(), [])
+        if stem not in stems:
+            stems.append(stem)
+    return out
+
+
+def group(read: dict, found: Sequence[dict]) -> List[dict]:
+    """The group's items ``{text, links}``: every created note of the read exactly once (module docstring)."""
+    created = {str(c["path"]): str(c.get("day") or "") for c in (read.get("growth") or {}).get("created") or []
+               if isinstance(c, dict) and c.get("path")}
+    if not created:
+        return []
+    link = _links_of(created)
+    days = _day_links(read)
+    order = lambda path: (created[path], path)              # noqa: E731 - the one sort key of notes
+    taken: set = set()
+    items: List[Tuple[str, List[str], bool]] = []          # (text, notes, text is the note's link)
+    for candidate in found:
+        notes = []
+        for path in candidate["notes"]:
+            if path in created and path not in taken:
+                taken.add(path)
+                notes.append(path)
+        if notes:
+            items.append((candidate["text"], sorted(notes, key=order), False))
+    items += [(f"[[{link[path]}]]", [path], True) for path in sorted(set(created) - taken, key=order)]
+    items.sort(key=lambda item: order(item[1][0]))
+    out = []
+    for text, notes, own in items:
+        links = [] if own else [link[path] for path in notes]
+        for day in sorted({created[path] for path in notes}):
+            links += [stem for stem in days.get(day, []) if stem not in links]
+        out.append({"text": text, "links": links})
+    return out

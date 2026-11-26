@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.6.1
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic reads staged through lib/review_stage.write (spec 047
@@ -281,7 +281,9 @@ def test_a_theme_naming_fewer_than_two_days_is_rejected():
 def test_sources_render_as_links_of_the_note_stem():
     accepted, _, _ = rd.check_items(GOOD, week_read())
     assert accepted["done"][0]["links"] == ["2026-03-24", "2026-03-26"]
-    assert accepted["growth"][0]["links"] == ["2026-03-24"]          # Efforts/X.md is not a daily of the period
+    assert "growth" not in accepted                                   # spec 047 T9.3: the script builds the group
+    other, _, _ = rd.check_items(proposals(open=[item("X", "2026-03-24", "Efforts/X.md")]), week_read())
+    assert other["open"][0]["links"] == ["2026-03-24"]                # Efforts/X.md is not a daily of the period
 
 
 FORGED_SOURCES = ("2026-03-25\n## Hacked\n- [ ] Approved", "2026-03-25]] %%t1%% [[Secret",
@@ -389,8 +391,9 @@ def test_groups_in_order_with_nothing_found_lines_and_ids(mod, instance, monkeyp
         "## Erledigt", "## Offen", "## Wiederkehrende Themen", "## Vault-Wachstum", "## Gewohnheiten"]
     assert items_under(lines, "Erledigt") == ["- [x] Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]]) %%t1%%"]
     assert items_under(lines, "Offen") == ["- [x] Steuer offen ([[2026-03-27]]) %%t2%%"]
-    assert items_under(lines, "Gewohnheiten") == ["- [x] Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28) %%t5%%"]
-    assert out["counts"] == {"done": 1, "open": 1, "themes": 1, "growth": 1, "habits": 1}
+    assert items_under(lines, "Vault-Wachstum") == ["- nichts gefunden"]     # GOOD's growth item is never read
+    assert items_under(lines, "Gewohnheiten") == ["- [x] Sport: 6 von 6 Tagen (7 Tage im Zeitraum; fehlt: 2026-03-28) %%t4%%"]
+    assert out["counts"] == {"done": 1, "open": 1, "themes": 1, "growth": 0, "habits": 1}
     assert out["rejected"] == []
 
 
@@ -461,7 +464,7 @@ def test_a_number_tracker_gives_an_average_and_an_unreadable_value_is_named_not_
     assert out["status"] == "written" and out["counts"]["habits"] == 1
     assert items_under(lines_of(fake), "Gewohnheiten") == [
         "- [x] Energy: Durchschnitt 4,0 über 3 Tage (7 Tage im Zeitraum; fehlt: 2026-03-27, 2026-03-28, 2026-03-29; "
-        "unlesbar: 2026-03-26) %%t5%%"], "the average of 3, 4 and 5; the unreadable day is listed once and is no 0"
+        "unlesbar: 2026-03-26) %%t4%%"], "the average of 3, 4 and 5; the unreadable day is listed once and is no 0"
 
 
 def test_a_habit_without_a_clear_average_renders_from_its_text():
@@ -611,7 +614,7 @@ def test_pass1_counts_in_meta_and_content_files_deleted(mod, instance, monkeypat
     assert MARKER in fake.text(out["doc_path"])                  # the document is the only copy that keeps it
     stage_dir = instance / "tomo-tmp" / "review" / "2026-W13_review"
     meta = json.loads((stage_dir / "meta.json").read_text(encoding="utf-8"))
-    assert meta["pass1_counts"] == {"done": 1, "open": 1, "themes": 1, "growth": 1, "habits": 1}
+    assert meta["pass1_counts"] == {"done": 1, "open": 1, "themes": 1, "growth": 0, "habits": 1}
     assert meta["stem"] == "2026-W13_review" and meta["period"] == "2026-W13" and meta["kind"] == "week"
     assert meta["doc_path"] == out["doc_path"] and meta["target"] == out["target"] and meta["mode"] == "insert"
     assert meta["run_id"] == "r-test" and meta["generated"] and meta["steps_done"] == [] and not meta["failed_step"]
@@ -974,8 +977,7 @@ def test_a_carried_item_in_a_group_its_kind_does_not_render_is_an_error_not_a_re
                       growth=[carried("Neu", "done", ["c1"], "2026-W12", "2026-03-24")])
     accepted, rejected, errors = rd.check_items(props, _carried_read())
     assert rejected == []
-    assert errors == ["/groups/growth/0: carried-not-allowed (growth)",
-                      "/groups/weekly_only/0: carried-not-allowed (weekly_only)"]
+    assert errors == ["/groups/weekly_only/0: carried-not-allowed (weekly_only)"]    # growth is never read (T9.3)
 
 
 def test_a_whitespace_only_carried_item_is_an_empty_text_error():

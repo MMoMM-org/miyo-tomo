@@ -22,6 +22,8 @@ version: "1.8"
 
 > v1.8 (2026-11-26): owner, T9.2 R1b / T9.3 (F-R1-2): a found or empty previous note is named in its top line as the link of its note stem (`Letzter Rückblick · Woche [[2026-W12]]: gefunden, 16 übernommen`); a missing, not-set-up or not-read note keeps its plain name; a blank line stands between the title and the callout and between the callout and `- [ ] Approved`. Amended: ADR-12, the UI Visualization Guide, the walk-through top lines.
 
+> v1.9 (2026-11-26): owner, T9.2 R1b/R1c / T9.3 (F-R1-3): in R1b and R1c the proposer built no "Vault growth" group although the digests held 8 candidates with all 43 created notes; 33 notes appeared inside sections, 10 nowhere. The document again always holds the group with every created note of the period (PRD F2-AC1): `review-doc.py write` builds it in the new `lib/review_growth.py` from the read's created notes, grouped as the passed digests' growth candidates group them (candidate text, its notes as links, then the dailies of their creation days); a note in no candidate gets an item whose text is its link; notes of several units' digests are merged, none twice; items ordered by creation day. The proposer no longer proposes `growth`; `review_doc.MODEL_GROUPS` leaves it out, so a proposed `growth` group is ignored (the schema still allows it), never refused. Amended: ADR-4, ADR-6, components (`review-proposer`, `lib/review_growth.py`), Directory Map.
+
 ## Validation Checklist
 
 ### CRITICAL GATES (Must Pass)
@@ -397,8 +399,9 @@ graph LR
 | `lib/review_digest.py` (new) | Pure validation of a digest and of the carryover file against the stage (file level: schema, read id, sources, id uniqueness, size); the `condensed.json` state model. `condensed.json` is written only by `review-digest.py` (`plan`, `check`) and read by `review_stage.load` (for `review-doc.py`) and by `review-digest.py` itself |
 | agent `review-digester` (new, haiku) | Condense one unit's day files, its growth files (the notes created on its days, with their links) and its weekly note into `digests/<unit>.json`, growth candidates included |
 | agent `review-carryover` (new, sonnet) | Take the open items, intentions/goals and themes of the found previous notes into `carryover.json` |
-| agent `review-proposer` (new, opus) | Build `proposals.json` over the whole period from digests (growth candidates included), carryover and context (growth counts and MOC lists; never `manifest.json` or its `report`): themes over all days, open judged against later weeks, carried items matched to the days and marked, one place per finding, the "Vault growth" group from the units' growth candidates |
+| agent `review-proposer` (new, opus) | Build `proposals.json` over the whole period from digests (growth candidates included), carryover and context (growth counts and MOC lists; never `manifest.json` or its `report`): themes over all days, open judged against later weeks, carried items matched to the days and marked, one place per finding; no "Vault growth" group (v1.9: the script builds it) |
 | `review-doc.py` | Write/parse/replace as today; loads via `review_stage.load`; refuses `condense-incomplete` and `read-stale`; passes previous states, not-condensed units and the carry failure to the renderer; discards the stage after the write and on `replace --abort` |
+| `lib/review_growth.py` (new, v1.9) | The "Vault growth" group: every created note of the read exactly once, grouped as the passed digests' growth candidates group them (text, note links, creation-day dailies), a note in no candidate as an item of its own; called by `review-doc.py write` (T9.3, F-R1-3) |
 | `lib/review_sources.py` | Sources incl. previous notes; the one source resolver `resolve_sources` (used by `check_item` and `review_carried`); split out of `review_doc.py` in T5.2 (CON-5), re-exported there |
 | `lib/review_doc.py` | `check_items` with an explicit carried branch (carried failures go to `errors`, never `rejected`); `_LABELS` incl. carried marks and top-line words; the callout lines |
 | `lib/review_carried.py` (new) | Every document-level check of a carried item: previous-note sources ⊆ its ids' sources, day rule per mark, carried + child-mark interplay, group/mark combination, theme never done, every carryover id exactly once; `overflow`: moving a carried item of a full section into the group of its mark before the section checks |
@@ -451,7 +454,7 @@ tomo/
 │   ├── skills/periodic-review/SKILL.md       # MODIFY 0.2.13 → 0.3.0: allowed-tools + Agent; write rule; step 4 continue/--fresh; step 5 condense/propose; STRICT dispatch, no fallback; Pass 1 abort
 │   ├── agents/review-digester.md             # NEW 0.1.0: haiku, tools Read, Write
 │   ├── agents/review-carryover.md            # NEW 0.1.0: sonnet, tools Read, Write
-│   └── agents/review-proposer.md             # NEW 0.1.0: opus, tools Read, Write; the proposal rules moved out of SKILL.md step 5
+│   └── agents/review-proposer.md             # NEW 0.1.0: opus, tools Read, Write; the proposal rules moved out of SKILL.md step 5 (0.2.0, T9.3: no growth group)
 ├── schemas/
 │   ├── review-proposals.schema.json          # MODIFY: optional carried + carried_ids on group and section items
 │   ├── review-digest.schema.json             # NEW
@@ -469,6 +472,7 @@ tomo/
         ├── review_digest.py                  # NEW 0.1.0
         ├── review_carried.py                 # NEW 0.1.0
         ├── review_sources.py                 # NEW 0.1.0 (T5.2 deviation, owner: Sources and resolve_sources split out of review_doc.py, CON-5)
+        ├── review_growth.py                  # NEW 0.1.0 (T9.3 F-R1-3, owner 2026-11-26: the script builds the Vault growth group; review_doc.py at its size limit)
         ├── review_read_parts.py              # DELETE (replaced by review_stage.py)
         ├── review_period.py                  # MODIFY 0.5.1 → 0.6.0
         ├── review_doc.py                     # MODIFY 0.5.3 → 0.6.0
@@ -493,6 +497,7 @@ docs/
 ├── tomo/scripts/lib/review_digest.md           # NEW
 ├── tomo/scripts/lib/review_carried.md          # NEW
 ├── tomo/scripts/lib/review_sources.md          # NEW (T5.2 deviation: the split; why one resolver)
+├── tomo/scripts/lib/review_growth.md           # NEW (T9.3 F-R1-3: why the script builds the group, grouping, links, order)
 ├── tomo/scripts/lib/review_read_parts.md       # DELETE (history moves to review_stage.md)
 ├── tomo/scripts/lib/review_period.md, review_doc.md, review_sections.md, review_day.md, review_children.md, review_doc_parse.md  # MODIFY
 ├── setup.md                                     # MODIFY (~:293): the three models see note content; previous notes are read
@@ -519,6 +524,7 @@ tests/
 ├── test_review_digest.py                     # NEW
 ├── test_review_digest_schemas.py             # NEW (spec 047 T4.1): W14 digest/carryover validate; caps, patterns, enums refused
 ├── test_review_carried.py                    # NEW
+├── test_review_growth.py                     # NEW (spec 047 T9.3, F-R1-3): the script-built Vault growth group, unit and through write
 ├── test_review_proposals_carried_schema.py   # NEW (spec 047 T5.1): carried + carried_ids validate on group and section items; the pair, enum, id pattern refused; 045/046 fixtures still valid
 ├── test_047_t5_4_carried_write.py            # NEW (spec 047 T5.4): carried items through review-doc.py write: labels, top-line counts, coverage, carry_failed, overflow before over-cap, the new written keys
 ├── test_047_skill_contract.py                # NEW: pinned step 4/5 prose, allowed-tools, STRICTs, agent prompts
@@ -1260,6 +1266,7 @@ stateDiagram-v2
 - [x] ADR-4 Digest and carryover contracts and `review-digest.py`: the shapes of Application Data Models under `tomo/schemas/review-digest.schema.json` and `review-carryover.schema.json`. `plan` lists the jobs not passed (validating files already present without counting an attempt), in rounds of ≤ `MAX_PARALLEL`, and the proposer's inputs. `check` validates: schema; `read_id`; `unit` = file name; `days` = the unit's taking-part days (every read day covered); every source inside the unit (days, or the unit's weekly-note stem for `child_notes`); theme days inside the unit; section keys known; size ≤ cap; carryover `notes` = the found previous notes, sources among them, ids unique, size ≤ 12 KB. Each `check` call is one attempt per job not passed: 1st failure `retry` (the skill re-dispatches once with the errors verbatim), 2nd `failed`. A failed unit is "not condensed": its days are named at the top and in the report and cannot be sources (`Sources` leaves them out). All taking-part units failed → `stopped nothing-condensed`. Carryover: a whole-file failure → `carry_failed`; one note's invalid items after the retry → the script removes that note's items from `carryover.json` and marks the note failed. A unit failed in an earlier session is offered again on a continued read (one attempt + one retry). The proposer is always dispatched once the jobs are ready; `plan` deletes a `proposals.json` left from an earlier attempt (no `proposals_present` state). Ownership: `condensed.json` is written only by `review-digest.py`; `review_stage.load` reads it (read-id-checked) for `review-doc.py`; file-level carryover checks are `review_digest`'s, document-level coverage is `review_carried`'s.
   - Status: Accepted
   - Amended 2026-11-23 (owner, T1.5 measurement): the digest gains `growth` — ≤ 15 candidates `{text, sources: [day stem] ≥ 1, notes: [created-note path] 1..10}` for the "Vault growth" group. `check` adds `growth-note-outside-unit` (a `notes` path not among the created notes of the unit's `growth/` files) and `growth-source-not-created-day` (a source that is not a unit day on which one of its `notes` was created). Source rule: a growth candidate's source is the day the note was created, because today's growth group is checked like every non-child group — `check_item` requires ≥ 1 daily of the period (`review_doc.py:274-275`, `NO_SOURCE`), and `Sources` resolves only dailies, weeklies and monthlies (`review_doc.py:195-221`), so a created-note path in `sources` is skipped (`review_doc.py:270-271`) and never linked; the created notes travel in `notes` instead. The digest cap stays `min(8,192, 114,688 // units)`: the candidates replace the ≈ 157.7 KB raw list the proposer would have read, the cap keeps the opus input bounded, and a digest over it is retried as today. The digester's plan job names its `growth_files`; `proposer.inputs` never names `manifest.json`, `days/` or `growth/`.
+  - Amended 2026-11-26 (owner, T9.2 R1b/R1c, T9.3 F-R1-3): the growth candidates are no longer the proposer's material for a group it writes; `review-doc.py write` reads them from the digests of the passed units (`lib/review_growth.candidates`) and builds the group itself (v1.9). The digest shape and its checks are unchanged.
   - Amended 2026-11-26 (owner, T9.2 R1a): "size ≤ cap" is measured without the growth `notes` and the `sources` lists (ADR-2); `check` adds two count bounds for those paths: `source-duplicate` (a path a second time in one `sources` list, at the second occurrence's pointer) and `growth-note-duplicate` (a created note listed a second time in `growth`, at the second occurrence's pointer). With `source-outside-unit` and `growth-note-outside-unit` this bounds the paths by the unit's dailies and created notes. `digest-too-large` keeps its name and stays a bare code.
   - Rationale: everything a script can check about an agent's file is checked before the opus step; "not condensed" is never a partial read of the unit (Rule 7).
   - Trade-offs: the check cannot prove a digest is faithful to its days, only that it is well-formed and stays inside them; fidelity rests on the digester prompt and the owner's quality comparison (KPI).
@@ -1276,6 +1283,7 @@ stateDiagram-v2
   - Status: Accepted
   - Options for who writes proposals: the skill in the main session (sonnet, would have to read every digest itself) or the opus agent (chosen, owner model decision); for the mark: extend the `mark` enum (brainstorm §4.2; cannot express two marks on one item, cannot reach group items without making groups take child marks) or a separate field (chosen).
   - Amended 2026-11-23 (owner, T1.5 measurement): the proposer builds the "Vault growth" group from the digests' growth candidates and `context.json`'s growth counts and MOC lists (no per-note list); a growth item's sources are its candidates' creation days, so `check_item` (`review_doc.py:252-278`) checks it unchanged. A carried item is never in `growth` (unchanged: "other groups none").
+  - Amended 2026-11-26 (owner, T9.2 R1b/R1c, T9.3 F-R1-3): superseding the 2026-11-23 amendment, the proposer no longer builds the "Vault growth" group; `review-doc.py write` builds it (`lib/review_growth.py`, v1.9). `growth` is out of `review_doc.MODEL_GROUPS`: a proposed growth group is not checked, not rendered and not refused; a carried item placed there is not seen and its ids are `carried-missing`.
   - Rationale: Rule 5 (exactly one carried mark, once) becomes script-checkable through ids.
   - Trade-offs: a schema change on group items that spec 046 deliberately avoided (additive and optional, so every existing fixture stays valid); the proposer must copy ids correctly — a slip costs one rewrite; `overflow` moves items the proposer placed, so the document can differ from `proposals.json` in where a carried item stands (named in the notice).
   - User confirmed: owner, 2026-11-23

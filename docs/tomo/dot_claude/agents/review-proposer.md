@@ -20,7 +20,7 @@ digester is `haiku` and the carryover `sonnet` (their own WHY documents).
 
 ## WHY It Writes Only `proposals.json` (Spec 045 ADR-12)
 
-WHY: habits, vault growth counts and the link differences of a month are numbers and lists; computed by the scripts
+WHY: habits, the vault growth group and the link differences of a month are numbers and lists; computed by the scripts
 they are deterministic and testable (spec 045 F8), and the proposer gets them as facts. Its job is the one thing a
 script cannot do: read the period's material and propose the items — what got done, what stayed open, recurring
 themes, for a month what only the weekly notes hold and what they left out — in the review language. It writes them
@@ -161,14 +161,22 @@ days. Every carried failure is an `errors` entry, never a `rejected` row, so a c
   `carried`: an item marked against a carryover that is not there would be refused `carried-without-carryover`, and the
   document's top already says the previous reviews could not be taken into account.
 
-## WHY the Vault Growth Group Comes From the Digests and the Context (v1.2)
+## WHY It Proposes No Vault Growth Group (T9.3, F-R1-3)
 
-WHY: owner deviation after the T1.5 measurement (`growth.created` ≈ 157.7 KB indented, four times the file ceiling).
-The created notes no longer reach the proposer as one list. It builds the "Vault growth" group from the digests'
-growth candidates — each with its creation days as sources and the note paths in `notes`, which the group links — and
-from `context.json`'s growth counts and MOC lists, which are numbers and lists the script computed. It merges
-candidates of several units that say the same (F1-AC5) and keeps each candidate's day sources, the rule the growth
-group meets in `review_doc.check_item`.
+WHY: owner decision 2026-11-26 after the live runs T9.2 R1b and R1c (week 2026-W13). The digester wrote 8 growth
+candidates holding all 43 created notes, yet the opus proposer built no "Vault growth" group in either run: it named 33
+of the notes inside section items and 10 nowhere. Its rules allowed that — "Leave out a group with nothing to propose"
+and the one-place rule of the sections both let a growth finding vanish into a section or into nothing — so the
+pre-047 behaviour (PRD F2-AC1: the document always holds the group with every created note of the period) was lost.
+A list of every created note is data, not judgement, so a script builds it: `review-doc.py write` takes the created
+notes of the read and groups them as the digests' growth candidates group them (`lib/review_growth.py`, its WHY
+document). No created note can be dropped, and the opus output shrinks. The alternative — a stricter proposer rule
+plus a write check with one rewrite — kept the model in a step a script does exactly, and was rejected.
+
+So the shape example no longer lists `growth` and the growth rule is gone. The proposer may still name a created note
+inside a section or group item: the group lists the note regardless. A `growth` group a proposer still writes (an
+instance not yet synced) is ignored by `write`, never refused ([review_growth](../../scripts/lib/review_growth.md)).
+The digester keeps its growth candidates: they are the script's grouping and texts.
 
 ## WHY It Never Reads `manifest.json`
 
@@ -185,13 +193,6 @@ Agent, so it sees only what the read took from the vault and cannot write anywhe
 with the unchanged `settings.json` lets the Write land under `tomo-tmp/review/<stem>/` without a prompt. Its one-line
 reply (`<out> written` or `<out> not written: <reason word>`) keeps the period's content out of the main session's
 context; the main session learns what was proposed only from `write`'s counts.
-
-## WHY a Growth Item Names Its Notes in the Text
-
-WHY: a proposal item has only `text` and `sources`, and the renderer links only sources that resolve to a day, a
-child note or a previous note; a created note's path is no such source and would be dropped from the links. So the
-growth item keeps the candidates' creation days as sources (the day-source rule of `review_doc.check_item`) and names
-the created notes in its text, where the user sees which notes the item is about.
 
 ## WHY `effort: high`
 

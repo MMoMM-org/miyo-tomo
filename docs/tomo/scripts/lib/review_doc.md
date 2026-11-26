@@ -15,7 +15,7 @@ the period — is the one guarantee that keeps a review from reading as a
 generic summary (PRD risk 2). The model writes `proposals.json` and nothing
 else; a prompt asking for sources produces sources most of the time, which
 is not a rule. `check_items` is the rule: every item in `done`, `open`,
-`themes`, `growth` and `not_in_weekly` needs at least one source that is a
+`themes` and `not_in_weekly` needs at least one source that is a
 daily of a day in the period, a `weekly_only` item needs a weekly note the
 reader listed, a theme needs two distinct days. An item that fails is not
 silently dropped and not silently kept: it goes to `rejected` with its
@@ -25,11 +25,10 @@ vault path the reader listed or as the note's stem (`2026-03-24`) — the
 model sees both in `read.json` and either resolves to the same day; it is
 rendered as `[[stem]]`, the link form the owner's notes already use.
 
-Growth items follow the same rule although their facts come from the growth
-listing: the SDD rule names only dailies (and weekly notes for
-`weekly_only`), and a growth proposal that no day of the period mentions is
-a listing, not a review observation. An open question for the owner is
-recorded in the task report.
+Growth items were checked by the same rule until spec 047 T9.3; since then
+the growth group is not the model's (`MODEL_GROUPS` leaves it out, as it
+leaves out habits) and `review-doc.py write` builds it from the created
+notes ([review_growth](review_growth.md)).
 
 An item whose `text` is empty after cleaning (whitespace only, or nothing
 but `%%` marks) passes the schema's `minLength: 1` yet has nothing to

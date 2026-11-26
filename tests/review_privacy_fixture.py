@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """review_privacy_fixture.py — the marked vault of the /review privacy walk
 (tests/test_review_privacy.py; spec 045 T5.4).
 
@@ -50,8 +50,8 @@ The fixture proposer (spec 047 T8.1): `propose_from_inputs(props, stage,
 inputs)` stands in for the review-proposer over `check`'s `proposer.inputs`:
 it keeps each item of ``props`` whose every source reaches it — a day of an
 input digest, the stem of an input child note, or a note of the input
-carryover — and adds a "Vault growth" item per growth candidate of the input
-digests; an item whose material never reached it is dropped.
+carryover; an item whose material never reached it is dropped. It proposes no
+"Vault growth" item: `review-doc.py write` builds that group (spec 047 T9.3).
 """
 from __future__ import annotations
 
@@ -358,17 +358,14 @@ def _reachable(stage: Path, inputs: list) -> tuple[set, list]:
 
 
 def propose_from_inputs(props: dict, stage: Path, inputs: list) -> dict:
-    """``props`` cut to what the proposer's ``inputs`` carry, plus the digests' growth candidates."""
-    stems, growth = _reachable(stage, inputs)
+    """``props`` cut to what the proposer's ``inputs`` carry (the growth group is the script's, never proposed)."""
+    stems, _ = _reachable(stage, inputs)
 
     def kept(items: list) -> list:
         return [item for item in items if all(str(s) in stems for s in item.get("sources") or [])]
 
     out = json.loads(json.dumps(props))
     out["groups"] = {group: kept(items) for group, items in (out.get("groups") or {}).items()}
-    if growth:
-        out["groups"].setdefault("growth", []).extend(
-            {"text": c["text"], "sources": list(c["sources"])} for c in growth)
     if "sections" in out:
         out["sections"] = [{**entry, "items": kept(entry.get("items") or [])} for entry in out["sections"]]
     return out

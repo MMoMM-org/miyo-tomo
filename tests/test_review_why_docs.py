@@ -320,8 +320,8 @@ PROPOSER_RULES = [
     ("carried-again-no-age-f4-ac8", r"\*\*Carried again, no age \(F4-AC8\)\.\*\*"),
     ("same-mark-merge-f4-ac10", r"\*\*Same-mark merge, never across marks \(F4-AC10\)\.\*\*"),
     ("carried-false", r"\*\*`carried: false` means no carried item \(F6-AC2\)\.\*\*"),
-    ("growth-candidates", r"builds the \"Vault growth\" group from the digests' growth candidates"),
-    ("growth-counts-and-moc-lists", r"from `context\.json`'s growth counts and MOC lists"),
+    ("no-growth-group-f-r1-3", r"WHY It Proposes No Vault Growth Group \(T9\.3, F-R1-3\)"),
+    ("growth-built-by-write", r"`review-doc\.py write` takes the created\s+notes of the read"),
     ("never-manifest-json", r"The proposer never reads `manifest\.json`"),
 ]
 

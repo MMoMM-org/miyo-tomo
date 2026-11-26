@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """Record tests/fixtures/046-t4-2-unmapped-doc-golden/{week,month}.md and .json from
 the `review-doc.py write` of the source tree passed as --tree.
 
@@ -27,6 +27,11 @@ stage ``review_stage.write`` leaves; an older tree (before spec 047) gets it as
 ``read.json``, the file its ``review-doc.py`` loads. A tree with
 ``review-digest.py`` (spec 047 T4.4) has the stage condensed by the fixture agents
 (``review_privacy_fixture.condense``) before ``write``.
+
+Re-recorded 2026-11-26 (spec 047 T9.3, F-R1-3, owner decision): `write` builds the
+Vault growth group from the created notes and ignores a proposed one, so the month
+case's proposed growth item is no longer rendered (the group reads "nothing found",
+the later ids shift by one); the week case is unchanged.
 
 Usage: python3 record.py --tree <exported source tree>
 """

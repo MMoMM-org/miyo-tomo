@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.6
+# version: 0.3.7
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -705,8 +705,8 @@ def test_write_records_only_link_stem_lists_per_tomo_item(mod, instance, monkeyp
     fake, text, stage_dir = written(mod, monkeypatch, capsys, instance)
     raw = (stage_dir / "meta.json").read_text(encoding="utf-8")
     meta = json.loads(raw)
-    assert meta["pass1_links"] == rdp.link_stems(text) and set(meta["pass1_links"]) == {"t1", "t2", "t3", "t4", "t5"}
-    assert meta["pass1_links"]["t5"] == []                                  # the habit: present, no links
+    assert meta["pass1_links"] == rdp.link_stems(text) and set(meta["pass1_links"]) == {"t1", "t2", "t3", "t4"}
+    assert meta["pass1_links"]["t4"] == []                                  # the habit: present, no links
     assert all(isinstance(v, list) and all(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", s) for s in v)
                for v in meta["pass1_links"].values())
     assert sum(meta["pass1_counts"].values()) == len(meta["pass1_links"])
@@ -719,10 +719,10 @@ def test_a_low_entropy_habit_line_is_not_recoverable_from_meta(mod, instance, mo
     fake, text, stage_dir = written(mod, monkeypatch, capsys, instance)
     raw = (stage_dir / "meta.json").read_text(encoding="utf-8")
     habit = [it for it in rdp.parse_document(text).items if it.group == "habits"]
-    assert len(habit) == 1 and "von" in habit[0].text and habit[0].id == "t5"
-    forms = {habit[0].text, line_of(text, "t5"), "\n".join([habit[0].text, *habit[0].lines])}
+    assert len(habit) == 1 and "von" in habit[0].text and habit[0].id == "t4"
+    forms = {habit[0].text, line_of(text, "t4"), "\n".join([habit[0].text, *habit[0].lines])}
     for form in forms:
-        for word in form.replace("%%t5%%", "").split():
+        for word in form.replace("%%t4%%", "").split():
             if len(word) > 1:
                 assert word not in raw, word
         for algo in ("sha256", "sha1", "md5"):
@@ -743,7 +743,7 @@ def test_parse_reads_the_document_prints_counts_only_and_writes_no_file(mod, ins
     assert code == 0 and err == ""
     assert out["status"] == "ok" and out["stem"] == STEM and out["doc_path"] == DOC_PATH
     assert out["approved"] is True and out["nothing_to_deliver"] is False and out["warnings"] == []
-    assert out["counts"] == {"kept": 3, "unticked": 1, "deleted": 1, "added": 1}      # t1, t4, t5 kept; t3's id gone
+    assert out["counts"] == {"kept": 2, "unticked": 1, "deleted": 1, "added": 1}      # t1, t4 kept; t3's id gone
     assert out["items"]["done"] == [{"id": "t1", "origin": "tomo", "kept": True, "edited": True}]
     assert out["items"]["open"] == [{"id": "t2", "origin": "tomo", "kept": False, "edited": False}]
     assert out["items"]["themes"] == [{"origin": "user", "kept": True, "edited": False}]
@@ -756,7 +756,7 @@ def test_parse_reads_the_document_prints_counts_only_and_writes_no_file(mod, ins
     # an unapproved document is parsed too
     fake.files[DOC_PATH] = text
     code, out, _ = _run(mod, monkeypatch, capsys, ["parse", "--stem", STEM], fake)
-    assert out["approved"] is False and out["counts"]["kept"] == 5
+    assert out["approved"] is False and out["counts"]["kept"] == 4
     assert sorted(p.name for p in stage_dir.iterdir()) == ["meta.json"]
 
 
@@ -764,7 +764,7 @@ def test_parse_ignores_a_digest_version_meta_and_guesses_no_edit(mod, instance, 
     fake, text, stage_dir = written(mod, monkeypatch, capsys, instance)
     meta = json.loads((stage_dir / "meta.json").read_text(encoding="utf-8"))
     del meta["pass1_links"]
-    meta["pass1_items"] = {"t1": "0" * 16, "t2": "1" * 16, "t3": "2" * 16, "t4": "3" * 16, "t5": "4" * 16}
+    meta["pass1_items"] = {"t1": "0" * 16, "t2": "1" * 16, "t3": "2" * 16, "t4": "3" * 16}
     (stage_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     edited = replace_line(text, line_of(text, "t1"), f"- [x] {MARKER} ohne Links %%t1%%")
     edited = replace_line(edited, line_of(edited, "t4"), None)
@@ -772,7 +772,7 @@ def test_parse_ignores_a_digest_version_meta_and_guesses_no_edit(mod, instance, 
     code, out, _ = _run(mod, monkeypatch, capsys, ["parse", "--stem", STEM], fake)
     assert code == 0 and out["status"] == "ok"
     assert not any(it["edited"] for group in out["items"].values() for it in group)
-    assert out["counts"] == {"kept": 4, "unticked": 0, "deleted": 1, "added": 0}    # deleted from the counts sum
+    assert out["counts"] == {"kept": 3, "unticked": 0, "deleted": 1, "added": 0}    # deleted from the counts sum
 
 
 def test_parse_missing_document_or_meta_is_not_found_and_doc_path_overrides(mod, instance, monkeypatch, capsys):
@@ -783,7 +783,7 @@ def test_parse_missing_document_or_meta_is_not_found_and_doc_path_overrides(mod,
     moved = f"{INBOX}Renamed Review.md"
     fake.files[moved] = text
     code, out, _ = _run(mod, monkeypatch, capsys, ["parse", "--stem", STEM, "--doc-path", moved], fake)
-    assert out["status"] == "ok" and out["doc_path"] == moved and out["counts"]["kept"] == 5
+    assert out["status"] == "ok" and out["doc_path"] == moved and out["counts"]["kept"] == 4
     (stage_dir / "meta.json").unlink()
     code, out, _ = _run(mod, monkeypatch, capsys, ["parse", "--stem", STEM], fake)
     assert code == 0 and out == {"status": "not-found", "stem": STEM}
@@ -837,7 +837,7 @@ def test_replace_confirm_writes_over_tomos_document_resets_meta_and_deletes_stag
                                                      "pass1_links": {"t9": ["x"]}}), encoding="utf-8")
     code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", STEM, "--confirm", "--run-id", "r3"], fake)
     assert code == 0 and out["status"] == "replaced" and out["doc_path"] == DOC_PATH
-    assert out["counts"] == {"done": 1, "open": 1, "themes": 1, "growth": 1, "habits": 1}
+    assert out["counts"] == {"done": 1, "open": 1, "themes": 1, "growth": 0, "habits": 1}
     assert fake.writes[-1] == DOC_PATH and "- [ ] Approved" in fake.text(DOC_PATH) and "run_id: r3" in fake.text(DOC_PATH)
     assert sorted(p.name for p in stage_dir.iterdir()) == ["meta.json"]
     meta = json.loads((stage_dir / "meta.json").read_text(encoding="utf-8"))

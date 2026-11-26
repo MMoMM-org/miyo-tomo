@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_047_agents.py — the three /review agents (spec 047 T6.2; ADR-7; PRD F1-AC3, F1-AC4, F1-AC5, F2-AC3,
 F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC5, F4-AC6, F4-AC8, F4-AC10, F4-AC11, F6-AC2, F7-AC5).
 
@@ -64,7 +64,7 @@ def _count(agent: str, phrase: str) -> int:
 # ── frontmatter (ADR-7, F7-AC5) ──────────────────────────────────────────────
 
 
-VERSIONS = {"review-digester": "0.1.4", "review-carryover": "0.1.1", "review-proposer": "0.1.2"}
+VERSIONS = {"review-digester": "0.1.4", "review-carryover": "0.1.1", "review-proposer": "0.2.0"}
 
 
 @pytest.mark.parametrize("agent", AGENTS)
@@ -235,6 +235,7 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
      "never read `manifest.json`, a file under `days/` or a file under `growth/`."),
     ("review-proposer", "shape",
      '{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": ["<source from the inputs>"]}]'),
+    ("review-proposer", "shape-without-growth", '"open": [], "themes": [], "weekly_only": [], "not_in_weekly": []}}'),
     # review-proposer: the proposal rules
     ("review-proposer", "review-language",
      "Every item is in `<language>`, also an item drawn from material in another language and every carried item."),
@@ -257,10 +258,7 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     ("review-proposer", "child-marks-over-the-period",
      "Compare the child notes with all days of the period for `weekly_only`, `not_in_weekly`, `monthly_only` and "
      "`not_in_monthly`, never with the days of one week."),
-    ("review-proposer", "growth-from-digests-and-context",
-     "Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of the "
-     "context files of `inputs`:"),
-    ("review-proposer", "growth-creation-days", "give it the candidates' `sources`, their creation days."),
+    ("review-proposer", "no-growth-group", "Never propose habits. Never propose a `growth` group. Never propose text"),
     ("review-proposer", "habits", "Never propose habits."),
     ("review-proposer", "own-sections",
      "Never propose text for the user's own sections other than the `sections` of the context files of `inputs`."),

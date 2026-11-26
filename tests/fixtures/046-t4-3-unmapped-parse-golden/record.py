@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """Record tests/fixtures/046-t4-3-unmapped-parse-golden/parse.json from the
 `review_doc_parse.parse_document` of the source tree passed as --tree.
 
@@ -19,6 +19,12 @@ Legitimate reasons to re-record: EDITS changed for an unrelated reason, or
 the unmapped parse changed ON PURPOSE and the change was reviewed. Do NOT
 re-record from a branch to make tests/test_046_t4_3_unmapped_parse_golden.py
 pass — a disagreement is the regression that test exists to catch.
+
+Re-recorded 2026-11-26 (spec 047 T9.3, F-R1-3): the T4.2 month golden lost its
+proposed growth item (the script builds that group now), so the month cases
+read one item fewer with shifted ids. The parser is unchanged: the recording
+from an export of ab339b06 (the parser before T9.3) over the new month
+document is byte-identical; the week cases are unchanged.
 
 Usage: python3 record.py --tree <exported source tree>
 """

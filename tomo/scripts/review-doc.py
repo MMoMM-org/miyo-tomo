@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.10.3
+# version: 0.11.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
@@ -8,6 +8,9 @@ through ``lib/review_stage.load``, spec 047 T2.4) and the model wrote its propos
 (``proposals.json``), ``write`` checks the proposals against the period
 (the groups through ``lib/review_doc``, the sections through
 ``lib/review_sections``), computes the habits from the tracker values,
+builds the "Vault growth" group from the created notes and the digests'
+growth candidates (``lib/review_growth``; a proposed ``growth`` group is
+never read),
 probes the target note, renders
 ``<period> Review.md`` and writes it to the inbox through Kado — the only
 vault write of Pass 1. The Pass 1 counts and the source-link stems per Tomo
@@ -122,6 +125,7 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_digest as rdg  # noqa: E402
+from lib import review_growth as rgw  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_habits as rh  # noqa: E402
 from lib import review_new_note as rnn  # noqa: E402
@@ -343,6 +347,7 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
         raise Refused("sections-changed") from None
     habits = rh.habits(rh.tracker_defs(config), read.get("days") or [], period.days(), setup.language)
     accepted[rd.HABITS] = [{"text": item["text"], "links": []} for item in habits]
+    accepted[rd.GROWTH] = rgw.group(read, rgw.candidates(stage, read))
 
     vault = Vault(KadoClient)
     target, exists, elsewhere = find_target(vault, period.note_paths(setup.folder, setup.format),

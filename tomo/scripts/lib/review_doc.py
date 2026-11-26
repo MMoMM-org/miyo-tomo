@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.6.3
+# version: 0.7.0
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13; spec 047 ADR-6, ADR-12).
 
 Pure functions between the model's ``proposals.json`` and the document the script writes: ``load_proposals`` /
@@ -8,7 +8,8 @@ the ``Period`` from ``read.json`` under the configured week rule; ``check_items`
 needs a daily of the period — never one of a day the read's ``not_condensed`` units hold — a ``weekly_only`` item a
 weekly note the reader listed, a theme two distinct days, a text that is not empty; the month-only groups only for a
 month with weekly notes) and returns the accepted items per group with their links, the rejected ones with group,
-index and reason, and the refusal ``errors`` of the carried items. A carried item (``carried`` set) takes the
+index and reason, and the refusal ``errors`` of the carried items. ``MODEL_GROUPS`` are the groups the proposer
+fills: neither ``habits`` nor ``growth`` (``review_growth`` builds the growth group; a proposed one is never read). A carried item (``carried`` set) takes the
 explicit carried branch instead: ``check_carried`` (the empty-text test, then ``review_carried.check`` against
 ``read["carryover"]``, None unless it passed); its failure is an ``"<pointer>: <error>"`` entry, never a rejected
 row, and an accepted one keeps ``carried``. The groups come from ``KIND_GROUPS`` per kind (the quarter's
@@ -71,7 +72,7 @@ QUARTER_GROUPS = (MONTHLY_ONLY, NOT_IN_MONTHLY)
 _BASE_GROUPS = (DONE, OPEN, THEMES, GROWTH, HABITS)
 KIND_GROUPS = {WEEK: _BASE_GROUPS, MONTH: _BASE_GROUPS + MONTH_GROUPS, QUARTER: _BASE_GROUPS + QUARTER_GROUPS}
 GROUPS = _BASE_GROUPS + MONTH_GROUPS + QUARTER_GROUPS
-MODEL_GROUPS = tuple(g for g in GROUPS if g != HABITS)
+MODEL_GROUPS = tuple(g for g in GROUPS if g not in (HABITS, GROWTH))     # the groups the proposer fills
 CHILD_GROUPS = {MONTH: MONTH_GROUPS, QUARTER: QUARTER_GROUPS}       # the marks of a kind, against its child notes
 _CHILD_NOTES = {MONTH: "weekly", QUARTER: "monthly"}                # the read.json key of those child notes
 MIN_THEME_DAYS = 2

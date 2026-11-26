@@ -27,13 +27,13 @@ review_stem: 2026-03_review
 - nothing found
 
 ## Vault growth
-- [x] New note on X ([[2026-03-10]]) %%t2%%
+- nothing found
 
 ## Habits
-- [x] Sport: 16 of 31 days (31 days in the period) %%t3%%
+- [x] Sport: 16 of 31 days (31 days in the period) %%t2%%
 
 ## Only in the weekly reviews
-- [x] Only the weekly says so ([[2026-W13]]) %%t4%%
+- [x] Only the weekly says so ([[2026-W13]]) %%t3%%
 
 ## Not in the weekly reviews
-- [x] Missing from the weekly ([[2026-03-02]]) %%t5%%
+- [x] Missing from the weekly ([[2026-03-02]]) %%t4%%

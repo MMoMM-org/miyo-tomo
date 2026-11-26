@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Proposer Subagent
-# version: 0.1.2
+# version: 0.2.0
 
 ## Identity
 
@@ -48,7 +48,7 @@ The prompt names: `stem`, `inputs`, `out`, `carried` (true or false), `language`
 3. The shape of `out`:
 
 ```json
-{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": ["<source from the inputs>"]}], "open": [], "themes": [], "growth": [], "weekly_only": [], "not_in_weekly": []}}
+{"language": "<language>", "groups": {"done": [{"text": "<proposal>", "sources": ["<source from the inputs>"]}], "open": [], "themes": [], "weekly_only": [], "not_in_weekly": []}}
 ```
 
 4. A file read in Activity 2 → apply the Rewrite rules to it. Otherwise apply the Proposal rules, then the Section rules, then the Carried rules.
@@ -59,14 +59,13 @@ The prompt names: `stem`, `inputs`, `out`, `carried` (true or false), `language`
 
 - Every item is in `<language>`, also an item drawn from material in another language and every carried item.
 - An item's `sources` name the notes it rests on, at least one a daily of the period (for `weekly_only` a weekly note of the period, for `monthly_only` a monthly note). A second line of `text` becomes a continuation line of the item.
-- `done`: what happened and got done; `open`: what stayed open; `themes`: recurring themes; `growth`: the vault growth of the period; `weekly_only` and `not_in_weekly` (month only, when `inputs` lists weekly notes): what the `only_in_weekly_links` and `dailies_not_in_weekly` lists of the context files of `inputs` and the weekly notes show. Leave out a group with nothing to propose.
+- `done`: what happened and got done; `open`: what stayed open; `themes`: recurring themes; `weekly_only` and `not_in_weekly` (month only, when `inputs` lists weekly notes): what the `only_in_weekly_links` and `dailies_not_in_weekly` lists of the context files of `inputs` and the weekly notes show. Leave out a group with nothing to propose.
 - Quarter (when `inputs` lists monthly notes): `monthly_only` and `not_in_monthly` are what `only_in_monthly_links`, `dailies_not_in_monthly` and the `month_text` of the monthly notes show; a `monthly_only` item's sources name a monthly note; a section item carries `"mark": "monthly_only"` or `"mark": "not_in_monthly"` as a month's carries its marks.
 - Count a theme over all days of the period: a matter found on at least two days, in one digest or in several, is a theme; its sources name those days.
 - Judge open against the whole period: a matter open on one day and done on a later day, in the same or a later week, is done, not open.
 - A finding that several digests hold is one item whose sources are the sources of every digest that holds it.
 - Compare the child notes with all days of the period for `weekly_only`, `not_in_weekly`, `monthly_only` and `not_in_monthly`, never with the days of one week.
-- Build `growth` from the digests' `growth` candidates and from the `growth` counts and MOC lists of the context files of `inputs`: merge candidates that say the same, name the candidates' `notes` in the item's text, and give it the candidates' `sources`, their creation days.
-- Never propose habits. Never propose text for the user's own sections other than the `sections` of the context files of `inputs`.
+- Never propose habits. Never propose a `growth` group. Never propose text for the user's own sections other than the `sections` of the context files of `inputs`.
 
 ## Section rules
 

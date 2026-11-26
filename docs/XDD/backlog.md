@@ -99,6 +99,7 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | R-47c | `/review`: an age counter for carried items ("open for three weeks") | Could | Spec 047 Won't Have (#270). Today an item still open is carried again with the same mark and no age. |
 | R-47d | `/review`: leave non-note embeds out of the "not in a weekly or monthly review" lists | Could | Parked from the spec 046 live walk, kept parked by spec 047 (#270). |
 | R-47e | `/review`: `review-doc.py write` refuses on its own when every unit failed to condense (defence in depth; today the skill stops at `review-digest.py check`'s `nothing-condensed`) | Could | Found in the spec 047 T8.2 end-to-end tests (#270). |
+| R-47f | `/review`: a lone surrogate escape (`\ud800`) in a carryover item's text would likely raise `UnicodeEncodeError` when `review-digest.py` rewrites the settled `carryover.json` (`review_stage_codec.encode`, `ensure_ascii=False`); the digest measure is already surrogate-safe | Could | Found in the spec 047 T9.3 review of the digest-cap fix (#270). |
 
 ## Done (historical record)
 

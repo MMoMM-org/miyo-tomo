@@ -30,6 +30,7 @@ Finding F-R1-1 (→ T9.3): the digest cap counts note paths the digester cannot 
 `growth` holds 3,243 (8 groups, 43 created-note paths) and the 89 `sources` entries 3,160; without the growth note
 paths and every `sources` list the digest is 2,871 B. The quarter's cap per unit (114,688 / 15 = 7,645 B) and its
 busiest growth day (32,745 B growth file) would fail the same way. Owner decision: paths outside the cap.
+Fixed in T9.3 (861cf8fe, bc8cbf1d): `cap_bytes` measures the compact digest without the growth `notes` and every `sources` list; `source-duplicate` and `growth-note-duplicate` bound the paths; lone surrogates counted, not raised (`review_digest.py` 0.2.1, `review-digester.md` 0.1.4). Spec review PASS; code review FAIL (surrogate crash) → fixed → PASS. Full suite 12,397 passed, 1 known failure. Re-run of R1 pending.
 
 ## KPI table
 

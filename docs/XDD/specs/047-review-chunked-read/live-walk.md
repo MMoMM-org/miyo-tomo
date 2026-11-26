@@ -54,6 +54,8 @@ Cost / time per step: main sonnet $0.55, 261 s, peak 89,613; digester haiku $0.1
 $0.13 / 22 s / 16,114; proposer opus $1.95 / 134 s / 22,794 (32,158 output tokens, 78,510 cache-write); Pass 1 total
 $2.80 (guidance ≤ $0.80: over by $2.00, the proposer alone $1.95).
 
+Finding F-R1-2 (owner, after reading the R1b document → T9.3): the callout's previous-note lines name the note as a link (`Letzter Rückblick · Woche [[2026-W12]]: …`; not found stays plain text) and the callout gets a blank line before and after it. Fixed in da12572a (`review_doc.py` 0.6.3; spec 046 T4.2 unmapped-doc golden re-recorded, +2 blank lines per file only). Spec review PASS, code review PASS; full suite 12,407 passed, 1 known failure. R1 Pass 1 redone on the new format (R1c), Pass 2 of R1b skipped.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |

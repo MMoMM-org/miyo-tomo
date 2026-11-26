@@ -1,6 +1,6 @@
 # review_growth.py — the "Vault growth" group of the /review document, built from the created notes of the period.
-# version: 0.1.0
-"""The Vault growth group of the Pass 1 document (spec 047 T9.3, F-R1-3; PRD F2-AC1).
+# version: 0.2.0
+"""The Vault growth group of the Pass 1 document (spec 047 T9.3, F-R1-3, F-R1-4; PRD F2-AC1).
 
 Every note created in the period is in the group exactly once, whatever a section item or the proposer says
 about it. ``candidates(stage, read)`` loads the growth candidates ``{text, notes}`` of every digest whose unit
@@ -14,10 +14,16 @@ another read gives none. ``group(read, candidates)`` builds the items ``{text, l
 - an item's links: the links of its notes when the text is not a note link, then the stems of the dailies of
   the notes' creation days (the read's ``Sources``, so a day of a not-condensed unit links no daily);
 - a note's link is its stem, or its path without ``.md`` when another created note has the same stem;
-- notes in an item by (creation day, path); items by (their first note's creation day, its path).
+- notes in an item by (creation day, path); items by (their first note's creation day, its path);
+- after the created-note items, the MOC items of ``read["growth"]``: ``mocs_changed`` as one item (text the
+  ``language``'s label word ``growth_mocs_changed``, links its MOCs), then ``mocs_linked_by_new`` minus the
+  changed ones as one item (``growth_mocs_linked``); a MOC that is a created note is in neither; links in path
+  order; an item without a MOC is left out;
+- a MOC's link follows the created notes' rule over the created notes and the MOCs together.
 
-No created note → ``[]`` (the group renders empty as before). The texts of the candidates are the digester's
-words; they reach the written document only, never stdout, stderr or ``meta.json``.
+No created note and no MOC item → ``[]`` (the group renders empty as before). The texts of the candidates are
+the digester's words; they reach the written document only, never stdout, stderr or ``meta.json``; a MOC item
+holds a label word and links, nothing of the MOC's text.
 
 No Kado, no model; reads the stage's ``digests/`` files only.
 
@@ -29,10 +35,12 @@ import json
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
+from lib.review_doc import labels
 from lib.review_sources import Sources, note_stem
 
 DIGESTS = "digests"
 PASSED = "passed"
+MOC_LISTS = (("mocs_changed", "growth_mocs_changed"), ("mocs_linked_by_new", "growth_mocs_linked"))
 
 
 def candidates(stage: Path, read: dict) -> List[dict]:
@@ -56,13 +64,25 @@ def candidates(stage: Path, read: dict) -> List[dict]:
     return out
 
 
-def _links_of(created: Dict[str, str]) -> Dict[str, str]:
-    """Created-note path → its link: the stem, or the path without ``.md`` when the stem is not unique."""
+def _links_of(paths: Sequence[str]) -> Dict[str, str]:
+    """Path → its link: the stem, or the path without ``.md`` when the stem is not unique among ``paths``."""
     stems: Dict[str, int] = {}
-    for path in created:
+    for path in paths:
         stems[note_stem(path)] = stems.get(note_stem(path), 0) + 1
     return {path: (note_stem(path) if stems[note_stem(path)] == 1 else path[:-3] if path.endswith(".md") else path)
-            for path in created}
+            for path in paths}
+
+
+def _mocs(growth: dict, created: Dict[str, str]) -> List[Tuple[str, List[str]]]:
+    """``[(label key, MOC paths)]`` of the MOC items: each MOC once, the first list it is in; none created."""
+    seen = set(created)
+    out = []
+    for key, word in MOC_LISTS:
+        paths = sorted({str(p) for p in growth.get(key) or [] if p} - seen)
+        seen.update(paths)
+        if paths:
+            out.append((word, paths))
+    return out
 
 
 def _day_links(read: dict) -> Dict[str, List[str]]:
@@ -75,13 +95,13 @@ def _day_links(read: dict) -> Dict[str, List[str]]:
     return out
 
 
-def group(read: dict, found: Sequence[dict]) -> List[dict]:
-    """The group's items ``{text, links}``: every created note of the read exactly once (module docstring)."""
-    created = {str(c["path"]): str(c.get("day") or "") for c in (read.get("growth") or {}).get("created") or []
+def group(read: dict, found: Sequence[dict], language: str = "en") -> List[dict]:
+    """The group's items ``{text, links}``: every created note once, then the MOC items (module docstring)."""
+    growth = read.get("growth") or {}
+    created = {str(c["path"]): str(c.get("day") or "") for c in growth.get("created") or []
                if isinstance(c, dict) and c.get("path")}
-    if not created:
-        return []
-    link = _links_of(created)
+    mocs = _mocs(growth, created)
+    link = _links_of([*created, *(path for _, paths in mocs for path in paths)])
     days = _day_links(read)
     order = lambda path: (created[path], path)              # noqa: E731 - the one sort key of notes
     taken: set = set()
@@ -102,4 +122,5 @@ def group(read: dict, found: Sequence[dict]) -> List[dict]:
         for day in sorted({created[path] for path in notes}):
             links += [stem for stem in days.get(day, []) if stem not in links]
         out.append({"text": text, "links": links})
-    return out
+    words = labels(language)
+    return out + [{"text": words[word], "links": [link[path] for path in paths]} for word, paths in mocs]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test_review_growth.py — the "Vault growth" group the script builds (spec 047 T9.3, F-R1-3; PRD F2-AC1).
 
 Owner decision 2026-11-26 (T9.2 R1b/R1c): `review-doc.py write` builds the group from the created notes of the
@@ -15,6 +15,10 @@ read and the digests' growth candidates; the proposer no longer proposes `growth
 - candidates of several units (a month) merged, no note twice; candidates of a failed unit or another read
   are not used, their notes get items of their own;
 - the English and the German heading.
+- F-R1-4 (owner 2026-11-26): after the created-note items, "MOCs changed" linking every changed MOC, then
+  "MOCs newly linked" linking the MOCs a created note links and that did not change; each MOC once, none that is
+  a created note; links in path order; EN and DE label words; MOC changes alone still give the group; the
+  document's MOC lines hold label words and links only.
 
 All data is synthetic.
 """
@@ -216,3 +220,120 @@ def test_no_created_note_keeps_the_empty_group(make_walk, language, heading, not
     out = w.write(WEEK_STEM, WEEK, props, proposer=propose_from_inputs)
     assert out["status"] == "written" and out["counts"]["growth"] == 0, out
     assert _group_lines(w.doc(WEEK_DOC), heading) == [f"- {nothing}"]
+
+
+# ── the MOC changes of the period (T9.3, F-R1-4; owner 2026-11-26) ──
+
+M = "100 MOCs/"
+
+
+def _read_mocs(created: dict, changed: List[str], linked: List[str], days: List[str] = ()) -> dict:
+    read = _read(created, list(days))
+    read["growth"]["mocs_changed"], read["growth"]["mocs_linked_by_new"] = list(changed), list(linked)
+    return read
+
+
+def _moc_links(items: List[dict]) -> List[str]:
+    return [link for item in items if item["text"] in ("MOCs changed", "MOCs newly linked") for link in item["links"]]
+
+
+def test_every_changed_moc_is_linked_once_in_one_item_after_the_created_notes():
+    read = _read_mocs({"N/a.md": "2026-03-24"}, [f"{M}B MOC.md", f"{M}A MOC.md"], [], ["2026-03-24"])
+    assert rgw.group(read, []) == [{"text": "[[a]]", "links": ["2026-03-24"]},
+                                   {"text": "MOCs changed", "links": ["A MOC", "B MOC"]}]
+
+
+def test_a_moc_linked_by_a_new_note_is_shown_once_and_a_moc_in_both_lists_only_as_changed():
+    read = _read_mocs({"N/a.md": "2026-03-24"}, [f"{M}A MOC.md", f"{M}C MOC.md"], [f"{M}C MOC.md", f"{M}B MOC.md"])
+    got = rgw.group(read, [])
+    assert got[1:] == [{"text": "MOCs changed", "links": ["A MOC", "C MOC"]},
+                       {"text": "MOCs newly linked", "links": ["B MOC"]}]
+    assert sorted(_moc_links(got)) == ["A MOC", "B MOC", "C MOC"]
+
+
+def test_mocs_linked_by_new_notes_that_all_changed_give_no_second_item():
+    read = _read_mocs({"N/a.md": "2026-03-24"}, [f"{M}A MOC.md"], [f"{M}A MOC.md"])
+    assert rgw.group(read, [])[1:] == [{"text": "MOCs changed", "links": ["A MOC"]}]
+
+
+@pytest.mark.parametrize("language,changed,linked", [("en", "MOCs changed", "MOCs newly linked"),
+                                                     ("de", "Geänderte MOCs", "Neu verlinkte MOCs")])
+def test_the_moc_items_carry_the_label_words_of_the_review_language(language, changed, linked):
+    read = _read_mocs({}, [f"{M}A MOC.md"], [f"{M}B MOC.md"])
+    assert [item["text"] for item in rgw.group(read, [], language)] == [changed, linked]
+
+
+def test_no_moc_change_gives_no_moc_item_and_the_created_note_items_unchanged():
+    created = {"N/a.md": "2026-03-24", "N/b.md": "2026-03-10"}
+    found = [_cand("one", "N/a.md")]
+    plain = rgw.group(_read(created, ["2026-03-24"]), found)
+    assert rgw.group(_read_mocs(created, [], [], ["2026-03-24"]), found) == plain
+    assert _moc_links(plain) == [] and len(plain) == 2
+
+
+def test_moc_changes_without_a_created_note_still_give_the_group():
+    read = _read_mocs({}, [f"{M}A MOC.md"], [])
+    assert rgw.group(read, []) == [{"text": "MOCs changed", "links": ["A MOC"]}]
+
+
+def test_the_moc_items_come_after_the_created_note_items_in_a_fixed_order():
+    created = {"N/z.md": "2026-03-30", "N/a.md": "2026-03-02"}
+    one = rgw.group(_read_mocs(created, [f"{M}Q MOC.md", f"{M}P MOC.md"], [f"{M}S MOC.md", f"{M}R MOC.md"]),
+                    [_cand("late", "N/z.md"), _cand("early", "N/a.md")])
+    two = rgw.group(_read_mocs(created, [f"{M}P MOC.md", f"{M}Q MOC.md"], [f"{M}R MOC.md", f"{M}S MOC.md"]),
+                    [_cand("early", "N/a.md"), _cand("late", "N/z.md")])
+    assert one == two
+    assert [item["text"] for item in one] == ["early", "late", "MOCs changed", "MOCs newly linked"]
+    assert one[2]["links"] == ["P MOC", "Q MOC"] and one[3]["links"] == ["R MOC", "S MOC"]
+
+
+def test_a_created_moc_stays_a_created_note_and_a_shared_stem_links_by_path():
+    read = _read_mocs({f"{M}New MOC.md": "2026-03-24", "N/Topic.md": "2026-03-24"},
+                      [f"{M}New MOC.md", f"{M}Topic.md"], [])
+    got = rgw.group(read, [])
+    assert got == [{"text": "[[New MOC]]", "links": []},
+                   {"text": "[[N/Topic]]", "links": []},
+                   {"text": "MOCs changed", "links": [f"{M}Topic"]}]
+
+
+# ── end to end: the MOC line of the written document holds links and label words only ──
+
+MOC_TEXT = f"moc body {PRP}\n"
+
+
+def _moc_walk(make_walk, language="en", created=True):
+    """A month with one MOC changed in it (Quiet) and one only linked by a new note (Topic); MOC texts carry PRP."""
+    case = Case(MONTH, MONTH_PERIOD, MONTH_STEM, MONTH_DOC, True, lambda: _config(language),
+                lambda: proposals(MONTH))
+    w = make_walk(case)
+    for path, day in (CREATED.items() if created else ()):
+        w.vault.files[path] = f"# {Path(path).stem}\nnew note\n"
+        w.vault.created[path] = w.vault.modified[path] = _ms(day)
+    if created:
+        w.vault.files["Notes/Bike chain.md"] = "# Bike chain\nsee [[Topic MOC]]\n"
+    for name, modified in (("Quiet MOC", _ms("2026-03-11")), ("Topic MOC", 0)):
+        w.vault.files[f"{M}{name}.md"] = MOC_TEXT
+        w.vault.created[f"{M}{name}.md"], w.vault.modified[f"{M}{name}.md"] = 0, modified
+    assert w.read(MONTH_PERIOD, MONTH)["status"] == "ok"
+    return w
+
+
+@pytest.mark.parametrize("language,heading,changed,linked", [
+    ("en", "Vault growth", "MOCs changed", "MOCs newly linked"),
+    ("de", "Vault-Wachstum", "Geänderte MOCs", "Neu verlinkte MOCs")])
+def test_write_adds_the_moc_items_after_the_created_notes_with_links_and_label_words_only(
+        make_walk, language, heading, changed, linked):
+    w = _moc_walk(make_walk, language)
+    out = w.write(MONTH_STEM, MONTH, proposer=propose_from_inputs)
+    assert out["status"] == "written" and out["counts"]["growth"] == 5, out
+    document = w.doc(MONTH_DOC)
+    assert _group_lines(document, heading) == EXPECTED + [f"- [x] {changed} ([[Quiet MOC]])",
+                                                          f"- [x] {linked} ([[Topic MOC]])"]
+    assert PRP not in json.dumps(out) and "moc body" not in document
+
+
+def test_write_renders_the_group_with_moc_changes_and_no_created_note(make_walk):
+    w = _moc_walk(make_walk, created=False)
+    out = w.write(MONTH_STEM, MONTH, proposer=propose_from_inputs)
+    assert out["status"] == "written" and out["counts"]["growth"] == 1, out
+    assert _group_lines(w.doc(MONTH_DOC), "Vault growth") == ["- [x] MOCs changed ([[Quiet MOC]])"]

@@ -1,7 +1,7 @@
 # WHY: lib/review_growth.py
 
-> Rationale for decisions in `tomo/scripts/lib/review_growth.py` (spec 047 T9.3, finding F-R1-3; PRD F2-AC1;
-> SDD v1.9 amendment, ADR-4, ADR-6). The module builds the "Vault growth" / "Vault-Wachstum" group of the
+> Rationale for decisions in `tomo/scripts/lib/review_growth.py` (spec 047 T9.3, findings F-R1-3 and F-R1-4;
+> PRD F2-AC1; SDD v1.9 and v1.10 amendments, ADR-4, ADR-6). The module builds the "Vault growth" / "Vault-Wachstum" group of the
 > Pass 1 document from the created notes of the read and the digests' growth candidates. No Kado, no model;
 > it reads the stage's `digests/` files only.
 
@@ -66,18 +66,36 @@ writes the group from habit, should get its review written, not a `proposals-inv
 a group that is discarded anyway. A carried item placed in `growth` is simply not seen, so its ids are reported
 `carried-missing` and the rewrite places it by the Carried rules.
 
-## WHY the MOC Lists Are Not in the Group
+## WHY the MOC Changes Are in the Group (Owner Decision 2026-11-26, F-R1-4)
 
-The pre-047 model could mention changed MOCs from the read's growth lists, and the spec 047 proposer rule named the
-context's MOC lists. The script group lists created notes only: the owner decision names the digests' candidates
-(text, note links, creation days) as the group's content, and the T8.1 parity oracle
-(`tests/test_047_e2e_failures.py`) derives the group from the created notes alone. `context.json` still carries the
-counts and MOC lists.
+The first script group (F-R1-3) listed created notes only, so the MOC changes the pre-047 model could mention from
+the read's growth lists appeared nowhere. The owner decided the group also shows them, as links. Their data is
+already in the read: `review_period._growth` computes `mocs_changed` (MOCs in the configured MOC folders modified in
+the period) and `mocs_linked_by_new` (MOCs a created note links), both sorted vault paths; `context.json` carries them
+and `review_stage.load` returns them under `read["growth"]`. No digest and no model is involved.
+
+- **Two items at most, not one per MOC.** A changed MOC says nothing about itself the script could word; one item per
+  list keeps the group short in a quarter with many MOC edits and reads as one line per kind of change. The text is
+  a label word in the review language (`growth_mocs_changed`, `growth_mocs_linked` in `review_doc._LABELS`, beside
+  every other label; `review_doc.py` stays under its size limit), the links are the MOCs. Nothing of a MOC's text is
+  read or written (CON-3): the document holds links only, stdout and `meta.json` no more than before.
+- **Each MOC once.** A MOC in both lists is linked under "MOCs changed" only, the first list; "MOCs newly linked" holds
+  the rest and is left out when nothing remains. A MOC that is itself a created note already has its created-note
+  item, so it is in no MOC item: every note the group names is named once.
+- **Links, no dailies.** A MOC item's links are the MOCs themselves. The read keeps no day for a MOC change (only the
+  path), and a newly-linked MOC's day would be the linking note's creation day, which that note's own item already
+  links. Like the created-note items, MOC items bypass `check_items`, so no period source is required.
+- **Link rule.** The created notes' rule — the stem, the path without `.md` when the stem is not unique — is applied
+  over the created notes and the MOCs together, since a MOC and a created note of one stem would otherwise both
+  render as the same `[[stem]]`.
+- **Order.** After every created-note item, changed before newly linked, links in path order: fixed by the paths
+  alone, whatever order the lists arrive in.
 
 ## WHY an Empty Group Behaves as Before
 
-No created note → no item; the renderer shows the group as spec 045/046 did: "nothing found" in an unmapped document,
-left out of the mapped one (`keep_empty`).
+No created note and no MOC change → no item; the renderer shows the group as spec 045/046 did: "nothing found" in
+an unmapped document, left out of the mapped one (`keep_empty`). MOC changes alone are growth too, so a period with
+them and no created note renders the group with its MOC items.
 
 ## WHY a Module of Its Own
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_growth.py — the "Vault growth" group the script builds (spec 047 T9.3, F-R1-3; PRD F2-AC1).
 
 Owner decision 2026-11-26 (T9.2 R1b/R1c): `review-doc.py write` builds the group from the created notes of the
@@ -120,6 +120,16 @@ def test_candidates_come_from_the_passed_units_of_this_read_only(tmp_path):
     (tmp_path / "digests" / "2026-W13.json").write_text("{broken", encoding="utf-8")
     _digest(tmp_path, "2026-W14", [{"text": "w14", "sources": ["2026-03-30"], "notes": ["N/z.md", "N/y.md"]}])
     assert rgw.candidates(tmp_path, read) == [_cand("w10", "N/a.md"), _cand("w14", "N/z.md", "N/y.md")]
+
+
+def test_candidates_skip_a_passed_unit_with_no_digest_or_a_digest_that_is_not_an_object(tmp_path):
+    read = _read({}, [], units={"2026-W10": "passed", "2026-W11": "passed", "2026-W12": "passed",
+                                "2026-W13": "passed"})
+    _digest(tmp_path, "2026-W10", [{"text": "w10", "sources": ["2026-03-03"], "notes": ["N/a.md"]}])
+    # 2026-W11: passed, but no digest file
+    (tmp_path / "digests" / "2026-W12.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "digests" / "2026-W13.json").write_text('"x"', encoding="utf-8")
+    assert rgw.candidates(tmp_path, read) == [_cand("w10", "N/a.md")]
 
 
 # ── end to end through review-doc.py write (a month, two units with created notes) ──

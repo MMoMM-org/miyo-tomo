@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.7.0
+# version: 0.7.1
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13; spec 047 ADR-6, ADR-12).
 
 Pure functions between the model's ``proposals.json`` and the document the script writes: ``load_proposals`` /
@@ -8,13 +8,16 @@ the ``Period`` from ``read.json`` under the configured week rule; ``check_items`
 needs a daily of the period — never one of a day the read's ``not_condensed`` units hold — a ``weekly_only`` item a
 weekly note the reader listed, a theme two distinct days, a text that is not empty; the month-only groups only for a
 month with weekly notes) and returns the accepted items per group with their links, the rejected ones with group,
-index and reason, and the refusal ``errors`` of the carried items. ``MODEL_GROUPS`` are the groups the proposer
-fills: neither ``habits`` nor ``growth`` (``review_growth`` builds the growth group; a proposed one is never read). A carried item (``carried`` set) takes the
+index and reason, and the refusal ``errors`` of the carried items. A carried item (``carried`` set) takes the
 explicit carried branch instead: ``check_carried`` (the empty-text test, then ``review_carried.check`` against
 ``read["carryover"]``, None unless it passed); its failure is an ``"<pointer>: <error>"`` entry, never a rejected
 row, and an accepted one keeps ``carried``. The groups come from ``KIND_GROUPS`` per kind (the quarter's
 ``monthly_only`` needs a listed monthly note, its pair only a quarter with monthly notes; ``group_reason``);
 ``check_item``, ``check_carried`` and ``group_reason`` also serve ``review_sections`` for the section items.
+
+``MODEL_GROUPS`` are the groups the proposer fills: neither ``habits`` nor ``growth``. ``review_growth``
+builds the growth group; a proposed one is never read.
+
 ``check_item`` rests on ``review_sources.resolve_sources`` (re-exported here with ``Sources`` and ``note_stem``); a
 found previous review note is never a source of a non-carried item. A link is the stem of a note ``read.json`` lists
 that a source resolved to — a daily of the period or, for ``weekly_only`` / ``monthly_only``, a listed weekly /

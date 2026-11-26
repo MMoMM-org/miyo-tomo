@@ -1,5 +1,5 @@
 # review_digest.py — file checks of a /review unit digest and the carryover; the condensed.json job state.
-# version: 0.2.0
+# version: 0.2.1
 """Digest and carryover checks for ``/review`` condensing (spec 047 T4.2; PRD F1-AC1, F6-AC1, F6-AC2; ADR-4).
 
 ``check_digest(text, unit, read, *, read_id, cap_bytes)`` gives the errors of
@@ -20,7 +20,7 @@ Size: ``cap_bytes`` counts the UTF-8 bytes of the digest as compact JSON
 without the growth ``notes`` and without every ``sources`` list; those paths
 are bound by ``source-duplicate`` (a path twice in one ``sources`` list) and
 ``growth-note-duplicate`` (a created note listed twice in ``growth``) beside
-the unit checks. ``CARRYOVER_CAP`` counts the carryover's bytes as written.
+the unit checks; a lone surrogate counts 3 bytes. ``CARRYOVER_CAP`` counts the carryover's bytes as written.
 
 Job state (``condensed.json``): ``new_state(read_id, units, *, carryover)``;
 ``advance(job, errors, *, count)`` and ``advance_carryover(job, check, *,
@@ -113,8 +113,12 @@ def _without_paths(value: Any, drop: Sequence[str] = ("sources",)) -> Any:
 
 
 def digest_bytes(_text: str, data: Any) -> int:
-    """What ``cap_bytes`` measures: the compact UTF-8 JSON without growth ``notes`` and ``sources`` lists."""
-    return len(json.dumps(_without_paths(data), ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    """What ``cap_bytes`` measures: the compact UTF-8 JSON without growth ``notes`` and ``sources`` lists.
+
+    A lone surrogate (a ``\\ud800`` escape ``json.loads`` accepts) counts 3 bytes, like any code point of its range.
+    """
+    compact = json.dumps(_without_paths(data), ensure_ascii=False, separators=(",", ":"))
+    return len(compact.encode("utf-8", errors="surrogatepass"))
 
 
 def taking_part_days(unit: Mapping[str, Any], read: Mapping[str, Any]) -> List[str]:

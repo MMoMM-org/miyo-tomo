@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test_review_digest.py — spec 047 T4.2/T4.3: digest and carryover file checks, the condensed.json job state,
 the ``review-digest.py plan | check`` CLI.
 
@@ -21,7 +21,8 @@ Mechanisms a mutation of ``lib/review_digest.py`` falsifies:
   refused as outside, not as a day without a created note;
 - the byte caps: digest ``cap_bytes`` on the compact digest without its growth ``notes`` and ``sources``
   lists (T9.3, R1a), carryover ``CARRYOVER_CAP`` on the bytes as written; no path twice in one ``sources``
-  list, no created note in two growth groups;
+  list (after ``strip()``), no created note twice in ``growth`` (same or another group); a lone
+  surrogate counts 3 bytes and never raises;
 - carryover notes == the found previous notes, sources among them, ids unique;
 - the state model: 1st counted failure ``retry``, 2nd ``failed``; a valid file
   passes, without an attempt when not counted; an invalid one is not touched
@@ -214,6 +215,10 @@ DIGEST_CASES = [
     ("growth-note-duplicate", lambda d: d["growth"].append(
         {"text": "Alpha again", "sources": ["2026-03-25"], "notes": ["Notes/Alpha.md"]}),
      ["/growth/1/notes/0: growth-note-duplicate"]),
+    ("growth-note-duplicate-same-group", lambda d: d["growth"][0]["notes"].append("Notes/Alpha.md"),
+     ["/growth/0/notes/2: growth-note-duplicate"]),
+    ("source-duplicate-after-strip", lambda d: d["open"][0]["sources"].insert(0, " " + DAILY.format("2026-03-25")),
+     ["/open/0/sources/1: source-duplicate"]),
 ]
 
 
@@ -227,18 +232,29 @@ def test_not_json():
     assert rd.check_digest("[1, 2]", W13, READ, read_id=R, cap_bytes=CAP) == ["schema (/)"]
 
 
-def _without_paths(value, drop=("sources",)):
-    """The digest as ``cap_bytes`` measures it: no ``sources`` list anywhere, no growth ``notes``."""
-    if isinstance(value, dict):
-        return {k: _without_paths(v, ("sources", "notes") if k == "growth" else drop)
-                for k, v in value.items() if k not in drop}
-    if isinstance(value, list):
-        return [_without_paths(v, drop) for v in value]
-    return value
-
-
 def _measured(data) -> int:
-    return len(json.dumps(_without_paths(data), ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    return rd.digest_bytes(_text(data), data)
+
+
+def test_digest_bytes_counts_a_tiny_digest_by_hand():
+    """``{"done":[{"text":"é","notes":["n"]}],"growth":[{"text":"a"}]}``: 61 characters, ``é`` 2 bytes → 62.
+
+    ``notes`` outside ``growth`` stays in the measure."""
+    tiny = {"done": [{"text": "é", "sources": ["x"], "notes": ["n"]}],
+            "growth": [{"text": "a", "sources": ["y"], "notes": ["z"]}]}
+    assert rd.digest_bytes("", tiny) == 62
+
+
+def test_digest_bytes_counts_a_lone_surrogate_as_three_bytes():
+    """``{"text":"\\ud800"}``: 11 ASCII characters + the surrogate's 3 bytes (surrogatepass)."""
+    assert rd.digest_bytes("", {"text": "\ud800"}) == 14
+
+
+def test_a_lone_surrogate_escape_is_checked_not_raised():
+    text = _text(W13_DIGEST).replace("5 km run", "5 km run \\ud800", 1)
+    assert "\\ud800" in text
+    assert rd.check_digest(text, W13, READ, read_id=R, cap_bytes=CAP) == []
+    assert rd.check_digest(text, W13, READ, read_id=R, cap_bytes=10) == ["digest-too-large"]
 
 
 def test_growth_notes_and_sources_do_not_count_toward_the_cap():

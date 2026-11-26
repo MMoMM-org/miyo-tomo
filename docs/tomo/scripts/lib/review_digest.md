@@ -104,7 +104,10 @@ raw / 9,404 B compact against 8,192 B, with 3,243 B of growth note paths (43
 notes, 8 groups) and 3,160 B of `sources`; without them it was 2,871 B. The
 quarter's per-unit cap (114,688 // 15 = 7,645 B) would have failed the same
 way, so raising the constant alone was no fix. Indentation does not count
-because the digester's layout is not content.
+because the digester's layout is not content. A lone surrogate (a `\ud800`
+escape, which `json.loads` accepts) is encoded with `errors="surrogatepass"`
+and counts 3 bytes, the width of any code point of its range; a strict encode
+would raise and crash `check_digest` instead of returning its errors.
 
 The paths left out of the measure are bounded by the data instead. Each is
 already bound to the unit (`source-outside-unit`, `growth-note-outside-unit`);

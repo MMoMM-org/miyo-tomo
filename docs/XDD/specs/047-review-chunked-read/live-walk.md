@@ -77,6 +77,10 @@ Instance at 12e9a7bc (F-R1-2 synced).
 Cost / time per step: main sonnet $0.53, 962 s (incl. the login wait), peak 89,280; digester haiku $0.13 / 76 s;
 carryover sonnet $0.12 / 18 s / 16,112; proposer opus $2.06 / 142 s / 21,571; Pass 1 total $2.84.
 
+Finding F-R1-3 (owner, R1b/R1c → T9.3): the document always holds the Vault growth group with every created note of the period; the proposer built none and 10 of 43 created notes appeared nowhere. Fixed: `review-doc.py write` builds the group from the digests' growth candidates (`lib/review_growth.py`, c6f09d56 + 61e0ac20); the proposer no longer proposes `growth` (`review-proposer.md` 0.2.0); spec 046 T4.2/T4.3 month goldens re-recorded (proposed growth item gone, ids shifted). Spec review PASS; code review FAIL (digest-read paths untested) → fixed → PASS.
+
+Finding F-R1-4 (owner → T9.3): the group also shows the period's MOC changes — "MOCs changed" and "MOCs newly linked" items, links only, each MOC once (2ecc78bb, `review_growth.py` 0.2.0). Spec review PASS, code review PASS; full suite 12,436 passed, 1 known failure. SKILL.md's `growth` in a section row's groups left as is (a proposer hint; the config schema allows it).
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |

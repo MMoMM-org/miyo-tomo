@@ -12,7 +12,9 @@ review_language: de
 review_stem: 2026-W13_review
 ---
 # 2026-W13 Review
+
 > [!info] Ziel: [[2026-W13]] (vorhanden) · vor "In my own words" · nicht gelesen: 2026-03-28 Extra · teilweise gelesen: 2026-03-25
+
 - [ ] Approved
 
 ## Erledigt

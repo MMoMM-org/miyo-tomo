@@ -58,6 +58,9 @@ T2.4; the stage replaced read.json) and proposals.json files:
   branch (review_carried), keeps `carried`, and every carried failure (empty-text included) is an error,
   never a rejected row; the carried label precedes the child mark (both SDD lines byte-exact); a
   single-day not-condensed unit shows the day alone; previous_rows counts carried items per found note
+- spec 047 T9.3 F-R1-2: a found or empty previous note is named as [[stem]] of its path, any other
+  state by its plain name, EN and DE; a blank line before and after the callout; the linked callout
+  is no source, the document parses and its fingerprint equals the old shape's
 
 All data is synthetic.
 """
@@ -343,8 +346,8 @@ def test_forged_sources_and_structural_lines_cannot_reach_the_document(mod, inst
     assert code == 0 and out["status"] == "written" and out["rejected"] == []
     lines = lines_of(fake)
     headings = ["## Erledigt", "## Offen", "## Wiederkehrende Themen", "## Vault-Wachstum", "## Gewohnheiten"]
-    assert lines[0] == "# 2026-W13 Review" and lines[1].startswith("> [!info] ")
-    body = lines[2:]                                                           # after the title and the callout
+    assert lines[0] == "# 2026-W13 Review" and lines[1] == "" and lines[2].startswith("> [!info] ")
+    body = lines[3:]                                                           # after the title and the callout
     assert [ln for ln in body if ln.startswith("## ")] == headings
     assert [ln for ln in body if re.match(r"\s*#+(\s|$)", ln) and ln not in headings] == []
     assert [ln for ln in body if re.match(r"\s*([-*+]|\d+[.)])\s+\[", ln) and not ln.startswith("- [x] ")] == [
@@ -485,7 +488,7 @@ def test_labels_de_en_with_en_fallback(mod, instance, monkeypatch, capsys):
     assert [ln for ln in lines if ln.startswith("## ")] == ["## Done", "## Open", "## Recurring themes",
                                                             "## Vault growth", "## Habits"]
     assert items_under(lines, "Open") == ["- nothing found"]
-    assert lines[1].startswith("> [!info] Target: [[2026-W13]] (exists) · before \"In my own words\"")
+    assert lines[2].startswith("> [!info] Target: [[2026-W13]] (exists) · before \"In my own words\"")
     text, _ = rd.render_document(_doc_input(language="fr"))
     assert "## Done" in text and "- nothing found" in text and "Target:" in text
 
@@ -496,13 +499,13 @@ def test_info_callout_names_target_existence_place_and_not_read(mod, instance, m
     _, out, fake = write(mod, monkeypatch, capsys, instance, read, GOOD)
     lines = lines_of(fake)
     assert lines[0] == "# 2026-W13 Review"
-    assert lines[1] == ("> [!info] Ziel: [[2026-W13]] (vorhanden) · vor \"In my own words\" · "
+    assert lines[2] == ("> [!info] Ziel: [[2026-W13]] (vorhanden) · vor \"In my own words\" · "
                         "nicht gelesen: DP-2026-03-28, Next Todos · teilweise gelesen: 2026-03-24")
     assert out["target"] == f"{WEEKLY}2026-W13.md" and out["target_exists"] is True
     assert "target_found_elsewhere" not in out
 
     _, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, ReviewFakeVault({}))
-    assert lines_of(fake)[1] == "> [!info] Ziel: [[2026-W13]] (wird angelegt) · vor \"In my own words\""
+    assert lines_of(fake)[2] == "> [!info] Ziel: [[2026-W13]] (wird angelegt) · vor \"In my own words\""
     assert out["target"] == f"{WEEKLY}2026-W13.md" and out["target_exists"] is False
 
     moved = ReviewFakeVault({f"{WEEKLY}2025/2026-W13.md": "# moved\n", "Archive/2026-W13.md": "# moved\n",
@@ -510,7 +513,7 @@ def test_info_callout_names_target_existence_place_and_not_read(mod, instance, m
     _, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, moved)
     assert out["target"] == "Archive/2026-W13.md" and out["target_exists"] is True
     assert out["target_found_elsewhere"] == "Archive/2026-W13.md"
-    assert lines_of(fake)[1] == ("> [!info] Ziel: [[2026-W13]] (gefunden unter Archive/2026-W13.md) · "
+    assert lines_of(fake)[2] == ("> [!info] Ziel: [[2026-W13]] (gefunden unter Archive/2026-W13.md) · "
                                  "vor \"In my own words\"")
 
 
@@ -520,7 +523,7 @@ def test_a_search_hit_with_another_basename_is_not_the_moved_target(mod, instanc
     assert any(m == "search_by_name" for m, _ in fake.events)
     assert out["target"] == f"{WEEKLY}2026-W13.md" and out["target_exists"] is False
     assert "target_found_elsewhere" not in out
-    assert lines_of(fake)[1] == "> [!info] Ziel: [[2026-W13]] (wird angelegt) · vor \"In my own words\""
+    assert lines_of(fake)[2] == "> [!info] Ziel: [[2026-W13]] (wird angelegt) · vor \"In my own words\""
 
 
 def test_year_subfolder_target_counts_as_existing(mod, instance, monkeypatch, capsys):
@@ -534,7 +537,7 @@ def test_year_subfolder_target_counts_as_existing(mod, instance, monkeypatch, ca
 def test_approved_unticked_and_frontmatter_schema_valid(mod, instance, monkeypatch, capsys):
     _, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), GOOD)
     front, body = doc_of(fake)
-    assert body.splitlines()[2] == "- [ ] Approved"
+    assert body.splitlines()[4] == "- [ ] Approved"
     jsonschema.validate(front, DOC_SCHEMA)
     assert front["tomo"]["doc_type"] == "review" and front["tomo"]["state"] == "pending-approval"
     assert front["tomo"]["run_id"] == "r-test" and front["tomo"]["updated_at"]
@@ -852,7 +855,7 @@ def test_doc_input_defaults_render_the_callout_unchanged():
 def _top(inp: rd.DocInput) -> list:
     lines = rd.render_document(inp)[0].split("\n")
     start = lines.index(f"# {inp.period_name} Review") + 1
-    return lines[start:lines.index(rd.APPROVED_LINE)]
+    return [ln for ln in lines[start:lines.index(rd.APPROVED_LINE)] if ln]   # the blank lines: own test below
 
 
 ALL_STATES = [
@@ -872,10 +875,10 @@ def test_one_top_line_per_previous_note():
     top = _top(_doc_input(language="en", previous=ALL_STATES))
     assert top == [
         '> [!info] Target: [[2026-W13]] (exists) · before "In my own words"',
-        "> Previous review · month 2026-02: found, 3 carried",
-        "> Previous review · week 2026-W12: found, nothing carried",
-        "> Previous review · month 2026-01: found, 1 carried, read in part",
-        "> Previous review · week 2026-W11: empty",
+        "> Previous review · month [[2026-02]]: found, 3 carried",
+        "> Previous review · week [[2026-W12]]: found, nothing carried",
+        "> Previous review · month [[2026-01]]: found, 1 carried, read in part",
+        "> Previous review · week [[2026-W11]]: empty",
         "> Previous review · quarter 2025-Q4: no note found for 2025-Q4",
         "> Previous review · quarter 2025-Q3: quarterly notes are not set up",
         "> Previous review · week 2026-W10: not read: Kado refused it",
@@ -890,17 +893,17 @@ def test_not_condensed_and_carry_failed_lines_en_and_de():
               {"unit": "2026-W12", "days": [f"2026-03-{d}" for d in range(16, 23)]}]
     top = _top(_doc_input(language="en", previous=[_prev("month", "2026-02", "found", PREV_MONTH, carried=2)],
                           not_condensed=failed, carry_failed=True))
-    assert top[1:] == ["> Previous review · month 2026-02: found, 2 carried",
+    assert top[1:] == ["> Previous review · month [[2026-02]]: found, 2 carried",
                        "> Not condensed: 2026-W11 (2026-03-09 – 2026-03-15)",
                        "> Not condensed: 2026-W12 (2026-03-16 – 2026-03-22)",
                        "> The previous reviews could not be taken into account."]
     top = _top(_doc_input(previous=ALL_STATES, not_condensed=failed[:1], carry_failed=True))
     assert top == [
         '> [!info] Ziel: [[2026-W13]] (vorhanden) · vor "In my own words"',
-        "> Letzter Rückblick · Monat 2026-02: gefunden, 3 übernommen",
-        "> Letzter Rückblick · Woche 2026-W12: gefunden, nichts übernommen",
-        "> Letzter Rückblick · Monat 2026-01: gefunden, 1 übernommen, teilweise gelesen",
-        "> Letzter Rückblick · Woche 2026-W11: leer",
+        "> Letzter Rückblick · Monat [[2026-02]]: gefunden, 3 übernommen",
+        "> Letzter Rückblick · Woche [[2026-W12]]: gefunden, nichts übernommen",
+        "> Letzter Rückblick · Monat [[2026-01]]: gefunden, 1 übernommen, teilweise gelesen",
+        "> Letzter Rückblick · Woche [[2026-W11]]: leer",
         "> Letzter Rückblick · Quartal 2025-Q4: keine Notiz für 2025-Q4 gefunden",
         "> Letzter Rückblick · Quartal 2025-Q3: Quartalsnotizen sind nicht eingerichtet",
         "> Letzter Rückblick · Woche 2026-W10: nicht gelesen: Kado hat sie verweigert",
@@ -1017,11 +1020,11 @@ def test_previous_rows_count_the_accepted_carried_items_linking_each_found_note(
               rd.OPEN: [{"text": "c", "links": ["2026-W12", "2026-02"], "carried": "still_open"}]}
     sections = {"s1": [{"text": "d", "links": ["2026-W12"], "carried": "not_mentioned", "mark": "x"}]}
     assert rd.previous_rows(read, groups, sections) == [
-        {"kind": "week", "name": "2026-W12", "state": "found", "partly_read": False, "carried": 3},
-        {"kind": "month", "name": "2026-02", "state": "found", "partly_read": True, "carried": 1},
+        {"kind": "week", "name": "2026-W12", "state": "found", "partly_read": False, "carried": 3, "path": PREV_WEEK},
+        {"kind": "month", "name": "2026-02", "state": "found", "partly_read": True, "carried": 1, "path": PREV_MONTH},
         {"kind": "quarter", "name": "2025-Q4", "state": "missing", "partly_read": False, "carried": 0},
         {"kind": "week", "name": "2026-W11", "state": "not-read", "partly_read": False, "carried": 0,
-         "cause": "refused"},
+         "path": "W/2026-W11.md", "cause": "refused"},
     ]
 
 
@@ -1047,8 +1050,66 @@ def test_a_found_note_not_taken_into_account_en_and_de():
     rows = [_prev("week", "2026-W12", "found", PREV_WEEK, carried=1),
             _prev("month", "2026-02", "found", PREV_MONTH, partly_read=True, carried=0, carry_failed=True)]
     assert _top(_doc_input(language="en", previous=rows))[1:] == [
-        "> Previous review · week 2026-W12: found, 1 carried",
-        "> Previous review · month 2026-02: found, not taken into account, read in part"]
+        "> Previous review · week [[2026-W12]]: found, 1 carried",
+        "> Previous review · month [[2026-02]]: found, not taken into account, read in part"]
     assert _top(_doc_input(previous=rows))[1:] == [
-        "> Letzter Rückblick · Woche 2026-W12: gefunden, 1 übernommen",
-        "> Letzter Rückblick · Monat 2026-02: gefunden, nicht berücksichtigt, teilweise gelesen"]
+        "> Letzter Rückblick · Woche [[2026-W12]]: gefunden, 1 übernommen",
+        "> Letzter Rückblick · Monat [[2026-02]]: gefunden, nicht berücksichtigt, teilweise gelesen"]
+
+
+# ---------------------------------------------------------------- spec 047 T9.3 F-R1-2: linked previous notes
+
+LINKED = [_prev("week", "2026-W12", "found", "Archive/Woche 2026-W12.md", carried=1),
+          _prev("month", "2026-02", "empty", "Archive/Monat 2026-02.md")]
+UNLINKED = [_prev("quarter", "2025-Q4", "missing"), _prev("quarter", "2025-Q3", "not-set-up"),
+            _prev("week", "2026-W10", "not-read", "W/2026-W10.md", cause="refused"),
+            _prev("month", "2025-12", "not-read", cause="failed")]
+
+
+def test_a_found_previous_note_is_linked_by_the_stem_of_its_path_en_and_de():
+    assert "> Previous review · week [[Woche 2026-W12]]: found, 1 carried" in _top(
+        _doc_input(language="en", previous=LINKED[:1]))
+    assert "> Letzter Rückblick · Woche [[Woche 2026-W12]]: gefunden, 1 übernommen" in _top(
+        _doc_input(previous=LINKED[:1]))
+
+
+def test_an_empty_previous_note_is_linked_by_the_stem_of_its_path_en_and_de():
+    assert "> Previous review · month [[Monat 2026-02]]: empty" in _top(_doc_input(language="en", previous=LINKED[1:]))
+    assert "> Letzter Rückblick · Monat [[Monat 2026-02]]: leer" in _top(_doc_input(previous=LINKED[1:]))
+
+
+@pytest.mark.parametrize("language", ["en", "de"])
+def test_a_missing_unset_or_unread_previous_note_stays_plain_text(language):
+    top = _top(_doc_input(language=language, previous=UNLINKED))
+    words = rd.labels(language)
+    rows = [ln for ln in top if ln.startswith(f"> {words['previous']} · ")]
+    assert len(rows) == len(UNLINKED) and not any("[[" in ln for ln in rows)
+    assert [ln.split(":", 1)[0].rsplit(" ", 1)[1] for ln in rows] == [p["name"] for p in UNLINKED]
+
+
+@pytest.mark.parametrize("previous", [[], LINKED + UNLINKED])
+@pytest.mark.parametrize("language", ["en", "de"])
+def test_a_blank_line_stands_before_and_after_the_callout(language, previous):
+    lines = rd.render_document(_doc_input(language=language, previous=previous))[0].split("\n")
+    title = lines.index("# 2026-W13 Review")
+    approved = lines.index(rd.APPROVED_LINE)
+    assert lines[title + 1] == "" and lines[title + 2].startswith("> [!info] ")
+    assert lines[approved - 1] == "" and lines[approved - 2].startswith("> ")
+    assert all(ln.startswith("> ") for ln in lines[title + 2:approved - 1])
+
+
+def test_the_linked_callout_is_no_source_and_keeps_the_document_and_its_fingerprint():
+    from lib import review_doc_parse as rdp
+    from review_doc_fingerprint import fingerprint
+
+    inp = _doc_input(previous=LINKED + UNLINKED, groups={rd.DONE: [{"text": "Lief", "links": ["2026-03-24"]}]})
+    text, _ = rd.render_document(inp)
+    doc = rdp.parse_document(text, pass1_links=rdp.link_stems(text))
+    assert doc.warnings == [] and doc.approved is False
+    assert rdp.link_stems(text) == {"t1": ["2026-03-24"]}
+    old_shape = (text.replace("Woche [[Woche 2026-W12]]", "Woche 2026-W12")
+                 .replace("Monat [[Monat 2026-02]]", "Monat 2026-02")
+                 .replace(" Review\n\n> [!info]", " Review\n> [!info]")
+                 .replace(f"\n\n{rd.APPROVED_LINE}", f"\n{rd.APPROVED_LINE}"))
+    assert old_shape != text and "[[Woche" not in old_shape
+    assert fingerprint(text) == fingerprint(old_shape)

@@ -120,7 +120,7 @@ def test_a_carried_group_item_is_written_with_its_label_and_counted_at_the_top(s
     assert out["status"] == "written" and out["rejected"] == [], out
     lines = _lines(fake)
     assert "- [x] Jana anrufen ([[2026-W12]]) · nicht mehr erwähnt (letzter Rückblick) %%t2%%" in lines
-    assert "> Letzter Rückblick · Woche 2026-W12: gefunden, 1 übernommen" in lines
+    assert "> Letzter Rückblick · Woche [[2026-W12]]: gefunden, 1 übernommen" in lines
     assert "> Letzter Rückblick · Monat 2026-02: keine Notiz für 2026-02 gefunden" in lines
     assert CARRY_FAILED_DE not in lines
     assert out["previous"] == [{"kind": "week", "name": "2026-W12", "state": "found", "carried": 1},
@@ -174,7 +174,7 @@ def test_a_carryover_not_passed_writes_the_carry_failed_line_and_no_carried_labe
     assert out["status"] == "written" and out["carry_failed"] is True, out
     lines = _lines(fake)
     assert CARRY_FAILED_DE in lines
-    assert "> Letzter Rückblick · Woche 2026-W12: gefunden, nicht berücksichtigt" in lines
+    assert "> Letzter Rückblick · Woche [[2026-W12]]: gefunden, nicht berücksichtigt" in lines
     assert not any("(letzter Rückblick)" in ln for ln in lines if ln.startswith("- [x]"))
 
 
@@ -239,8 +239,8 @@ def test_one_of_two_notes_failing_its_carry_is_named_and_the_others_item_stays(s
                        note_states={PREV_WEEK: "passed", PREV_FEB: "failed"})
     assert out["status"] == "written" and "carry_failed" not in out, out
     lines = _lines(fake)
-    assert "> Letzter Rückblick · Woche 2026-W12: gefunden, 1 übernommen" in lines
-    assert "> Letzter Rückblick · Monat 2026-02: gefunden, nicht berücksichtigt, teilweise gelesen" in lines
+    assert "> Letzter Rückblick · Woche [[2026-W12]]: gefunden, 1 übernommen" in lines
+    assert "> Letzter Rückblick · Monat [[2026-02]]: gefunden, nicht berücksichtigt, teilweise gelesen" in lines
     assert CARRY_FAILED_DE not in lines
     assert "- [x] Jana anrufen ([[2026-W12]]) · nicht mehr erwähnt (letzter Rückblick) %%t2%%" in lines
     assert out["previous"] == [

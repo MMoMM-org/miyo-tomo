@@ -368,7 +368,7 @@ def test_a_carryover_failing_as_a_whole_carries_nothing_and_says_so_once(make_wa
     assert out["previous"][0] == {"kind": "month", "name": "2026-02", "state": "found", "carried": 0,
                                   "carry_failed": True}
     document = w.doc(MONTH_DOC)
-    assert top_lines(document) == ["> Previous review · month 2026-02: found, not taken into account",
+    assert top_lines(document) == ["> Previous review · month [[2026-02]]: found, not taken into account",
                                    "> Previous review · quarter 2025-Q4: no note found for 2025-Q4", TOP_CARRY_FAILED]
     assert "(previous review)" not in document and f"March done {PRP}" in document
 
@@ -396,8 +396,8 @@ def test_one_of_two_notes_failing_carries_the_other_and_names_the_failed_one(mak
                                {"kind": "month", "name": "2026-02", "state": "found", "carried": 0,
                                 "carry_failed": True}]
     document = w.doc(WEEK_DOC)
-    assert top_lines(document) == ["> Previous review · week 2026-W12: found, 1 carried",
-                                   "> Previous review · month 2026-02: found, not taken into account"]
+    assert top_lines(document) == ["> Previous review · week [[2026-W12]]: found, 1 carried",
+                                   "> Previous review · month [[2026-02]]: found, not taken into account"]
     assert document.count("(previous review)") == 1 and "carried c1 " in document
 
 
@@ -489,7 +489,7 @@ def test_w14_reads_w13_and_the_month_before_the_month_it_starts_in(make_walk):
     out = w.write(SPARSE_STEM, WEEK, copy.deepcopy(SPARSE_PROPOSALS), carry=2)
     assert out["status"] == "written", out
     assert top_lines(w.doc(f"{INBOX}{SPARSE_PERIOD} Review.md")) == [
-        "> Previous review · week 2026-W13: found, 1 carried", "> Previous review · month 2026-02: found, 1 carried"]
+        "> Previous review · week [[2026-W13]]: found, 1 carried", "> Previous review · month [[2026-02]]: found, 1 carried"]
 
 
 # ── T3.2 carry-over: a previous note's listing recovered only by the end pass ──
@@ -517,7 +517,7 @@ def test_a_found_note_that_carried_nothing_is_written_found_carried_zero(make_wa
     assert out["status"] == "written", out
     assert out["previous"] == [{"kind": "month", "name": "2026-02", "state": "found", "carried": 0},
                                {"kind": "quarter", "name": "2025-Q4", "state": "missing", "carried": 0}]
-    assert top_lines(w.doc(MONTH_DOC))[0] == "> Previous review · month 2026-02: found, nothing carried"
+    assert top_lines(w.doc(MONTH_DOC))[0] == "> Previous review · month [[2026-02]]: found, nothing carried"
 
 
 # ── F2-AC1, T8.1 carry-over: vault growth on the new flow ──

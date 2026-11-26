@@ -554,8 +554,10 @@ CARRIED_LINKS = {"t1": ["2026-W13", "2026-02", "2026-03-31"], "t2": ["2026-W13"]
 def carried_document() -> str:
     return "\n".join(CARRIED_FRONT + [
         "# 2026-W14 Review",
+        "",
         "> [!info] Target: [[2026-W14]] (exists)",
-        "> Previous review · week 2026-W13: found, 5 carried",
+        "> Previous review · week [[2026-W13]]: found, 5 carried",
+        "",
         "- [x] Approved",
         "",
         "## Done", CARRIED_T1,
@@ -581,8 +583,10 @@ def carried_section_document(t7: str = CARRIED_T7) -> str:
     return "\n".join(["---", "tomo:", "  doc_type: review", "review_period: 2026-03", "review_kind: month",
                       "review_language: de", "---",
                       "# 2026-03 Review",
+                      "",
                       "> [!info] Ziel: [[2026-03]] (vorhanden)",
-                      "> Letzter Rückblick · Monat 2026-02: gefunden, 1 übernommen",
+                      "> Letzter Rückblick · Monat [[2026-02]]: gefunden, 1 übernommen",
+                      "",
                       "- [x] Approved",
                       "",
                       "## Gewohnheiten %%s1%%",

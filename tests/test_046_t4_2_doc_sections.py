@@ -149,7 +149,9 @@ WEEK_PROPS = {
 
 WEEK_BODY = [
     "# 2026-W13 Review",
+    "",
     '> [!info] Ziel: [[2026-W13]] (vorhanden) · vor "In my own words"',
+    "",
     "- [ ] Approved",
     "",
     "## What Went Well This Week? %%s1%%",
@@ -479,5 +481,5 @@ def test_a_folded_anchor_shows_without_its_comment_in_the_mapped_callout():
 def test_the_unmapped_callout_keeps_the_anchor_raw_as_spec_045():
     text, _ = rd.render_document(_doc_input(anchor="R %%s7%%\n## z"))
     lines = text.splitlines()
-    assert lines[lines.index("# 2026-Q1 Review") + 1:][:2] == ['> [!info] Target: [[2026-Q1]] (exists) · inside "R %%s7%%',
+    assert lines[lines.index("# 2026-Q1 Review") + 2:][:2] == ['> [!info] Target: [[2026-Q1]] (exists) · inside "R %%s7%%',
                                                               '## z"']

@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.6.2
+# version: 0.6.3
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13; spec 047 ADR-6, ADR-12).
 
 Pure functions between the model's ``proposals.json`` and the document the script writes: ``load_proposals`` /
@@ -19,10 +19,11 @@ found previous review note is never a source of a non-carried item. A link is th
 that a source resolved to — a daily of the period or, for ``weekly_only`` / ``monthly_only``, a listed weekly /
 monthly — deduplicated in source order; a source that resolves to nothing is dropped from the links, and no model
 string is ever rendered as a link. ``previous_rows`` gives the read's previous notes with the number of accepted
-carried items linking each found one, ``carry_failed`` on a found one whose carry
+carried items linking each found one, its ``path`` when the read has one, ``carry_failed`` on a found one whose carry
 failed (its own ``condensed.json`` note state, or the whole carryover not passed). ``render_document`` renders the frontmatter (a schema-valid ``tomo:`` block plus the
-top-level ``review_*`` keys) and the body: title, info callout (its first line, then one ``> `` line per previous
-note, per not-condensed unit and for a failed carry), ``- [ ] Approved``, one H2 per group from the de/en label
+top-level ``review_*`` keys) and the body: title, a blank line, info callout (its first line, then one ``> `` line
+per previous note — a found or empty one as ``[[stem]]`` of its path, any other by its plain name — per not-condensed
+unit and for a failed carry), a blank line, ``- [ ] Approved``, one H2 per group from the de/en label
 table (English otherwise), Tomo items as ``- [x] <text> ([[stem]], …) %%t<n>%%`` with the id on the checkbox line
 and continuation lines indented by two spaces, a plain ``- …`` bullet for an empty group. Every item line that
 starts with a structural marker (heading, checkbox bullet, quote, fence, thematic break) is escaped with a leading
@@ -286,9 +287,9 @@ def check_items(proposals: dict, read: dict) -> Tuple[Dict[str, List[dict]], Lis
 
 
 def previous_rows(read: dict, groups: Dict[str, List[dict]], sections: Dict[str, List[dict]]) -> List[dict]:
-    """The read's previous notes ``{kind, name, state, partly_read, carried, cause?, carry_failed?}``; ``carried``
-    counts the accepted carried items (groups and sections) whose links hold a found note's stem; ``carry_failed``
-    marks a found note whose carry failed: its own note state, or the whole carryover not passed."""
+    """The read's previous notes ``{kind, name, state, partly_read, carried, path?, cause?, carry_failed?}``;
+    ``carried`` counts the accepted carried items (groups and sections) whose links hold a found note's stem;
+    ``carry_failed`` marks a found note whose carry failed: its own note state, or the whole carryover not passed."""
     links = [e.get("links") or [] for entries in (*groups.values(), *sections.values()) for e in entries
              if e.get("carried")]
     carry = (read.get("condensed") or {}).get("carryover") or {}
@@ -298,6 +299,8 @@ def previous_rows(read: dict, groups: Dict[str, List[dict]], sections: Dict[str,
         stem = note_stem(str(prev.get("path") or "")) if prev.get("state") == "found" else None
         row = {"kind": prev.get("kind"), "name": prev.get("name"), "state": prev.get("state"),
                "partly_read": bool(prev.get("partly_read")), "carried": sum(1 for ls in links if stem in ls)}
+        if prev.get("path"):
+            row["path"] = prev["path"]
         if prev.get("cause"):
             row["cause"] = prev["cause"]
         if stem is not None and (carry.get("state") != "passed" or note_states.get(prev.get("path")) == "failed"):
@@ -363,10 +366,16 @@ def _callout(inp: DocInput, words: Dict[str, str], anchor: str) -> str:
     if inp.partly_read:
         parts.append(f"{words['partly_read']}: {', '.join(inp.partly_read)}")
     lines = ["> [!info] " + " · ".join(parts)]
-    lines += [f"> {words['previous']} · {words.get('kind_' + p['kind'], p['kind'])} {p['name']}: {_state(p, words)}"
-              for p in inp.previous]
+    lines += [f"> {words['previous']} · {words.get('kind_' + p['kind'], p['kind'])} {_note_name(p)}: "
+              f"{_state(p, words)}" for p in inp.previous]
     lines += [f"> {words['not_condensed']}: {u['unit']}{_days_span(u.get('days') or [])}" for u in inp.not_condensed]
     return "\n".join(lines + ([f"> {words['carry_failed']}"] if inp.carry_failed else []))
+
+
+def _note_name(row: dict) -> str:
+    """A found or empty previous note as the link of its path's stem; any other state its plain name."""
+    path = row.get("path")
+    return f"[[{note_stem(str(path))}]]" if path and row.get("state") in ("found", "empty") else str(row.get("name"))
 
 
 def _days_span(days: Sequence[str]) -> str:
@@ -407,7 +416,7 @@ def render_document(inp: DocInput) -> Tuple[str, Dict[str, int]]:
     from lib import review_sections          # imports this module: the parts are rendered there
 
     anchor = inp.anchor if inp.sections is None else review_sections.display_heading(inp.anchor)
-    lines = [f"# {inp.period_name}{DOC_SUFFIX}", _callout(inp, words, anchor), APPROVED_LINE]
+    lines = [f"# {inp.period_name}{DOC_SUFFIX}", "", _callout(inp, words, anchor), "", APPROVED_LINE]
     if inp.sections is None:
         body, counts, _ = review_sections.group_parts(inp, words, 0, keep_empty=True)
     else:

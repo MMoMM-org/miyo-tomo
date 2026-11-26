@@ -318,6 +318,21 @@ account." line when the carry failed as a whole (F6-AC2). Pass 2 is
 unaffected: `review_doc_parse` reads nothing above the first `## ` but the
 column-0 `- [ ] Approved` line, and no top line starts with a checkbox.
 
+WHY a found or empty previous note is a link (owner, T9.2 R1b, spec 047
+T9.3 F-R1-2, 0.6.3): the user wants to open the previous review from the
+inbox document. The line names such a note as `[[<stem>]]`, the stem of the
+read's `path` (`previous_rows` carries it; `review-doc.py`'s
+`written.previous` copies a fixed key list, so stdout is unchanged):
+`Letzter Rückblick · Woche [[2026-W12]]: gefunden, 16 übernommen`. A missing,
+not-set-up or not-read note keeps its plain name — there is no note to open,
+or none Tomo read. The link is never a source: `review_doc_parse` collects
+link stems from item lines only, and the callout lines are no items.
+
+WHY a blank line before and after the callout (same owner request): the
+title, the callout and the Approved box read as three blocks in Obsidian.
+The parser and the delivered mark skip blank lines (`is_delivered` and
+`mark_delivered` take the first non-blank line as the title).
+
 ## WHY the Carried Branch Sits in `check_items` (Spec 047 T5.4, 0.6.1)
 
 WHY an explicit branch at the call site (ADR-6): a carried item follows

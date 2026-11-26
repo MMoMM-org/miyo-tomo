@@ -299,8 +299,8 @@ def test_a_missing_golden_fails_and_names_the_command(monkeypatch, tmp_path):
 CARRY = 3                        # carryover items in W13 and 2026-03: c1 not_mentioned, c2 still_open, c3 done
 CARRIED_PARTS = ("done", "open")
 TOP_LINES = {
-    WEEK: ["> Previous review · week 2026-W12: found, 2 carried", "> Previous review · month 2026-02: found, 1 carried"],
-    MONTH: ["> Previous review · month 2026-02: found, 3 carried",
+    WEEK: ["> Previous review · week [[2026-W12]]: found, 2 carried", "> Previous review · month [[2026-02]]: found, 1 carried"],
+    MONTH: ["> Previous review · month [[2026-02]]: found, 3 carried",
             "> Previous review · quarter 2025-Q4: no note found for 2025-Q4"],
     QUARTER: ["> Previous review · quarter 2025-Q4: no note found for 2025-Q4"],
 }

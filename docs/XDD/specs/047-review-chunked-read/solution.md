@@ -1,7 +1,7 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: draft
-version: "1.7"
+version: "1.8"
 ---
 
 # Solution Design Document
@@ -19,6 +19,8 @@ version: "1.7"
 > v1.6 (2026-11-23): owner, on the T3.2 finding (the fixture's empty quarterly folder read as `not-read` / `kado-none`): a previous-note folder whose listing Kado answers with nothing is `missing` ("no note found", no error tone); the cause `kado-none` and the line "Kado returned none; the Kado key may not reach the folder" are dropped for previous notes. Why: spec 045 Rule 6 gives the key hint only when Kado answered nothing at all, and the previous notes are read only after the period's dailies were. Accepted trade-off: a key denial that lists as empty also reads "no note found". Amended: ADR-5, ADR-12, Error Handling, data model; PRD F3-AC9.
 
 > v1.7 (2026-11-26): owner, on the T9.2 R1a finding (the 2026-W13 digest failed `digest-too-large` twice, 9,404 B compact > 8,192 B, about 6.4 KB of it note paths the digester cannot condense): `cap_bytes` measures the compact digest without the growth `notes` and every `sources` list; those paths get a count bound (`source-duplicate`, `growth-note-duplicate`) beside the unit checks. The constants and the carryover cap are unchanged. Amended: ADR-2, ADR-4, Internal API (`check` errors).
+
+> v1.8 (2026-11-26): owner, T9.2 R1b / T9.3 (F-R1-2): a found or empty previous note is named in its top line as the link of its note stem (`Letzter Rückblick · Woche [[2026-W12]]: gefunden, 16 übernommen`); a missing, not-set-up or not-read note keeps its plain name; a blank line stands between the title and the callout and between the callout and `- [ ] Approved`. Amended: ADR-12, the UI Visualization Guide, the walk-through top lines.
 
 ## Validation Checklist
 
@@ -1080,7 +1082,7 @@ INPUT: /review 2026-W14 (Mon 2026-03-30 … Sun 2026-04-05); dailies only 03-30,
           carryover notes == found notes ✓, c1/c2 sources ⊆ {2026-W13, 2026-02} ✓, ids unique ✓.
 4. proposer: c1 matches the 03-31 run → groups.done carried done, carried_ids [c1] (one item, both notes: F4-AC7);
    c2 no day → groups.open carried not_mentioned, carried_ids [c2]. (Trace table under Implementation Examples.)
-5. write: top lines "Previous review · week 2026-W13: found, 2 carried" and "Previous review · month 2026-02: found, 1 carried".
+5. write: top lines "Previous review · week [[2026-W13]]: found, 2 carried" and "Previous review · month [[2026-02]]: found, 1 carried".
 ```
 
 #### (c) Resume after an interrupted digest stage — 2026-03
@@ -1113,7 +1115,7 @@ Variant: the user chose Start over from an open review → step 4 with --fresh �
    were invalid; items of a valid note stay.)
 4. plan/check proposer.carried false → the proposer prompt says no carryover: no item carries `carried`;
    review-doc write refuses carried-without-carryover if one does.
-5. Document top: "Previous review · month 2026-02: found", "Previous review · quarter 2025-Q4: no note found for 2025-Q4",
+5. Document top: "Previous review · month [[2026-02]]: found", "Previous review · quarter 2025-Q4: no note found for 2025-Q4",
    "The previous reviews could not be taken into account." No carried mark anywhere (F6-AC2).
 ```
 
@@ -1178,10 +1180,12 @@ Variant: the user chose Start over from an open review → step 4 with --fresh �
 tomo: …
 ---
 # 2026-03 Review
+
 > [!info] Target: [[2026-03]] (exists) · inside "Notes" · not read: 2026-03-14
-> Previous review · month 2026-02: found, 3 carried
+> Previous review · month [[2026-02]]: found, 3 carried
 > Previous review · quarter 2025-Q4: no note found for 2025-Q4
 > Not condensed: 2026-W11 (2026-03-09 – 2026-03-15)
+
 - [ ] Approved
 
 ## Things I did well this month %%s1%%
@@ -1304,6 +1308,7 @@ stateDiagram-v2
   - User confirmed: owner, 2026-11-23
 
 - [x] ADR-12 Top lines of the document: the info callout keeps its first line and gains continuation lines (`> …`): one per previous note — `Previous review · <kind word> <name>: <state>` (EN) / `Letzter Rückblick · <Art> <name>: <state>` (DE) with states "found, n carried" / "found, nothing carried" (F3-AC11) / "read in part" appended when partly read / "empty" / "no note found for <name>" (F3-AC6, no error tone) / "<kind> notes are not set up" / "not read: Kado refused it | Kado did not return it" (F3-AC9; an empty folder listing is "no note found", v1.6); one `Not condensed: <unit> (<first day> – <last day>)` line per failed unit (F6-AC1); one line "The previous reviews could not be taken into account." when `carry_failed` (F6-AC2). The parser ignores lines above the first `## ` that are not column-0 checkbox lines, so Pass 2 is unaffected.
+  - Amended 2026-11-26 (owner, T9.2 R1b, T9.3 F-R1-2): `<name>` of a found or empty note is `[[<stem>]]`, the stem of the read's `path` (`Letzter Rückblick · Woche [[2026-W12]]: gefunden, 16 übernommen`), so the user opens the previous review from the inbox document; missing / not set up / not read keep the plain name (no note to open, or none Tomo read). A blank line stands before and after the callout. The link is no source: `review_doc_parse` collects link stems from item lines only, and the fingerprint skips blank lines and reads top lines by count, so the goldens hold. `written.previous` in stdout keeps its keys (`_top_facts` copies a fixed key list; `previous_rows` now carries `path` internally).
   - Status: Accepted
   - Trade-offs: the state wording is Tomo's proposal (the PRD fixes only the mark labels); the owner may reword before T-impl.
   - User confirmed: owner, 2026-11-23

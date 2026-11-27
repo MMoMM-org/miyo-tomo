@@ -158,7 +158,7 @@ back in order (lists extended, dicts merged).
 ## WHY `context.json` Carries Field Aggregates, Not Per-Day Fields
 
 WHY: owner 2026-11-23 after T2.5. The raw per-day `fields` made the
-2026-Q1 `context.json` 86,345 B in four files — the largest thing the opus
+2026-Q1 `context.json` 86,345 B in four files — the largest thing the
 proposer would read, and only to count and average tracker values.
 `field_aggregates` gives per field name `{period: {days, min, max, mean},
 units: {<unit>: {...}}}` — the units being those of `weeks.json`, a unit

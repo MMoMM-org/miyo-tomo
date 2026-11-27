@@ -1,7 +1,7 @@
 ---
 name: review-proposer
 description: MUST BE USED by the periodic-review skill in /review step 5 once the condensing is ready — builds `proposals.json` for the whole period from the files `review-digest.py` lists as `proposer.inputs`, and rewrites it once when `review-doc.py write` refuses it as `proposals-invalid`. Not for any other request.
-model: opus
+model: sonnet
 effort: high
 color: purple
 permissionMode: acceptEdits
@@ -9,7 +9,7 @@ tools: Read, Write
 ---
 
 # Review Proposer Subagent
-# version: 0.2.0
+# version: 0.2.1
 
 ## Identity
 

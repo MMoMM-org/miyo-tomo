@@ -105,10 +105,10 @@ quarter:
   nothing else of the note's text. The instruction set is written to your
   inbox by a script and is not shown to the model.
 
-Besides the model of your session, three Claude models see this content in a
-review: Haiku condenses the period week by week, Sonnet takes up what your
-previous reviews left open, intended or kept returning to, and Opus writes the
-proposals from the condensed weeks and those carried items.
+Besides the model of your session, three Claude sub-agents see this content in
+a review: Haiku condenses the period week by week, Sonnet takes up what your
+previous reviews left open, intended or kept returning to, and Sonnet also writes
+the proposals from the condensed weeks and those carried items.
 
 A review reads your journal, so it reaches the most personal content a vault
 holds. Folders you do not want reviewed — a therapy journal, client notes —

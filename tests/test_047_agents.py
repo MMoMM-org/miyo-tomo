@@ -35,7 +35,7 @@ from review_cli_contract import REPO, load_script
 
 AGENTS_DIR = REPO / "tomo" / "dot_claude" / "agents"
 SCHEMAS = REPO / "tomo" / "schemas"
-MODELS = {"review-digester": "haiku", "review-carryover": "sonnet", "review-proposer": "opus"}
+MODELS = {"review-digester": "haiku", "review-carryover": "sonnet", "review-proposer": "sonnet"}
 AGENTS = sorted(MODELS)
 DIGEST_SCRIPT = REPO / "tomo" / "scripts" / "review-digest.py"
 PROMPT_EXTRA = {"stem", "read_id", "language"}          # given by the skill's template beside the job's fields
@@ -64,7 +64,7 @@ def _count(agent: str, phrase: str) -> int:
 # ── frontmatter (ADR-7, F7-AC5) ──────────────────────────────────────────────
 
 
-VERSIONS = {"review-digester": "0.1.4", "review-carryover": "0.1.1", "review-proposer": "0.2.0"}
+VERSIONS = {"review-digester": "0.1.4", "review-carryover": "0.1.1", "review-proposer": "0.2.1"}
 
 
 @pytest.mark.parametrize("agent", AGENTS)

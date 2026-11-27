@@ -22,7 +22,7 @@ that sets them, not only a missing heading; during the setup the names of the
 templates in the templates folder and the headings of the two most recent
 weekly or monthly notes reach the model, their headings and not their text —
 fix round 1 of the Phase 6 live-walk fix; the previous reviews as a source read
-through Kado; the three models haiku, sonnet and opus — spec 047 F7-AC3) and
+through Kado; the three review sub-agents on haiku and sonnet — spec 047 F7-AC3) and
 recommends Kado deny rules for folders not to be reviewed, in one sentence.
 
 Each phrase test is pinned to the clause it guards: deleting that clause from
@@ -228,8 +228,9 @@ def test_review_paragraph_names_the_previous_reviews_as_a_read_source() -> None:
 
 
 def test_review_paragraph_names_the_three_models() -> None:
-    """F7-AC3: review-digester (haiku), review-carryover (sonnet), review-proposer (opus) see note content."""
-    _one_sentence_has(_review_paragraph(), "three claude models", "haiku", "sonnet", "opus")
+    """F7-AC3: review-digester (haiku), review-carryover (sonnet), review-proposer (sonnet) see note content."""
+    _one_sentence_has(_review_paragraph(), "three claude sub-agents", "haiku", "sonnet", "sonnet also writes the proposals")
+    assert "opus" not in _plain(_review_paragraph()), "the proposer runs on sonnet; the /review paragraph names no opus"
 
 
 def test_review_paragraph_recommends_kado_deny_rules() -> None:
@@ -269,7 +270,8 @@ def test_setup_guide_names_the_instance_home_for_the_ide_lock() -> None:
 
 def test_setup_guide_names_the_three_models() -> None:
     """F7-AC3: docs/setup.md names the models whose transcripts rest in the instance home."""
-    _one_sentence_has(SETUP.read_text(encoding="utf-8"), "haiku", "sonnet", "opus", "own transcript")
+    _one_sentence_has(SETUP.read_text(encoding="utf-8"), "haiku", "sonnet", "sonnet also writes the proposals", "own transcript")
+    assert "opus writes the proposals" not in _plain(SETUP.read_text(encoding="utf-8"))
 
 
 def test_readme_lists_the_three_review_agents() -> None:

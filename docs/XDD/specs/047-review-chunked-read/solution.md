@@ -1,7 +1,7 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: draft
-version: "1.10"
+version: "1.11"
 ---
 
 # Solution Design Document
@@ -25,6 +25,8 @@ version: "1.10"
 > v1.9 (2026-11-26): owner, T9.2 R1b/R1c / T9.3 (F-R1-3): in R1b and R1c the proposer built no "Vault growth" group although the digests held 8 candidates with all 43 created notes; 33 notes appeared inside sections, 10 nowhere. The document again always holds the group with every created note of the period (PRD F2-AC1): `review-doc.py write` builds it in the new `lib/review_growth.py` from the read's created notes, grouped as the passed digests' growth candidates group them (candidate text, its notes as links, then the dailies of their creation days); a note in no candidate gets an item whose text is its link; notes of several units' digests are merged, none twice; items ordered by creation day. The proposer no longer proposes `growth`; `review_doc.MODEL_GROUPS` leaves it out, so a proposed `growth` group is ignored (the schema still allows it), never refused. Amended: ADR-4, ADR-6, components (`review-proposer`, `lib/review_growth.py`), Directory Map.
 
 > v1.10 (2026-11-26): owner, T9.3 (F-R1-4): before spec 047 the model could name the period's MOC changes in the growth group; the script-built group (v1.9) held created notes only, so they appeared nowhere. The group also shows them as links from the read's growth lists: after the created-note items, one item "MOCs changed" / "Geänderte MOCs" linking every `mocs_changed` MOC, then one item "MOCs newly linked" / "Neu verlinkte MOCs" linking every `mocs_linked_by_new` MOC not already changed; a MOC that is a created note stays in its created-note item only; links in path order, by the created notes' link rule over notes and MOCs together; label words in `review_doc._LABELS`; no MOC text. A period with MOC changes and no created note renders the group. Amended: ADR-4, ADR-6, components (`lib/review_growth.py`).
+
+> v1.11 (2026-11-27): owner, live walk R1d/R2 (T9.3 F-R2-1): `review-proposer` moves from `opus` to `sonnet` to cut cost (proposer on opus: week $1.50 / 98 s, month $4.45 / 286 s; Pass 1 week $2.40, month $6.27 / 8.3 min, over the guidance); checked by a re-run of month 2026-03 against the opus document. Amended: ADR-7, components, directory map.
 
 ## Validation Checklist
 
@@ -72,7 +74,7 @@ Notes on two gates: there are no database migrations; "column names" means the k
 | Field | Value |
 |-------|-------|
 | pattern | Script-owned staged pipeline (spec 045 ADR-1/ADR-12 extended): one paced read writes a per-day stage; model agents each write one checked file; scripts validate, load and render |
-| keyComponents | `review-read.py` + `lib/review_stage.py`, `lib/review_weeks.py`, `lib/review_previous.py`; `review-digest.py` + `lib/review_digest.py`; agents `review-digester` (haiku), `review-carryover` (sonnet), `review-proposer` (opus); `review-doc.py` + `lib/review_doc.py`, `lib/review_sections.py`, `lib/review_carried.py`; `periodic-review` SKILL.md |
+| keyComponents | `review-read.py` + `lib/review_stage.py`, `lib/review_weeks.py`, `lib/review_previous.py`; `review-digest.py` + `lib/review_digest.py`; agents `review-digester` (haiku), `review-carryover` (sonnet), `review-proposer` (sonnet; opus until v1.11); `review-doc.py` + `lib/review_doc.py`, `lib/review_sections.py`, `lib/review_carried.py`; `periodic-review` SKILL.md |
 | externalIntegrations | Kado MCP (read, inbox write) — unchanged surface; Hashi instruction wire `schema_version` "4" — unchanged |
 
 ### SectionStatus
@@ -267,7 +269,7 @@ graph TB
     Digest --> Stage
     Skill -->|Agent, one batch| Digester[review-digester haiku]
     Skill -->|Agent, same batch| Carry[review-carryover sonnet]
-    Skill -->|Agent| Proposer[review-proposer opus]
+    Skill -->|Agent| Proposer[review-proposer sonnet]
     Digester --> Stage
     Carry --> Stage
     Proposer --> Stage
@@ -401,7 +403,7 @@ graph LR
 | `lib/review_digest.py` (new) | Pure validation of a digest and of the carryover file against the stage (file level: schema, read id, sources, id uniqueness, size); the `condensed.json` state model. `condensed.json` is written only by `review-digest.py` (`plan`, `check`) and read by `review_stage.load` (for `review-doc.py`) and by `review-digest.py` itself |
 | agent `review-digester` (new, haiku) | Condense one unit's day files, its growth files (the notes created on its days, with their links) and its weekly note into `digests/<unit>.json`, growth candidates included |
 | agent `review-carryover` (new, sonnet) | Take the open items, intentions/goals and themes of the found previous notes into `carryover.json` |
-| agent `review-proposer` (new, opus) | Build `proposals.json` over the whole period from digests (growth candidates included), carryover and context (growth counts and MOC lists; never `manifest.json` or its `report`): themes over all days, open judged against later weeks, carried items matched to the days and marked, one place per finding; no "Vault growth" group (v1.9: the script builds it) |
+| agent `review-proposer` (new, sonnet since v1.11; was opus) | Build `proposals.json` over the whole period from digests (growth candidates included), carryover and context (growth counts and MOC lists; never `manifest.json` or its `report`): themes over all days, open judged against later weeks, carried items matched to the days and marked, one place per finding; no "Vault growth" group (v1.9: the script builds it) |
 | `review-doc.py` | Write/parse/replace as today; loads via `review_stage.load`; refuses `condense-incomplete` and `read-stale`; passes previous states, not-condensed units and the carry failure to the renderer; discards the stage after the write and on `replace --abort` |
 | `lib/review_growth.py` (new, v1.9) | The "Vault growth" group: every created note of the read exactly once, grouped as the passed digests' growth candidates group them (text, note links, creation-day dailies), a note in no candidate as an item of its own; then the period's changed and newly linked MOCs as at most two link items (v1.10, F-R1-4); called by `review-doc.py write` (T9.3, F-R1-3) |
 | `lib/review_sources.py` | Sources incl. previous notes; the one source resolver `resolve_sources` (used by `check_item` and `review_carried`); split out of `review_doc.py` in T5.2 (CON-5), re-exported there |
@@ -456,7 +458,7 @@ tomo/
 │   ├── skills/periodic-review/SKILL.md       # MODIFY 0.2.13 → 0.3.0: allowed-tools + Agent; write rule; step 4 continue/--fresh; step 5 condense/propose; STRICT dispatch, no fallback; Pass 1 abort
 │   ├── agents/review-digester.md             # NEW 0.1.0: haiku, tools Read, Write
 │   ├── agents/review-carryover.md            # NEW 0.1.0: sonnet, tools Read, Write
-│   └── agents/review-proposer.md             # NEW 0.1.0: opus, tools Read, Write; the proposal rules moved out of SKILL.md step 5 (0.2.0, T9.3: no growth group)
+│   └── agents/review-proposer.md             # NEW 0.1.0: opus, tools Read, Write; the proposal rules moved out of SKILL.md step 5 (0.2.0, T9.3: no growth group; 0.2.1, T9.3 F-R2-1: sonnet)
 ├── schemas/
 │   ├── review-proposals.schema.json          # MODIFY: optional carried + carried_ids on group and section items
 │   ├── review-digest.schema.json             # NEW
@@ -488,7 +490,7 @@ docs/
 ├── tomo/dot_claude/skills/periodic-review.md   # MODIFY: step 4/5 WHY, dispatch, STRICTs, abort, continue
 ├── tomo/dot_claude/agents/review-digester.md   # NEW: WHY (haiku, one unit, no judgement, the cap)
 ├── tomo/dot_claude/agents/review-carryover.md  # NEW: WHY (sonnet, no setup marker, text as it stands now)
-├── tomo/dot_claude/agents/review-proposer.md   # NEW: WHY (opus rationale, whole-period rules, carried rules)
+├── tomo/dot_claude/agents/review-proposer.md   # NEW: WHY (model rationale — sonnet since v1.11, was opus — whole-period rules, carried rules)
 ├── tomo/scripts/review-read.md                 # MODIFY: stage layout, continue, previous notes, measure
 ├── tomo/scripts/review-digest.md               # NEW
 ├── tomo/scripts/review-doc.md                  # MODIFY: loader, new refusals, top lines
@@ -1132,7 +1134,7 @@ Variant: the user chose Start over from an open review → step 4 with --fresh �
 ### Single Application Deployment
 - **Environment**: the Tomo Docker container (instance workspace); scripts also run on the host under `./venv` for tests.
 - **Configuration**: none new. `MAX_PARALLEL` (16) and the size constants are code constants in `review-digest.py` / `lib/review_weeks.py`, set from the live walk. `settings.json` unchanged.
-- **Dependencies**: Kado (unchanged), Claude Code Agent tool with the `haiku`, `sonnet`, `opus` model aliases available to the instance's account.
+- **Dependencies**: Kado (unchanged), Claude Code Agent tool with the `haiku` and `sonnet` model aliases (`opus` until v1.11) available to the instance's account.
 - **Performance**: guidance (PRD): week Pass 1 ≤ $0.80, month ≤ $2.00 / 7 min, quarter ≤ $5.00 / 20 min, Pass 2 ≤ $0.85. Cost estimate at the rates `scripts/tomo-token-usage.py` uses (opus $15/$75, sonnet $3/$15, haiku $0.80/$4 per M): the proposer costs about 3× research §2's $5/$25 figure — week ≈ $1.05, quarter ≈ $2.40–3.00 — so week Pass 1 ≈ $1.50–1.80, month ≈ $2.60–3.20, quarter ≈ $4.10–5.50 (research §2 at $5/$25: $0.90–1.10 / $1.60–2.00 / $2.50–3.50). All above the week and month guidance, the quarter near its $5.00; guidance only (CON-7, F8-AC2). Kado: previous notes add ≤ 4 calls.
 
 ### Multi-Component Coordination (if applicable)
@@ -1296,6 +1298,7 @@ stateDiagram-v2
   - Status: Accepted
   - Trade-offs: three new runtime files to keep in sync with the schemas; three more models see note content and write their own transcripts (PRIVACY, F7-AC3); opus raises the week cost above the $0.80 guidance (accepted).
   - User confirmed: owner, 2026-11-23
+  - Amended 2026-11-27 (owner, live walk R1d/R2): `review-proposer` runs on `sonnet`, not `opus` (version 0.2.1; `effort: high` kept). The decision text above is the original. Why: the walk measured the proposer on opus at $1.50 / 98 s for a week and $4.45 / 286 s for a month, so Pass 1 came to $2.40 for a week (guidance ≤ $0.80) and $6.27 / 8.3 min for a month (guidance ≤ $2.00 / 7 min), and a quarter would not hold ≤ $5.00. The judgement work stays the proposer's; the scripts own habits and the growth group, and `review-doc.py write` validates every proposal with one aimed rewrite, so a slip is bounded. Check: a re-run of month 2026-03 on sonnet against the opus document; opus is revisited if it shows a quality loss.
 
 - [x] ADR-8 Dispatch from the skill: `allowed-tools: Read, Write, Bash, Agent`. Step 5 runs `review-digest.py plan`, then sends every job of a round as `Agent()` calls in ONE message, each with `subagent_type` and `run_in_background: false` and the exact prompt template the skill names; then `check`; the `retry` jobs in one message; `check` again; then the proposer. Fallback: `plan` splits into rounds of ≤ `MAX_PARALLEL` jobs (default 16, covering a quarter's 14–16 units plus carryover in one or two rounds); if the live walk shows throttling at 16, the constant drops to 8 — the skill text does not change. New STRICT blocks (each for an observed deviation): one-message batch (suggest-handling pattern); `subagent_type` (observed general-purpose fallback); `run_in_background: false` (spec 043); never read a stage file or search day files with grep/Bash in the main session, never start an agent `plan` did not list, a unit without a passed digest is named as not condensed (spec 046 walk: grep fallback, four self-started helpers for $2.83). The write rule (SKILL.md:11) and the STRICT at :237 name the agents' files as the only exceptions; the skill writes only `confirmed-<kind>.json`. The proposal rules of step 5 move into `review-proposer.md`.
   - Status: Accepted

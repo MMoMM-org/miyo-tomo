@@ -1129,7 +1129,7 @@ from another's and from the script's default. `--today` is a suppressed test fla
 confirmed-setup JSON is `tomo-tmp/review/confirmed-<kind>.json`, read by `setup-input`, whose `--output` defaults to
 `tomo-tmp/review/setup-<kind>.json`, the file the writer's `--input` takes; both are helper files, not state, and
 removed after the save. The skill pins no `model`: since spec 047 the proposals are the `review-proposer`'s work
-(`opus`, ADR-7), and the main session only orchestrates, so it runs on the session's model. `user-invocable: true` and an `argument-hint` make the skill itself show in the `/` menu beside the
+(`sonnet` since 2026-11-27, ADR-7 amended), and the main session only orchestrates, so it runs on the session's model. `user-invocable: true` and an `argument-hint` make the skill itself show in the `/` menu beside the
 shim, as `/note` does. The description carries `MUST BE USED` per the authoring rules, with a `NOT for` clause that
 keeps inbox triage with `/inbox` and single notes with `/note`. `allowed-tools` holds Bash, Read and Write
 (the confirmed-setup file; Read for the one config key), plus `Agent` since spec 047 for the three review agents

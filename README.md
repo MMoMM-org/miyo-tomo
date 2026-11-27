@@ -164,7 +164,7 @@ miyo-tomo/
 | `garden-auditor` | Garden audit — scans the vault for structural problems, renders the review report + wire, and enriches suggest targets on request |
 | `review-digester` | `/review` subagent (Haiku) — condenses ONE week (or part of one) of the period read |
 | `review-carryover` | `/review` subagent (Sonnet) — takes the open items, intentions and themes of the previous reviews |
-| `review-proposer` | `/review` subagent (Opus) — writes the proposals for the whole period from the condensed weeks and the carried items |
+| `review-proposer` | `/review` subagent (Sonnet) — writes the proposals for the whole period from the condensed weeks and the carried items |
 
 ## Commands
 

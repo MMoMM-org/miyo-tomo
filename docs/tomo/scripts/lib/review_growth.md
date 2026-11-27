@@ -13,7 +13,7 @@ Before spec 047 the model read `read.json`'s growth lists itself, and the docume
 (week 2026-W13) the digester wrote 8 candidates holding all 43 created notes, and the proposer built no growth group
 in either run: 33 notes appeared inside section items, 10 nowhere. Its rules let that happen ("leave out a group with
 nothing to propose", one place per finding). Listing every created note is data, not judgement, so `review-doc.py
-write` builds the group and the proposer no longer proposes it. No created note can be dropped; the opus output is
+write` builds the group and the proposer no longer proposes it. No created note can be dropped; the proposer's output is
 smaller. The rejected alternative — a stricter proposer rule plus a write check with one rewrite — keeps the model in
 a step a script does exactly.
 

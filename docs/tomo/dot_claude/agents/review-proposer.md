@@ -9,13 +9,20 @@
 > dispatches it is [periodic-review](../skills/periodic-review.md). Until spec 047 these rules were SKILL.md step 5 and
 > their rationale sat in the skill's WHY document; they moved here with the step (ADR-8).
 
-## WHY `opus` (ADR-7)
+## WHY `sonnet` (ADR-7, amended)
 
 WHY: the proposer is the one judgement-heavy step of `/review`: it merges findings across up to 16 condensed weeks,
 counts themes over the whole period, judges open against later weeks, matches carried items to the days and marks
-them, and places each finding once by the section descriptions the user wrote. A slip here is a wrong item in the
-user's review, not a retry. The owner chose quality before cost; it runs once per review on ≤ ~150 KB of input (≤ 112
-KB of digests plus context, carryover and child notes), so the stronger model costs one run, not sixteen. The
+them, and places each finding once by the section descriptions the user wrote. That work stays the proposer's; only
+the model changed. Spec 047 first ran it on `opus` (the owner chose quality before cost). The owner moved it from
+`opus` to `sonnet` on 2026-11-27 after the live walk (R1d, R2) measured the cost: the proposer on `opus` cost $1.50 /
+98 s for a week and $4.45 / 286 s for a month, so Pass 1 came to $2.40 for a week (guidance ≤ $0.80) and $6.27 /
+8.3 min for a month (guidance ≤ $2.00 / 7 min), and a quarter could not have held its ≤ $5.00 guidance. The scripts
+own the parts a slip would harm most: `review-doc.py write` builds the habits and the "Vault growth" group itself
+and validates every proposal (sources, section keys, cap, one place per finding, carried marks) before anything is
+rendered, refusing a bad file into one aimed rewrite, so a slip on `sonnet` is bounded to a weaker item the user can
+untick, not a broken document. Revisit `opus` if the re-run of month 2026-03 on `sonnet`, compared with the `opus`
+document of the walk, shows a loss of quality (themes missed, open items misjudged, carried items mismatched). The
 digester is `haiku` and the carryover `sonnet` (their own WHY documents).
 
 ## WHY It Writes Only `proposals.json` (Spec 045 ADR-12)
@@ -170,7 +177,7 @@ and the one-place rule of the sections both let a growth finding vanish into a s
 pre-047 behaviour (PRD F2-AC1: the document always holds the group with every created note of the period) was lost.
 A list of every created note is data, not judgement, so a script builds it: `review-doc.py write` takes the created
 notes of the read and groups them as the digests' growth candidates group them (`lib/review_growth.py`, its WHY
-document). No created note can be dropped, and the opus output shrinks. The alternative — a stricter proposer rule
+document). No created note can be dropped, and the proposer's output shrinks. The alternative — a stricter proposer rule
 plus a write check with one rewrite — kept the model in a step a script does exactly, and was rejected.
 
 So the shape example no longer lists `growth` and the growth rule is gone. The proposer may still name a created note
@@ -197,4 +204,5 @@ context; the main session learns what was proposed only from `write`'s counts.
 ## WHY `effort: high`
 
 WHY: the effort follows the model choice of ADR-7: the proposer is the one judgement-heavy step and runs once per
-review, so a longer reasoning budget buys quality at the cost of one run.
+review, so a longer reasoning budget buys quality at the cost of one run. `sonnet` takes the `effort` setting like
+`opus`, so `high` stays after the 2026-11-27 move to `sonnet`: the judgement work did not shrink with the model.

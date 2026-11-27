@@ -12,7 +12,7 @@
 ## WHY a Script Checks Every Agent File Before the Proposer
 
 ADR-4: everything a script can check about an agent's file is checked before
-the opus step. A digest is a haiku agent's condensation of up to 128 KB; the
+the proposer step. A digest is a haiku agent's condensation of up to 128 KB; the
 proposer then trusts it as "the unit". A digest that silently leaves out a day,
 or cites a day of another unit, would turn into a document that claims to
 cover the period while it does not (F1-AC1). The check cannot prove fidelity
@@ -89,7 +89,7 @@ one missing-file code, and the carryover agent's retry prompt names the file.
 
 ## WHY the Digest Cap Measures the Compact Digest Without Its Paths
 
-The caps bound what the opus proposer reads (`digest_cap`, 8,192 B down to
+The caps bound what the proposer reads (`digest_cap`, 8,192 B down to
 7,168 B per unit; 12,288 B for carryover). A file over its cap is retried like
 any other failure.
 

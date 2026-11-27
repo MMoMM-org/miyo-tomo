@@ -195,7 +195,7 @@ def test_command_doc_is_the_shim_rationale(command_doc):
 
 AGENTS_DOCS = DOCS_DIR / "agents"
 RUNTIME_AGENTS = REPO / "tomo" / "dot_claude" / "agents"
-REVIEW_AGENTS = {"review-digester": "haiku", "review-carryover": "sonnet", "review-proposer": "opus"}
+REVIEW_AGENTS = {"review-digester": "haiku", "review-carryover": "sonnet", "review-proposer": "sonnet"}
 DIGEST_SCRIPT = "review-digest.py"
 DIGEST_MENTION = re.compile(r"`(review-digest\.py) ([a-z][a-z-]*)((?: --[a-z][a-z-]*)*)`")
 
@@ -235,7 +235,7 @@ MIRROR_FACTS = [
     ("review-carryover", "one-line-reply", r"quoting previous-note text there would bring journal content into the main conversation"),
     ("review-carryover", "never-kado", r"WHY `tools: Read, Write` and Never Kado WHY: ADR-7, F7-AC5\. The agent reads"),
     ("review-proposer", "runtime-file", r"Rationale for decisions in `tomo/dot_claude/agents/review-proposer\.md`"),
-    ("review-proposer", "model", r"WHY `opus` \(ADR-7\) WHY: the proposer is the one judgement-heavy step"),
+    ("review-proposer", "model", r"WHY `sonnet` \(ADR-7, amended\) WHY: the proposer is the one judgement-heavy step"),
     ("review-proposer", "tools", r"The proposer reads stage files and writes exactly `proposals\.json`; no Bash, no MCP"),
     ("review-proposer", "permission-mode", r"`permissionMode: acceptEdits` with the unchanged `settings\.json` lets the Write land"),
     ("review-proposer", "one-line-reply", r"Its one-line reply \(`<out> written` or `<out> not written: <reason word>`\)"),
@@ -287,8 +287,11 @@ def test_skill_doc_names_no_digest_subcommand_the_parser_lacks(skill_doc, digest
 # The rationale that leaves SKILL.md step 5 for review-proposer.md, and the carried / growth / input rules
 # added since the plan.
 PROPOSER_RULES = [
-    ("opus-adr-7", r"WHY `opus` \(ADR-7\)"),
-    ("opus-rationale", r"WHY: the proposer is the one judgement-heavy step of `/review`"),
+    ("sonnet-adr-7-amended", r"WHY `sonnet` \(ADR-7, amended\)"),
+    ("judgement-rationale", r"WHY: the proposer is the one judgement-heavy step of `/review`"),
+    ("sonnet-owner-decision", r"The owner moved it from `opus` to `sonnet` on 2026-11-27 after the live walk"),
+    ("sonnet-slip-bounded", r"so a slip on `sonnet` is bounded"),
+    ("opus-revisit", r"Revisit `opus` if the re-run of month 2026-03"),
     ("only-proposals-json", r"WHY It Writes Only `proposals\.json` \(Spec 045 ADR-12\)"),
     ("themes-over-all-days-f1-ac3", r"\*\*Themes over all days \(F1-AC3\)\.\*\*"),
     ("open-against-later-weeks-f1-ac4", r"\*\*Open against later weeks \(F1-AC4\)\.\*\*"),
@@ -329,6 +332,11 @@ PROPOSER_RULES = [
 @pytest.fixture(scope="module")
 def proposer_doc() -> str:
     return _flat(_doc(AGENTS_DOCS / "review-proposer.md"))
+
+
+def test_proposer_doc_has_no_opus_model_heading(proposer_doc):
+    """The model section names the current model; an `opus` heading left beside it would state two models."""
+    assert "## WHY `opus`" not in proposer_doc
 
 
 @pytest.mark.parametrize("label,pattern", PROPOSER_RULES, ids=[label for label, _p in PROPOSER_RULES])

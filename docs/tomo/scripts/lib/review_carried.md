@@ -89,7 +89,7 @@ there or gone (F4-AC3).
 
 A section has a cap (`cap` of its definition, `DEFAULT_CAP` otherwise — the
 same rule `review_sections` applies). A rewrite to make a full section fit
-would cost an opus run and could still drop the carried item. So `overflow`
+would cost a proposer run and could still drop the carried item. So `overflow`
 runs before the section checks: while a section holds more items than its
 cap and one of them is carried, it moves the last carried item (document
 order) into the group of its mark — `done` → done; `still_open` /

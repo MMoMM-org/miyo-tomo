@@ -188,6 +188,14 @@ Finding F-R3-2 (→ T9.3): a `schema (/growth)` error fails the whole unit — W
 growth candidates, which only group links the script builds anyway.
 Owner decisions: F-R3-1 — uncovered notes one item per folder with a count, no links; F-R3-2 — drop only the growth candidates. Fixed: F-R3-2 in f8e91450 (`review_digest.py` 0.3.0, `review-digest.py` 0.2.0; notice `growth-dropped`), spec review PASS, code review PASS (4 mutations caught); F-R3-1 in 180708f1 (`review_growth.py` 0.3.0, `review_doc.py` 0.7.3; no golden changed), spec review PASS, code review PASS (3 mutations caught); ADR-4 and ADR-6 amended (solution.md v1.12). Full suite 12,472 passed, 1 known failure. R3 re-run (R3b) pending.
 
+### R3b — quarter 2026-Q1 after the F-R3 fixes (2026-11-27, session 27684b9f) — Pass 1 stopped at replace
+
+`review-digest.py check`: all 15 units passed, W04a with notice `growth-dropped` (F-R3-2 works live). `write` → `review-exists` (the R3 document); owner chose Replace; `replace --confirm` → `stopped`, `kado-write-failed`, `KadoToolError`, 3 calls. Kado audit: two frontmatter reads (target, document), no write entry. Nothing written; stage and proposals kept.
+
+Finding F-R3b-1 (→ T9.3): `replace` wrote over Tomo's own document without `expectedModified`; Kado refuses an update of an existing file without it (CONFLICT, `concurrency-guard.ts`). Present since spec 045; the fake vault never applied Kado's guard. Fixed in a1678a69 (`review-doc.py` 0.11.2: the document's `modified` is sent; the stopped result carries `error.code`, a closed uppercase token only); the shared fake (`tests/note_fake_vault.py`) now enforces the guard. Spec review PASS, code review PASS (mutation caught).
+
+Finding F-R3b-2 (→ T9.3, found by the stricter fake): Pass 2 overwrote `<stem>_review_instructions.md` unstamped on a re-delivery and on a drop. Owner: fix now. Fixed in 0061346f (`review_state.py` 0.7.1 `md_modified`, `review_instructions_deliver.py` 0.1.2, `review-instructions.py` 0.6.2; +1 Kado call on those two paths only); the fake's exemption removed. Spec review PASS, code review PASS. Full suite 12,487 passed, 1 known failure. Replace re-run pending.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |

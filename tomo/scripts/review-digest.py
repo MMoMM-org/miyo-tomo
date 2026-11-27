@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-digest.py — Plan and check the condensing jobs of a /review read: digesters, carryover, the proposer's inputs.
-# version: 0.1.3
+# version: 0.2.0
 """The condensing step of /review (spec 047 T4.3; PRD F1-AC6, F6-AC1, F6-AC2, F6-AC4, F6-AC8; ADR-4, ADR-8).
 
 After ``review-read.py`` wrote the stage ``tomo-tmp/review/<stem>/``, ``plan``
@@ -19,8 +19,9 @@ Output: one JSON object on stdout, ASCII-escaped. Paths are stage-relative.
         job:   {agent review-digester, unit, days, day_files, growth_files, weekly_note, sections,
                 section_files [the context file(s) holding sections; [] when sections is false], out, cap_bytes}
                {agent review-carryover, previous_files, out "carryover.json", cap_bytes 12288}
-    check ok:  status ok, stem, units {<unit>: {state, errors?}}, carryover {state, notes [{path, state, items}],
-               errors?}, retry [{agent, unit?, errors}], not_condensed [{unit, days}], carry_failed, ready, proposer
+    check ok:  status ok, stem, units {<unit>: {state, notices? [growth-dropped], errors?}},
+               carryover {state, notes [{path, state, items}], errors?}, retry [{agent, unit?, errors}],
+               not_condensed [{unit, days}], carry_failed, ready, proposer
     stopped:   status stopped, stem, problems [nothing-condensed], not_condensed [every unit]
     refused:   status refused, stem, problems [stage-missing | stage-invalid | read-stale]
 
@@ -29,7 +30,9 @@ Rules:
     checked without counting an attempt; a proposals.json is deleted. check: every open job spends one
     attempt — 1st failure retry, 2nd failed; a carryover passing with one note's items invalid has those
     items removed from carryover.json, after condensed.json recorded the failed note; a passed carryover
-    whose file still holds invalid items is settled again. Only taking-part units and
+    whose file still holds invalid items is settled again. A digest whose every error lies under /growth
+    (rd.drop_growth) is rewritten with growth [] on that check and passes with notices [growth-dropped],
+    kept in condensed.json and repeated by every later check. Only taking-part units and
     their taking-part days are dispatched.
 
 Exit codes:
@@ -141,6 +144,14 @@ class Stage:
     def unit_errors(self, unit: dict) -> List[str]:
         return rd.check_digest(self.text(_digest(unit)), unit, self.read, read_id=self.read_id, cap_bytes=self.cap)
 
+    def drop_growth(self, unit: dict, errors: List[str]) -> List[str]:
+        """The errors that stand; a digest whose errors all lie under /growth is rewritten with growth []."""
+        dropped, standing = rd.drop_growth(self.text(_digest(unit)), errors, unit, self.read,
+                                           read_id=self.read_id, cap_bytes=self.cap)
+        if dropped is not None:
+            atomic_write_text(self.path / _digest(unit), _encode_digest(dropped))
+        return standing
+
     def section_files(self) -> List[str]:
         """The context files (``context.json`` and its spilled parts, manifest order) holding a non-empty
         ``sections`` list."""
@@ -155,6 +166,21 @@ class Stage:
 
 def _digest(unit: dict) -> str:
     return f"{review_stage.DIGESTS}/{unit['unit']}.json"
+
+
+def _encode_digest(data: dict) -> str:
+    """``encode``; ASCII-escaped when the data holds a lone surrogate UTF-8 cannot carry."""
+    text = encode(data)
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        text = json.dumps(data, indent=1, ensure_ascii=True) + "\n"
+    return text
+
+
+def _unit_out(job: dict, errors: Sequence[str] = ()) -> dict:
+    return {"state": job["state"], **({"notices": list(job["notices"])} if job.get("notices") else {}),
+            **({"errors": list(errors)} if errors else {})}
 
 
 def _open(job: dict) -> bool:
@@ -273,12 +299,15 @@ def check(stage: Stage) -> dict:
     for unit in stage.taking_part():
         name, job = unit["unit"], state["units"][unit["unit"]]
         if not _open(job):
-            units[name] = {"state": job["state"]}
+            units[name] = _unit_out(job)
             continue
-        errors = stage.unit_errors(unit)
+        found = stage.unit_errors(unit)
+        errors = stage.drop_growth(unit, found) if found else []
         job = rd.advance(job, errors, count=True)
+        if found and not errors:
+            job["notices"] = [rd.GROWTH_DROPPED]
         state["units"][name] = job
-        units[name] = {"state": job["state"], **({"errors": errors} if errors else {})}
+        units[name] = _unit_out(job, errors)
         if job["state"] == rd.RETRY:
             retry.append({"agent": DIGESTER, "unit": name, "errors": errors})
     carry_errors = _check_carryover(stage, retry)

@@ -125,6 +125,29 @@ weekly note per `sources` list, and each created note of the unit once.
 is measured only once the text parses as JSON (`not-json` alone otherwise,
 as before).
 
+## WHY drop_growth Reads Pointers and Re-checks the Digest Without Its Candidates
+
+`under_growth` classifies an error by the pointer the module itself wrote:
+`schema (<pointer>)` (one per distinct `absolute_path` of a jsonschema error)
+or `<pointer>: <code>`. The digest schema is closed (`additionalProperties:
+false` everywhere), so every pointer is made of fixed keys and indices and
+holds neither `": "` nor `")"`; the pointer is exact, not a prefix guess on a
+message. A pointer counts when it is `/growth` or starts with `/growth/`
+(`/growthy` does not). Bare file-level codes (`digest-missing`, `not-json`,
+`digest-too-large`) name no pointer and are never under `/growth`; so is
+`schema (/)`, e.g. a missing `growth` key.
+
+All errors under `/growth` is not yet enough: a schema error stops
+`check_digest` before every stage check, so `schema (/growth)` alone can hide
+a `days-mismatch`. `drop_growth` therefore checks the digest again with
+`growth: []` and drops only when that check is clean. When it is not, the
+digest is kept and the standing errors are the original ones plus those the
+re-check found, so the retry shows the digester everything at once. Size:
+dropping growth only shrinks `digest_bytes`, but a `digest-too-large` is
+bare, hence never dropped — the owner's rule is "every error under
+`/growth`". The module stays pure: it returns the dropped data and the CLI
+writes it.
+
 ## WHY the Carryover Has Two Failure Levels
 
 Error Handling, ADR-4: a carryover that is missing, not JSON, schema-invalid,

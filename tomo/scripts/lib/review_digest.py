@@ -1,5 +1,5 @@
 # review_digest.py — file checks of a /review unit digest and the carryover; the condensed.json job state.
-# version: 0.2.1
+# version: 0.3.0
 """Digest and carryover checks for ``/review`` condensing (spec 047 T4.2; PRD F1-AC1, F6-AC1, F6-AC2; ADR-4).
 
 ``check_digest(text, unit, read, *, read_id, cap_bytes)`` gives the errors of
@@ -22,6 +22,15 @@ are bound by ``source-duplicate`` (a path twice in one ``sources`` list) and
 ``growth-note-duplicate`` (a created note listed twice in ``growth``) beside
 the unit checks; a lone surrogate counts 3 bytes. ``CARRYOVER_CAP`` counts the carryover's bytes as written.
 
+Growth: ``under_growth(error)`` is true when the error's pointer is ``/growth``
+or below it (both error forms; a bare code names no pointer).
+``drop_growth(text, errors, unit, read, *, read_id, cap_bytes)`` returns
+``(digest with growth [] or None, errors that stand)``: the digest is returned
+with ``[]`` errors when every error is under ``/growth`` and the digest
+without its growth candidates checks clean; otherwise ``None`` with the errors
+plus those the digest without its candidates still has (a schema error hides
+every later check). ``GROWTH_DROPPED`` names that outcome.
+
 Job state (``condensed.json``): ``new_state(read_id, units, *, carryover)``;
 ``advance(job, errors, *, count)`` and ``advance_carryover(job, check, *,
 count)`` return the next job (``pending``/``retry`` → ``passed``; counted
@@ -39,7 +48,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from lib.review_doc import Sources, note_stem
 from lib.review_weeks import takes_part
@@ -60,6 +69,7 @@ SOURCE_OUTSIDE, THEME_DAY_OUTSIDE, UNKNOWN_SECTION = (
     "source-outside-unit", "theme-day-outside-unit", "unknown-section")
 GROWTH_NOTE_OUTSIDE, GROWTH_SOURCE_NOT_CREATED = "growth-note-outside-unit", "growth-source-not-created-day"
 SOURCE_DUPLICATE, GROWTH_NOTE_DUPLICATE = "source-duplicate", "growth-note-duplicate"
+GROWTH_DROPPED = "growth-dropped"
 NOTES_MISMATCH, CARRY_SOURCE_UNKNOWN, CARRY_ID_DUPLICATE = (
     "carryover-notes-mismatch", "carry-source-unknown", "carry-id-duplicate")
 
@@ -217,6 +227,29 @@ def check_digest(text: Optional[str], unit: Mapping[str, Any], read: Mapping[str
     for i, candidate in enumerate(data["growth"]):
         errors += _check_growth(scope, i, candidate, listed)
     return errors
+
+
+def under_growth(error: str) -> bool:
+    """The error's pointer (``schema (<pointer>)`` or ``<pointer>: <code>``) is ``/growth`` or below it."""
+    if error.startswith("schema (") and error.endswith(")"):
+        pointer = error[len("schema ("):-1]
+    else:
+        pointer = error.partition(": ")[0]
+    return pointer == "/growth" or pointer.startswith("/growth/")
+
+
+def drop_growth(text: Optional[str], errors: Sequence[str], unit: Mapping[str, Any], read: Mapping[str, Any], *,
+                read_id: str, cap_bytes: int) -> Tuple[Optional[dict], List[str]]:
+    """``(the digest with growth [], [])`` when every error is under ``/growth`` and the rest checks clean;
+    else ``(None, the errors plus those the digest without its candidates still has)``."""
+    if not errors or text is None or not all(under_growth(e) for e in errors):
+        return None, list(errors)
+    data = json.loads(text)
+    dropped = {**data, "growth": []}
+    rest = check_digest(json.dumps(dropped), unit, read, read_id=read_id, cap_bytes=cap_bytes)
+    if rest:
+        return None, list(errors) + [e for e in rest if e not in errors]
+    return dropped, []
 
 
 # ---------------------------------------------------------------- carryover

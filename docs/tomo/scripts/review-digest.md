@@ -217,3 +217,30 @@ only the file's own check, not the recorded `notes`: a file with no invalid
 item holds no failed note's items, so the record adds nothing. The rewritten
 `carryover.json` goes through `review_stage_codec.encode` like every other
 agent-read stage file (indented, UTF-8, one encoder).
+
+## WHY a Growth-Only Digest Error Drops the Candidates, Not the Unit (Spec 047 T9.3, F-R3-2)
+
+WHY: live walk R3 (2026-Q1, owner decision). Unit 2026-W04a failed twice with
+only `schema (/growth)`, so its four days were never condensed and the
+document named them "not condensed". The digest's `growth` candidates are
+only a grouping hint: `review-doc.py write` builds the Vault growth group
+from the read itself (`lib/review_growth.py`), and a note without a candidate
+is still listed. Losing the whole unit for a bad hint lost content for
+nothing. So when every error of a digest lies under `/growth`, `check`
+rewrites the digest with `growth: []` (`review_stage_codec.encode`; ASCII
+escapes only when a lone surrogate leaves UTF-8 no way to write it) and the
+unit passes on that same check with `notices: ["growth-dropped"]`. No retry
+is spent: the digester would be asked to fix a hint the document does not
+need. A digest with any error outside `/growth` keeps the retry → failed
+rule unchanged and the file untouched.
+
+The notice is stored on the unit's job in `condensed.json` (`{state, attempts,
+notices}`), so every later `check` reports it again for the passed unit; a
+second `check` rewrites nothing. The skill needs no action for it: the unit
+passed and is in the proposer's inputs. The digest is rewritten before
+`condensed.json` is saved: a crash between the two leaves a clean digest and
+an open job, which the next `check` or `plan` passes — only the notice is
+lost, never content, and never a passed job whose file still holds the bad
+candidates. `review_growth.candidates` reads the rewritten file and finds no
+candidate of the unit. `plan` does not drop: a present invalid file stays
+pending there, as before, and the next `check` decides.

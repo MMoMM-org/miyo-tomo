@@ -186,6 +186,7 @@ Finding F-R3-1 (→ T9.3): the Vault growth group does not scale to a quarter. A
 ≤ 10 notes (≤ 150 notes); the quarter created 746, so 460 land as one bare link each (F-R1-3 lists every created note).
 Finding F-R3-2 (→ T9.3): a `schema (/growth)` error fails the whole unit — W04a lost its 4 days of condensing over the
 growth candidates, which only group links the script builds anyway.
+Owner decisions: F-R3-1 — uncovered notes one item per folder with a count, no links; F-R3-2 — drop only the growth candidates. Fixed: F-R3-2 in f8e91450 (`review_digest.py` 0.3.0, `review-digest.py` 0.2.0; notice `growth-dropped`), spec review PASS, code review PASS (4 mutations caught); F-R3-1 in 180708f1 (`review_growth.py` 0.3.0, `review_doc.py` 0.7.3; no golden changed), spec review PASS, code review PASS (3 mutations caught); ADR-4 and ADR-6 amended (solution.md v1.12). Full suite 12,472 passed, 1 known failure. R3 re-run (R3b) pending.
 
 ## KPI table
 

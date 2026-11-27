@@ -1,7 +1,7 @@
 ---
 title: "/review: every day read, and the previous reviews taken into account"
 status: draft
-version: "1.11"
+version: "1.12"
 ---
 
 # Solution Design Document
@@ -27,6 +27,8 @@ version: "1.11"
 > v1.10 (2026-11-26): owner, T9.3 (F-R1-4): before spec 047 the model could name the period's MOC changes in the growth group; the script-built group (v1.9) held created notes only, so they appeared nowhere. The group also shows them as links from the read's growth lists: after the created-note items, one item "MOCs changed" / "Geänderte MOCs" linking every `mocs_changed` MOC, then one item "MOCs newly linked" / "Neu verlinkte MOCs" linking every `mocs_linked_by_new` MOC not already changed; a MOC that is a created note stays in its created-note item only; links in path order, by the created notes' link rule over notes and MOCs together; label words in `review_doc._LABELS`; no MOC text. A period with MOC changes and no created note renders the group. Amended: ADR-4, ADR-6, components (`lib/review_growth.py`).
 
 > v1.11 (2026-11-27): owner, live walk R1d/R2 (T9.3 F-R2-1): `review-proposer` moves from `opus` to `sonnet` to cut cost (proposer on opus: week $1.50 / 98 s, month $4.45 / 286 s; Pass 1 week $2.40, month $6.27 / 8.3 min, over the guidance); checked by a re-run of month 2026-03 against the opus document. Amended: ADR-7, components, directory map.
+
+> v1.12 (2026-11-27): owner, live walk R3 (T9.3 F-R3-1, F-R3-2): the quarter 2026-Q1 created 746 notes; a digest groups ≤ 150 per unit, so 460 notes stood as one bare link each — notes no candidate covers are now one item per folder with a count and no links (ADR-6). Unit 2026-W04a failed twice on `schema (/growth)` alone and lost its 4 days of condensing — a digest whose every error lies under `/growth` now passes with its candidates dropped and the notice `growth-dropped` (ADR-4).
 
 ## Validation Checklist
 
@@ -1273,6 +1275,7 @@ stateDiagram-v2
   - Amended 2026-11-26 (owner, T9.2 R1b/R1c, T9.3 F-R1-3): the growth candidates are no longer the proposer's material for a group it writes; `review-doc.py write` reads them from the digests of the passed units (`lib/review_growth.candidates`) and builds the group itself (v1.9). The digest shape and its checks are unchanged.
   - Amended 2026-11-26 (owner, T9.3 F-R1-4): the group's MOC items come from the read's growth lists (`mocs_changed`, `mocs_linked_by_new`, carried by `context.json` and `review_stage.load`), not from the digests (v1.10); the digest shape and its checks are unchanged.
   - Amended 2026-11-26 (owner, T9.2 R1a): "size ≤ cap" is measured without the growth `notes` and the `sources` lists (ADR-2); `check` adds two count bounds for those paths: `source-duplicate` (a path a second time in one `sources` list, at the second occurrence's pointer) and `growth-note-duplicate` (a created note listed a second time in `growth`, at the second occurrence's pointer). With `source-outside-unit` and `growth-note-outside-unit` this bounds the paths by the unit's dailies and created notes. `digest-too-large` keeps its name and stays a bare code.
+  - Amended 2026-11-27 (owner, live walk R3, T9.3 F-R3-2): when every error of a digest lies under `/growth` (pointer `/growth` or `/growth/…`, schema or check form) and the digest checks clean without its candidates, `check` rewrites it with `growth: []` and passes the unit with the per-unit notice `growth-dropped` (units JSON and `condensed.json`); any other error keeps retry → failed. Why: the candidates only group links the script builds anyway (ADR-6); losing a unit's condensing to them cost W04a its 4 days.
   - Rationale: everything a script can check about an agent's file is checked before the opus step; "not condensed" is never a partial read of the unit (Rule 7).
   - Trade-offs: the check cannot prove a digest is faithful to its days, only that it is well-formed and stays inside them; fidelity rests on the digester prompt and the owner's quality comparison (KPI).
   - User confirmed: owner, 2026-11-23
@@ -1290,6 +1293,7 @@ stateDiagram-v2
   - Amended 2026-11-23 (owner, T1.5 measurement): the proposer builds the "Vault growth" group from the digests' growth candidates and `context.json`'s growth counts and MOC lists (no per-note list); a growth item's sources are its candidates' creation days, so `check_item` (`review_doc.py:252-278`) checks it unchanged. A carried item is never in `growth` (unchanged: "other groups none").
   - Amended 2026-11-26 (owner, T9.2 R1b/R1c, T9.3 F-R1-3): superseding the 2026-11-23 amendment, the proposer no longer builds the "Vault growth" group; `review-doc.py write` builds it (`lib/review_growth.py`, v1.9). `growth` is out of `review_doc.MODEL_GROUPS`: a proposed growth group is not checked, not rendered and not refused; a carried item placed there is not seen and its ids are `carried-missing`.
   - Amended 2026-11-26 (owner, T9.3 F-R1-4): the script-built group ends with at most two MOC items (v1.10): `growth_mocs_changed` linking the changed MOCs, then `growth_mocs_linked` linking the MOCs newly linked by a created note and not changed; each MOC once, none that is a created note. They bypass `check_items` like every script-built item: their links are the MOCs, not period sources, so no daily is linked (a MOC change carries no day in the read). Labels in `_LABELS`: EN "MOCs changed", "MOCs newly linked"; DE "Geänderte MOCs", "Neu verlinkte MOCs".
+  - Amended 2026-11-27 (owner, live walk R3, T9.3 F-R3-1): a created note no candidate covers no longer gets a bare `[[stem]]` item; such notes are counted per parent folder (`growth_folder_one` / `growth_folder_many`, root `growth_root`), one item per folder without links, sorted by folder path, after the candidate items and before the MOC items. Why: 746 created notes in 2026-Q1 gave 526 items, 460 of them bare links. Later presentation work: #274.
   - Rationale: Rule 5 (exactly one carried mark, once) becomes script-checkable through ids.
   - Trade-offs: a schema change on group items that spec 046 deliberately avoided (additive and optional, so every existing fixture stays valid); the proposer must copy ids correctly — a slip costs one rewrite; `overflow` moves items the proposer placed, so the document can differ from `proposals.json` in where a carried item stands (named in the notice).
   - User confirmed: owner, 2026-11-23

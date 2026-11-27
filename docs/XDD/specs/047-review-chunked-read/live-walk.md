@@ -102,6 +102,9 @@ Instance at a80650f8 (F-R1-3 and F-R1-4 synced). Stage stem `2026-W13_review`.
 Cost / time per step: main sonnet $0.64, 376 s, peak 89,488; digester haiku $0.13 / 61 s / 50,712; carryover sonnet
 $0.13 / 21 s / 16,289; proposer opus $1.50 / 98 s / 21,137; Pass 1 total $2.40 (guidance ≤ $0.80).
 
+Pass 2 (same session): `parse` approved, `preview`, `deliver` into `Calendar/302 Weekly/2026-W13.md` (block replaced, 0 escaped lines, 0 problems); stage after delivery: `meta.json` only. Applied with Hashi by the owner. Main sonnet $0.34 (session $0.98 − Pass 1 $0.64), peak 103,496 (guidance ≤ $0.85).
+Owner after the apply (point 2, carried marks and once-only): ok for now — wrong marks in this kind of document show only over time.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
@@ -109,11 +112,11 @@ $0.13 / 21 s / 16,289; proposer opus $1.50 / 98 s / 21,137; Pass 1 total $2.40 (
 | Days not read because of size | 0 | hard | 0 | | | | |
 | Sample / grep fallbacks | 0 | hard | 0 | | | | |
 | Main-session reads of stage files | 0 | hard | 0 | | | | |
-| Carried items placed twice / without previous link | 0 / 0 | quality | — (R1a no document) | | | | |
+| Carried items placed twice / without previous link | 0 / 0 | quality | 0 / 0 (R1d, owner) | | | | |
 | Content files left after write, abort, drop | 0 | quality | 0 after write | | | | |
 | Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | | — | — | |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | | — | — |
-| Pass 2 cost | ≤ $0.85 | guidance | | | | | |
+| Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | | | | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |
 | Owner: at least as useful as the spec 046 document | yes/no | quality | | | | — | — |

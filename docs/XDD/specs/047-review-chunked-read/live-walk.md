@@ -105,17 +105,41 @@ $0.13 / 21 s / 16,289; proposer opus $1.50 / 98 s / 21,137; Pass 1 total $2.40 (
 Pass 2 (same session): `parse` approved, `preview`, `deliver` into `Calendar/302 Weekly/2026-W13.md` (block replaced, 0 escaped lines, 0 problems); stage after delivery: `meta.json` only. Applied with Hashi by the owner. Main sonnet $0.34 (session $0.98 − Pass 1 $0.64), peak 103,496 (guidance ≤ $0.85).
 Owner after the apply (point 2, carried marks and once-only): ok for now — wrong marks in this kind of document show only over time.
 
+### R2 — month 2026-03 (2026-11-27, session f98baafd) — Pass 1 written
+
+Instance at a80650f8. Stage stem `2026-03_review` (046-walk `meta.json` replaced by the new read). The applied R1d document was listed as `applied`, not offered.
+
+| Row | Count |
+|---|---|
+| Days read / not read (size / other) | 31 / 0 (0 / 0) |
+| Units | 6 (2026-W09 … 2026-W14) |
+| Previous notes found / carryover items | 2 / 22 (2026-02 10, 2025-Q4 12); carried into the document 19 (10 + 9) |
+| Units dispatched per message | 6 digesters + 1 carryover in one message; proposer alone |
+| Agents self-started | 0 |
+| Main-session Read/Grep/Bash on stage files | 0 (only `review-doc.py write --proposals <stage file>`) |
+| `check` rounds / retries | 2 / 1 (W09: `source-outside-unit`, passed on retry) |
+| Not-condensed units | 0 |
+| Proposals | open 4, themes 0, done 0; 16 sections, 41 items; 0 rejected; weekly only 2, not in weekly 0 |
+| Vault growth | script-built: 29 items (→ #274) |
+| Agents run in the background | yes (no harm) |
+| Content files after write | 0 (only `meta.json`) |
+
+Cost / time per step: main sonnet $0.81, 679 s, peak 90,445; digesters haiku $0.05 / 26 s / 22,584, $0.05 / 24 s / 22,717,
+$0.18 / 94 s / 57,935, $0.19 / 99 s / 55,395, $0.07 / 35 s / 29,357, $0.19 / 97 s / 57,347, W09 retry included;
+carryover sonnet $0.12 / 20 s / 15,397; proposer opus $4.45 / 286 s / 61,700. Pass 1 total $6.27, 8.3 min
+(guidance ≤ $2.00 / 7 min: over by $4.27 and 1.3 min; the proposer alone $4.45).
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
 |---|---|---|---|---|---|---|---|
-| Days not read because of size | 0 | hard | 0 | | | | |
-| Sample / grep fallbacks | 0 | hard | 0 | | | | |
-| Main-session reads of stage files | 0 | hard | 0 | | | | |
+| Days not read because of size | 0 | hard | 0 | 0 | | | |
+| Sample / grep fallbacks | 0 | hard | 0 | 0 | | | |
+| Main-session reads of stage files | 0 | hard | 0 | 0 | | | |
 | Carried items placed twice / without previous link | 0 / 0 | quality | 0 / 0 (R1d, owner) | | | | |
-| Content files left after write, abort, drop | 0 | quality | 0 after write | | | | |
+| Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | | | |
 | Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
-| Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | | — | — | |
+| Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | | — | — |
 | Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | | | | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |

@@ -160,18 +160,45 @@ Quality (owner: "looks ok"; orchestrator side-by-side, no text recorded): sonnet
 
 Finding F-R2-2 (→ backlog R-47g): the first `write` refused `doc-name-taken` on the applied R2 document; cause not found, not reproduced, nothing overwritten.
 
+### R3 — quarter 2026-Q1 on the sonnet proposer (2026-11-27, session 85bfdc98) — Pass 1 written, partly condensed
+
+Instance at 0ab8f070. Stage stem `2026-Q1_review` (046-walk `meta.json` replaced). The applied R2b month was listed as `applied`.
+
+| Row | Count |
+|---|---|
+| Days read / not read (size / other) | 90 / 0 (0 / 0); read 137 s |
+| Units | 15 (W04 split into W04a/W04b) |
+| Previous notes found / carryover items | 1 (2025-Q4) / 14; carried into the document 13 |
+| Units dispatched per message | 15 digesters + 1 carryover in one message; the 4 retries + carryover in one message; proposer alone |
+| Agents self-started / main-session reads of stage files | 0 / 0 |
+| Main-session Read of other files | 1: the harness-persisted `review-read.py` output (30,858 B, too big for the Bash result; paths and counts, no note text) |
+| `check` rounds / retries | 2 (the bound) / 5: W01, W06, W08 `source-outside-unit` → passed; carryover `carry-source-unknown` on every item → passed; W04a `schema (/growth)` twice → **failed** |
+| Not-condensed units | 1: W04a (4 days, 2026-01-19 … 2026-01-22) — named in the document |
+| Proposals | open 8, themes 0, done 3; 14 sections, 63 items; 0 rejected; monthly only 0, not in monthly 0 |
+| Vault growth | 746 created notes, 1 MOC changed, 3 newly linked → **526 items, 460 of them a bare single-note link** (notes no digest candidate covers) |
+| Content files after write | 0 (only `meta.json`) |
+
+Cost / time per step: main sonnet $1.71, 1,096 s, peak 131,575; 19 digester runs haiku $0.09–$0.44 each ($3.53
+together, peak up to 113,285); carryover sonnet $0.08 + $0.07; proposer sonnet $1.19 / 270 s / 95,701. Pass 1 total
+$6.48, 15.2 min (guidance ≤ $5.00 / 20 min: cost over by $1.48, time within).
+
+Finding F-R3-1 (→ T9.3): the Vault growth group does not scale to a quarter. A unit's digest holds ≤ 15 candidates of
+≤ 10 notes (≤ 150 notes); the quarter created 746, so 460 land as one bare link each (F-R1-3 lists every created note).
+Finding F-R3-2 (→ T9.3): a `schema (/growth)` error fails the whole unit — W04a lost its 4 days of condensing over the
+growth candidates, which only group links the script builds anyway.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
 |---|---|---|---|---|---|---|---|
-| Days not read because of size | 0 | hard | 0 | 0 | | | |
-| Sample / grep fallbacks | 0 | hard | 0 | 0 | | | |
-| Main-session reads of stage files | 0 | hard | 0 | 0 | | | |
+| Days not read because of size | 0 | hard | 0 | 0 | 0 | | |
+| Sample / grep fallbacks | 0 | hard | 0 | 0 | 0 | | |
+| Main-session reads of stage files | 0 | hard | 0 | 0 | 0 | | |
 | Carried items placed twice / without previous link | 0 / 0 | quality | 0 / 0 (R1d, owner) | | | | |
-| Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | | | |
+| Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | 0 after write | | |
 | Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | |
-| Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | | — | — |
+| Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | $6.48 / 15.2 min (W04a not condensed) | — | — |
 | Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | | | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |
 | Owner: at least as useful as the spec 046 document | yes/no | quality | | | | — | — |

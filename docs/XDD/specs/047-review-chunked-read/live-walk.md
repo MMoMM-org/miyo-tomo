@@ -81,6 +81,27 @@ Finding F-R1-3 (owner, R1b/R1c → T9.3): the document always holds the Vault gr
 
 Finding F-R1-4 (owner → T9.3): the group also shows the period's MOC changes — "MOCs changed" and "MOCs newly linked" items, links only, each MOC once (2ecc78bb, `review_growth.py` 0.2.0). Spec review PASS, code review PASS; full suite 12,436 passed, 1 known failure. SKILL.md's `growth` in a section row's groups left as is (a proposer hint; the config schema allows it).
 
+### R1d — week 2026-W13 (2026-11-27, session db09291c) — Pass 1 written
+
+Instance at a80650f8 (F-R1-3 and F-R1-4 synced). Stage stem `2026-W13_review`.
+
+| Row | Count |
+|---|---|
+| Days read / not read (size / other) | 7 / 0 (0 / 0) |
+| Previous notes found / carryover items | 2 / 24 (2026-W12 15, 2026-02 9); carried into the document 21 (12 + 9) |
+| Units dispatched per message | 1 digester + 1 carryover in one message; proposer alone |
+| Agents self-started | 0 |
+| Main-session Read/Grep/Bash on stage files | 0 (only `review-doc.py write --proposals <stage file>`) |
+| `check` rounds / retries | 1 / 0 |
+| Not-condensed units | 0 |
+| Proposals | open 7, themes 0, done 0; 12 sections, 22 items; 0 rejected |
+| Vault growth | script-built: 8 items (all 43 created notes once, plus the MOC lines); owner: fits for now, later analysis in #274 |
+| Agents run in the background | yes again (no harm) |
+| Content files after write | 0 (only `meta.json` and the empty harness `.claude` folder) |
+
+Cost / time per step: main sonnet $0.64, 376 s, peak 89,488; digester haiku $0.13 / 61 s / 50,712; carryover sonnet
+$0.13 / 21 s / 16,289; proposer opus $1.50 / 98 s / 21,137; Pass 1 total $2.40 (guidance ≤ $0.80).
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
@@ -90,7 +111,7 @@ Finding F-R1-4 (owner → T9.3): the group also shows the period's MOC changes �
 | Main-session reads of stage files | 0 | hard | 0 | | | | |
 | Carried items placed twice / without previous link | 0 / 0 | quality | — (R1a no document) | | | | |
 | Content files left after write, abort, drop | 0 | quality | 0 after write | | | | |
-| Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.84 (R1c; R1b $2.80; R1a $1.25 failed) | — | — | | — |
+| Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | | — | — | |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | | — | — |
 | Pass 2 cost | ≤ $0.85 | guidance | | | | | |

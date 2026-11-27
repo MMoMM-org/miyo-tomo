@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """note_fake_vault.py — one in-memory vault behind note-instructions.py deliver
 and triage's frontmatter buckets (spec 044 T2.6).
 
@@ -23,9 +23,7 @@ KadoConcurrencyError on a stale expected_modified. write_note and write_file
 over an existing path hold to Kado's write guard (core/concurrency-guard): no
 expected_modified, or one that is not the path's `modified`, raises
 KadoToolError with Kado's CONFLICT payload and writes nothing; an absent path
-is created without one. Paths ending in UNGUARDED_SUFFIXES skip the guard:
-production still overwrites the readable /review instruction set without
-expected_modified (F-R3b-1 follow-up), so those tests keep their old fake.
+is created without one.
 `modified[path] = None` makes the reads omit `modified`.
 """
 from __future__ import annotations
@@ -49,10 +47,6 @@ GUARD_MISSING = ('kado-write returned an error: {"code":"CONFLICT","message":"ex
                  'when updating an existing file. Read the file first to get the current modified timestamp."}')
 GUARD_STALE = ('kado-write returned an error: {"code":"CONFLICT",'
                '"message":"File was updated in the background. Re-read before retrying."}')
-# The readable /review instruction set (`<stem>_review_instructions.md`): review-instructions.py drop (the
-# withdrawn MD) and lib/review_instructions_deliver._overwrite_step (the MD over an earlier run's) overwrite it
-# without expected_modified today. Remove the entry once both callers send the stamp.
-UNGUARDED_SUFFIXES = ("_review_instructions.md",)
 
 
 class Killed(BaseException):
@@ -191,7 +185,7 @@ class NoteFakeVault:
 
     def _guard(self, path, expected_modified) -> None:
         """Kado's write guard: an existing path is overwritten only with its current ``modified``."""
-        if path not in self.files or path.endswith(UNGUARDED_SUFFIXES):
+        if path not in self.files:
             return
         if expected_modified is None:
             raise KadoToolError(GUARD_MISSING)

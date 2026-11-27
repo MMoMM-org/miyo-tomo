@@ -1,5 +1,5 @@
 # review_instructions_deliver.py — the write side of review-instructions deliver: steps, resume, document mark.
-# version: 0.1.1
+# version: 0.1.2
 """Delivery of one ``Run`` (split out of ``review-instructions.py`` at spec 046 T6.4, constitution L2 file size).
 
 ``deliver_run`` decides between the resume with stored payloads, a refusal and a fresh delivery, then
@@ -56,8 +56,8 @@ def _mark_document(run: Run, delivery: StagedDelivery) -> None:
 
 def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str, set_doc: dict) -> None:
     """A set step written over the finished set of an earlier run: the set JSON under the ``modified`` the probe
-    read, the MD plain; the set this delivery landed itself (the same actions, ``applied`` aside) is never
-    rewritten. Recorded like an uploaded step."""
+    read, the MD under its own ``modified`` read just before it (none when absent); the set this delivery landed
+    itself (the same actions, ``applied`` aside) is never rewritten. Recorded like an uploaded step."""
     path = delivery.targets[step]
     if step == rdl.SET_JSON and run.held is not None and rs.without_applied(run.held.data) == rs.without_applied(set_doc):
         delivery.record(step)
@@ -68,7 +68,7 @@ def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str,
             run.vault.client.write_file(path, payload.encode("utf-8"),
                                         expected_modified=run.held.modified if run.held is not None else None)
         else:
-            run.vault.client.write_note(path, payload)
+            run.vault.client.write_note(path, payload, expected_modified=rs.md_modified(run.vault, path))
     except KadoError as exc:
         raise delivery.fail(step, exc) from exc
     delivery.record(step)

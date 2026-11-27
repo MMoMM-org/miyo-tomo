@@ -26,3 +26,10 @@ delivery's own outputs. The script re-reads `KADO_WRITE_FAILED` from here for
 that no longer matches its record, the plan's own problems), so the function
 that builds and writes the payloads stays a straight line. The order is the
 original's: stored-payload resume first, then the refusals, then the write.
+
+## WHY `_overwrite_step` Reads the MD's `modified`
+
+Kado refuses an overwrite of an existing file without `expectedModified`
+(CONFLICT), and the delivery's probe reads only the set JSON, so the MD over
+an earlier run's set costs one frontmatter read for its stamp
+(`review_state.md_modified`) right before the write (F-R3b-2).

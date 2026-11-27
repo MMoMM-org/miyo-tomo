@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_deliver_rerun.py — a rerun of a period writes its set over the first run's fully applied set
 (spec 045 T6.1 fix round; owner decision 2026-11-12; PRD F6-AC2, F6-AC3; SDD Error Handling `set-exists`).
 
@@ -136,3 +136,55 @@ def test_resume_after_the_set_json_landed_overwrites_the_old_md_and_keeps_its_ow
     assert bool(set_json_of(fake)["actions"][0].get("applied")) is hashi_applies_between
     assert meta_of(instance)["steps_done"] == ["set_json", "set_md", "doc_mark"]
     assert cli("status", "--stem", STEM)[1]["state"] == ("applied" if hashi_applies_between else "delivered")
+
+
+# ---------------------------------------------------------------- the MD under Kado's write guard (F-R3b-2)
+
+def test_redelivery_writes_the_md_over_the_old_one_under_its_current_modified(doc_mod, ins, instance,
+                                                                              monkeypatch, capsys):
+    """Falsifies `_overwrite_step` writing the MD without a stamp (Kado's CONFLICT, kado-write-failed) or with
+    one it did not read: the old MD was edited since it landed, the write carries its current `modified`,
+    read in one frontmatter read of the MD."""
+    cli, fake = _rerun(doc_mod, ins, instance, monkeypatch, capsys, True)
+    fake._bump(SET_MD)                                          # the old MD changed after it landed
+    md_modified = fake.modified[SET_MD]
+    fake.events.clear()
+    _, out, err = cli("deliver", "--stem", STEM)
+    assert out["status"] == "delivered" and err == "", out
+    assert (SET_MD, md_modified) in fake.note_guards
+    assert fake.events.count(("read_frontmatter", SET_MD)) == 1, "one stamp read of the MD"
+    assert "### I01" in fake.text(SET_MD) and "old readable instructions" not in fake.text(SET_MD)
+    assert meta_of(instance)["steps_done"] == ["set_json", "set_md", "doc_mark"]
+
+
+def test_redelivery_without_an_old_md_creates_it_without_a_stamp(doc_mod, ins, instance, monkeypatch, capsys):
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault(LANDED, **{SET_JSON: _old_set(True)}))
+    _, out, err = cli("deliver", "--stem", STEM)
+    assert out["status"] == "delivered" and err == "", out
+    assert (SET_MD, None) in fake.note_guards
+    assert "### I01" in fake.text(SET_MD)
+
+
+def test_redelivery_over_an_md_changed_after_its_stamp_was_read_stops_resumably(doc_mod, ins, instance,
+                                                                                monkeypatch, capsys):
+    """The MD rewritten between the stamp read and the write: Kado's guard refuses it, the step is reported
+    like any set_md failure (stopped, kado-write-failed, failed_step set_md), the old MD stays, a resume lands."""
+    cli, fake = _rerun(doc_mod, ins, instance, monkeypatch, capsys, True)
+    original = fake.read_frontmatter
+
+    def read_then_bump(path, *a, **kw):
+        out = original(path, *a, **kw)
+        if path == SET_MD:
+            fake._bump(SET_MD)                                  # rewritten between the stamp read and the write
+        return out
+    monkeypatch.setattr(fake, "read_frontmatter", read_then_bump)
+    _, out, err = cli("deliver", "--stem", STEM)
+    assert out["status"] == "stopped" and out["problems"] == ["kado-write-failed"], out
+    assert out["failed_step"] == "set_md" and "reason" not in out
+    assert err == "review-instructions: delivery failed at set_md (KadoToolError)\n"
+    assert "old readable instructions" in fake.text(SET_MD), "the old MD is untouched"
+    assert meta_of(instance)["steps_done"] == ["set_json"]
+    monkeypatch.setattr(fake, "read_frontmatter", original)
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "resumed" and meta_of(instance)["steps_done"] == ["set_json", "set_md", "doc_mark"]
+    assert "### I01" in fake.text(SET_MD)

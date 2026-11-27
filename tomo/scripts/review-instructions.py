@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.6.1
+# version: 0.6.2
 """Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
 
 ``preview`` builds the plan from the approved document and the target note as they are now and prints it; nothing is
@@ -38,7 +38,8 @@ Output: one JSON object on stdout, ASCII-escaped.
 
 Rules: a refusing problem means nothing is written; a second set for the stem is refused (set-exists) unless
     an action of the set at the path is applied — then deliver writes over it, the set JSON under the modified
-    the probe read (Kado's CONFLICT there is kado-write-failed, resumable); an emptied set on a begun delivery is
+    the probe read, the MD under its own modified read just before it (Kado's CONFLICT on either is
+    kado-write-failed, resumable); an emptied set on a begun delivery is
     a drop that did not finish (set-withdrawn, before set-exists) — drop completes it, deliver never resumes over
     it; done steps are skipped on resume, a step in flight is compared or uploaded; the document mark is last — a
     refused guard (Kado's CONFLICT, or KadoConcurrencyError) is doc-changed with failed_step doc_mark, any other
@@ -57,7 +58,9 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     A stop of a section whose block holds lines refuses until a choice answers it; a choice no plan took refuses
     choice-invalid; a malformed or doubled choice exits 2; a plan without an action is nothing-to-deliver.
     drop refuses already-applied on any applied action (no partial withdrawal); its set read answers absent only
-    on NOT_FOUND, any other Kado failure stops the run; a refused guard on the set write is set-changed.
+    on NOT_FOUND, any other Kado failure stops the run; a refused guard on the set write is set-changed; the
+    withdrawn MD is written under its own modified read just before it (none when absent), and any failure of
+    that read or write, a refused guard included, is kado-write-failed — a second drop completes it.
     Nothing of the document or a note reaches stdout except preview's section_md and sections.lines, a moved
     block's sections.block_at.heading and the headings list; stderr names problem classes only.
 
@@ -164,7 +167,8 @@ def drop(args: argparse.Namespace) -> dict:
                 "problems": [SET_CHANGED if rkc.is_conflict(exc) else KADO_WRITE_FAILED],
                 "error": {"kind": type(exc).__name__}}
     try:
-        vault.client.write_note(paths[rdl.SET_MD], rdl.withdrawn_md(args.stem, meta, profile, files))
+        vault.client.write_note(paths[rdl.SET_MD], rdl.withdrawn_md(args.stem, meta, profile, files),
+                                expected_modified=rs.md_modified(vault, paths[rdl.SET_MD]))
     except KadoError as exc:
         return {"status": "stopped", "stem": args.stem, "problems": [KADO_WRITE_FAILED],
                 "error": {"kind": type(exc).__name__}}

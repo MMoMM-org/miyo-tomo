@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.8
+# version: 0.3.9
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -924,9 +924,19 @@ def test_replace_confirm_over_a_document_changed_after_the_check_is_stopped_with
             fake.modified[DOC_PATH] += 1                     # the user saves between the check and the write
         return out
     fake.read_frontmatter = read_then_edit
+    stamp_read = fake.modified[DOC_PATH]
+    sent = []
+    write_note = fake.write_note
+
+    def record_then_write(path, content, expected_modified=None):
+        sent.append((path, expected_modified))
+        return write_note(path, content, expected_modified)
+    fake.write_note = record_then_write
     code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", STEM, "--confirm"], fake)
     assert code == 0 and out["status"] == "stopped" and out["problems"] == ["kado-write-failed"]
     assert out["error"] == {"kind": "KadoToolError", "code": "CONFLICT"}
+    # the stale-stamp path, not a missing stamp (which Kado refuses with CONFLICT too)
+    assert sent == [(DOC_PATH, stamp_read)] and fake.modified[DOC_PATH] == stamp_read + 1
     assert fake.text(DOC_PATH) == text
 
 

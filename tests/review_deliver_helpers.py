@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """review_deliver_helpers.py — the shared fixtures, constants and helpers of the review-instructions delivery tests.
 
 Moved out of test_review_deliver.py (#260) so test_review_deliver.py, test_review_deliver_report.py,
@@ -75,8 +75,10 @@ class GuardedVault(ReviewFakeVault):
         super().__init__(files)
         self.after_write: dict = {}
         self.guards: list = []                  # every write_file as (path, expected_modified)
+        self.note_guards: list = []             # every write_note as (path, expected_modified)
 
     def write_note(self, path, content, expected_modified=None):
+        self.note_guards.append((path, expected_modified))
         if expected_modified is not None and path in self.files and expected_modified != self.modified.get(path):
             self._call("write_note", path)
             raise KadoToolError(GUARD_REFUSED)

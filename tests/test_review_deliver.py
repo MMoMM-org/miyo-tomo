@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.12
+# version: 0.2.13
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -678,6 +678,8 @@ def test_drop_that_failed_after_the_set_write_is_listed_again_and_a_second_drop_
     assert out["paths"] == {"set_json": SET_JSON, "set_md": SET_MD, "note": NEW_NOTE}
     assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
     assert fake.guards == [(SET_JSON, fake.modified[SET_JSON] - 1)]
+    # the withdrawn MD over the delivered one carries its stamp; created where none landed, without one
+    assert fake.note_guards[-1] == (SET_MD, fake.modified[SET_MD] - 1 if delivery == "complete" else None)
     assert set_json_of(fake)["actions"] == [] and "delete these files" in fake.text(SET_MD)
     assert meta_of(instance)["withdrawn"] is True and meta_of(instance)["failed_step"] == ""
     assert cli("status", "--stem", STEM)[1] == {"state": None, "stem": STEM}
@@ -694,6 +696,7 @@ def delivered(doc_mod, ins, instance, monkeypatch, capsys):
     fake.events.clear()
     fake.writes.clear()
     fake.guards.clear()
+    fake.note_guards.clear()
     return cli, fake
 
 
@@ -765,6 +768,43 @@ def test_drop_withdraws_when_the_set_json_is_absent(doc_mod, ins, instance, monk
     assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
     assert fake.guards == [(SET_JSON, None)]
     assert set_json_of(fake)["actions"] == [] and meta_of(instance)["withdrawn"] is True
+
+def test_drop_writes_the_withdrawn_md_over_the_delivered_one_under_its_current_modified(doc_mod, ins, instance,
+                                                                                         monkeypatch, capsys):
+    """Falsifies `drop` writing the withdrawn MD without a stamp (Kado's CONFLICT over the delivered MD):
+    the MD edited since it landed is written with its current `modified`, read in one frontmatter read."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    fake._bump(SET_MD)
+    md_modified = fake.modified[SET_MD]
+    _, out, err = cli("drop", "--stem", STEM)
+    assert err == "" and out["status"] == "withdrawn", out
+    assert fake.note_guards == [(SET_MD, md_modified)]
+    assert fake.events.count(("read_frontmatter", SET_MD)) == 1, "one stamp read of the MD"
+    assert "delete these files" in fake.text(SET_MD) and meta_of(instance)["withdrawn"] is True
+
+
+def test_drop_over_an_md_changed_after_its_stamp_was_read_stops_and_a_second_drop_completes(
+        doc_mod, ins, instance, monkeypatch, capsys):
+    """The MD rewritten between the stamp read and the write: reported like any MD write failure of a drop
+    (stopped, kado-write-failed, error kind) — the set JSON already withdrawn, meta not — and the next drop
+    completes."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    original = fake.read_frontmatter
+
+    def read_then_bump(path, *a, **kw):
+        out = original(path, *a, **kw)
+        if path == SET_MD:
+            fake._bump(SET_MD)
+        return out
+    monkeypatch.setattr(fake, "read_frontmatter", read_then_bump)
+    _, out, err = cli("drop", "--stem", STEM)
+    assert err == "" and out == {"status": "stopped", "stem": STEM, "problems": ["kado-write-failed"],
+                                 "error": {"kind": "KadoToolError"}}, out
+    assert set_json_of(fake)["actions"] == [] and "delete these files" not in fake.text(SET_MD)
+    assert meta_of(instance)["withdrawn"] is False
+    monkeypatch.setattr(fake, "read_frontmatter", original)
+    _, out, _ = cli("drop", "--stem", STEM)
+    assert out["status"] == "withdrawn" and "delete these files" in fake.text(SET_MD)
 
 
 @pytest.mark.parametrize("broken", [b"not json at all", b'{"actions": "I01"}', b'[{"applied": true}]'])

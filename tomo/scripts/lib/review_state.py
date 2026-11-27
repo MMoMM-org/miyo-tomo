@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.7.0
+# version: 0.7.1
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -16,7 +16,9 @@ start`` (per listed document, through ``open_reviews``) and
 through ``review_vault.kado_stops``. ``read_set`` is the one reader of the
 set JSON — ``review-instructions.py drop`` reads through it too, before it
 rewrites the set — and returns the parsed object with the file's
-``modified`` (``SetRead``); ``any_applied`` says whether Hashi marked any of
+``modified`` (``SetRead``); ``md_modified`` is the readable set's
+``modified`` for a guarded overwrite (None when absent, any other Kado
+failure raised to the writer); ``any_applied`` says whether Hashi marked any of
 its actions ``applied``, ``all_applied`` whether it marked every one (at
 least one action; the predicate ``review_delivery.ReviewMeta.second_set``
 takes, so a rerun may write over the finished set of an earlier run),
@@ -244,6 +246,16 @@ def read_set(vault: Vault, path: str) -> Optional[SetRead]:
     except (ValueError, UnicodeDecodeError):
         data = {}
     return SetRead(data if isinstance(data, dict) else {}, modified if isinstance(modified, int) else None)
+
+
+def md_modified(vault: Vault, path: str) -> Optional[int]:
+    """The ``modified`` of the readable set at ``path`` for a guarded overwrite; None on NOT_FOUND (created
+    without one) or when Kado gave none. Any other Kado failure is raised to the caller's write."""
+    try:
+        modified = vault.client.read_frontmatter(path).get("modified")
+    except KadoNotFoundError:
+        return None
+    return modified if isinstance(modified, int) and not isinstance(modified, bool) else None
 
 
 def _present(vault: Vault, path) -> Optional[bool]:

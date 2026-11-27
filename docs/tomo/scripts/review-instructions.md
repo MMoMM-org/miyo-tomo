@@ -74,8 +74,13 @@ The set JSON write is guarded by the `modified` the probe read
 rewrote between read and write — the one way it could stop being fully
 applied — refuses with Kado's `CONFLICT`, reported as `kado-write-failed`
 (resumable: the resume reads the stamp afresh; no new problem name, so the
-skill's step 8 lines hold). The MD peer is Tomo's own file, written plain,
-as `drop` writes its withdrawn MD. The overwrite steps go through the same
+skill's step 8 lines hold). The MD peer is written under its own
+`modified`, read by `review_state.md_modified` (one frontmatter read)
+just before the write, as `drop` writes its withdrawn MD: Kado refuses any
+overwrite of an existing file without `expectedModified` (F-R3b-2, spec 047
+walk R3b), and the probe reads only the set JSON, so the MD's stamp costs
+that one read. A stale stamp is `kado-write-failed` at `set_md`, resumable,
+like any MD failure. The overwrite steps go through the same
 `StagedDelivery` records (`mark_in_flight`, `record`, `fail`) as an upload,
 so a failure among them resumes like any other; the loop's own
 `deliver_step` is not used for them because its rule "other text at the
@@ -727,10 +732,15 @@ recognised by `is_conflict` exactly as on the mark) is `set-changed`:
 `status: stopped`, nothing written, the stage and the meta unchanged,
 resumable by running `drop` again — the second run reads the set as it is
 now and refuses or withdraws on what it finds. Any other failure stays
-`kado-write-failed`. The MD peer is not guarded: `drop` holds no `modified`
-for it, and a read only for the guard would cost a call for a file Hashi
-never rewrites (its peer sync ticks boxes through Obsidian, not the set
-path). A set absent on the read is written without a guard, as before.
+`kado-write-failed`. The withdrawn MD is written under the `modified` of
+one frontmatter read just before it (`review_state.md_modified`), none when
+absent: Kado's write guard refuses an overwrite without `expectedModified`
+whether or not anyone else touched the file (F-R3b-2, spec 047 walk R3b; the
+earlier "not guarded, a read would cost a call" held only against a fake
+without the guard). A refused guard there stays `kado-write-failed`, not
+`set-changed`: the set JSON is already withdrawn, and the second `drop`
+completes it as any failed MD write. A set absent on the read is written
+without a guard, as before.
 
 ## WHY `--place-anchor` Exists
 

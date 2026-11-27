@@ -322,6 +322,12 @@ The rules are unchanged: None only on `KadoNotFoundError`, `{}` for a file
 that is not a JSON object, any other Kado failure stops through
 `kado_stops`. `stem_state` reads `.data` and ignores `modified`.
 
+`md_modified` is the readable set's stamp for the same reason on the MD
+(F-R3b-2): Kado refuses an overwrite without `expectedModified`. It raises
+any Kado failure but NOT_FOUND instead of stopping through `kado_stops`, so
+the writer reports it as that write's failure (`deliver`'s resumable
+`set_md` stop, `drop`'s `kado-write-failed`).
+
 ## WHY Only Approved Documents Are Probed, and the Step 5/6 Probes Are Lazy
 
 WHY: ADR-6 and the coordinator's cost decision 2026-11-11. A set JSON can

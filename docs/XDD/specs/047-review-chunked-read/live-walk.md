@@ -129,6 +129,8 @@ $0.18 / 94 s / 57,935, $0.19 / 99 s / 55,395, $0.07 / 35 s / 29,357, $0.19 / 97 
 carryover sonnet $0.12 / 20 s / 15,397; proposer opus $4.45 / 286 s / 61,700. Pass 1 total $6.27, 8.3 min
 (guidance ≤ $2.00 / 7 min: over by $4.27 and 1.3 min; the proposer alone $4.45).
 
+Pass 2 (same session): `parse` approved, `preview`, `deliver` into `Calendar/303 Monthly/2026-03.md` (block replaced, 0 escaped lines, 0 problems); stage after delivery: `meta.json` only. Applied with Hashi by the owner. Main sonnet $0.52 (session $1.33 − Pass 1 $0.81), peak 120,282 (guidance ≤ $0.85).
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
@@ -141,6 +143,6 @@ carryover sonnet $0.12 / 20 s / 15,397; proposer opus $4.45 / 286 s / 61,700. Pa
 | Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | | — | — |
-| Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | | | | |
+| Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | | | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |
 | Owner: at least as useful as the spec 046 document | yes/no | quality | | | | — | — |

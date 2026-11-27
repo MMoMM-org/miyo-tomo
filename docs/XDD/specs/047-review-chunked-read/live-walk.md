@@ -133,6 +133,29 @@ Pass 2 (same session): `parse` approved, `preview`, `deliver` into `Calendar/303
 
 Finding F-R2-1 (owner, R1d/R2 cost → T9.3): the opus proposer is most of every Pass 1 (week $1.50 of $2.40, month $4.45 of $6.27); the owner asks whether sonnet suffices. Fixed for test in c647935f: `review-proposer` runs on `sonnet` (0.2.1), ADR-7 amended (solution.md v1.11), WHY and privacy docs updated. Spec review PASS, code review PASS; full suite 12,438 passed, 1 known failure. Check: R2b re-runs month 2026-03 on sonnet; the owner compares it with the opus document (delivered in R2) — on quality loss opus comes back.
 
+### R2b — month 2026-03 on the sonnet proposer (2026-11-27, session 3ff157fb) — Pass 1 written
+
+Instance at 0ab8f070 (`review-proposer` 0.2.1, sonnet). The opus document and Pass 2 files of R2 were copied outside the vault and the repo first (owner's comparison copy, not recorded here).
+
+| Row | Count |
+|---|---|
+| Days read / not read (size / other) | 31 / 0 (0 / 0) |
+| Previous notes found / carryover items | 2 / 23 (2026-02 10, 2025-Q4 13); carried into the document 23 (10 + 13) |
+| Units dispatched per message | 6 digesters + 1 carryover in one message; proposer alone |
+| Agents self-started / main-session reads of stage files | 0 / 0 |
+| `check` rounds / retries | 1 / 0 |
+| Proposals | open 3, themes 1, done 3; 15 of 16 sections filled, 55 items; 0 rejected; weekly only 1, not in weekly 4 |
+| Vault growth | 29 items (script-built, same as R2) |
+| `write` | first refused `doc-name-taken` (the file at `100 Inbox/2026-03 Review.md` did not read as Tomo's review then); the owner removed the old files, the second `write` passed |
+| Content files after write | 0 (only `meta.json`) |
+
+Cost / time per step: main sonnet $0.89, 498 s, peak 105,441; digesters haiku $0.05–$0.21 each ($0.87 together); carryover
+sonnet $0.12 / 18 s / 15,572; proposer sonnet $0.95 / 237 s / 63,897. Pass 1 total $2.83, 7.3 min to the first `write`
+(8.2 min with the owner's answer). Against R2 (opus): total $6.27 → $2.83, proposer $4.45 / 286 s → $0.95 / 237 s.
+
+Count comparison, opus (R2) → sonnet (R2b): section items 41 → 55; open 4 → 3; themes 0 → 1; done 0 → 3; carried 19 → 23;
+weekly only 2 → 1; not in weekly 0 → 4; rejected 0 → 0. Quality: owner's side-by-side verdict pending.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |

@@ -154,7 +154,11 @@ sonnet $0.12 / 18 s / 15,572; proposer sonnet $0.95 / 237 s / 63,897. Pass 1 tot
 (8.2 min with the owner's answer). Against R2 (opus): total $6.27 → $2.83, proposer $4.45 / 286 s → $0.95 / 237 s.
 
 Count comparison, opus (R2) → sonnet (R2b): section items 41 → 55; open 4 → 3; themes 0 → 1; done 0 → 3; carried 19 → 23;
-weekly only 2 → 1; not in weekly 0 → 4; rejected 0 → 0. Quality: owner's side-by-side verdict pending.
+weekly only 2 → 1; not in weekly 0 → 4; rejected 0 → 0.
+
+Quality (owner: "looks ok"; orchestrator side-by-side, no text recorded): sonnet uses the groups (done, themes, open) and places the not-in-weekly items in their own group where opus put them into the Plan section; it places more carried items in sections. Weaker: weighting in two sections (smaller wins, the month review thinner), one less precise energy line, more day links, two trivial items, two statements to check against the dailies. Outcome: sonnet stays for R3; proposer rules revisited only if the weak points recur.
+
+Finding F-R2-2 (→ backlog R-47g): the first `write` refused `doc-name-taken` on the applied R2 document; cause not found, not reproduced, nothing overwritten.
 
 ## KPI table
 

@@ -100,6 +100,7 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | R-47d | `/review`: leave non-note embeds out of the "not in a weekly or monthly review" lists | Could | Parked from the spec 046 live walk, kept parked by spec 047 (#270). |
 | R-47e | `/review`: `review-doc.py write` refuses on its own when every unit failed to condense (defence in depth; today the skill stops at `review-digest.py check`'s `nothing-condensed`) | Could | Found in the spec 047 T8.2 end-to-end tests (#270). |
 | R-47f | `/review`: a lone surrogate escape (`\ud800`) in a carryover item's text would likely raise `UnicodeEncodeError` when `review-digest.py` rewrites the settled `carryover.json` (`review_stage_codec.encode`, `ensure_ascii=False`); the digest measure is already surrogate-safe | Could | Found in the spec 047 T9.3 review of the digest-cap fix (#270). |
+| R-47g | `/review`: an applied review document of R2 (`100 Inbox/2026-03 Review.md`, valid `tomo.doc_type: review` frontmatter on disk at 12:57) read as not Tomo's at 13:24 (Kado `frontmatter` 1 ms, `doc-name-taken`); `start` at 13:17 had not listed it either. A missing path reads as `absent`, a present one as `tomo-review` again; cause unknown (Obsidian metadata cache, Hashi 0.33.3 installed 12:15, or a user edit), not reproduced. Safe: nothing was overwritten. Watch in the next runs; if it recurs, capture the frontmatter Kado returns | Could | Found in the spec 047 live walk R2b (#270). |
 
 ## Done (historical record)
 

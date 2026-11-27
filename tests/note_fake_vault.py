@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """note_fake_vault.py — one in-memory vault behind note-instructions.py deliver
 and triage's frontmatter buckets (spec 044 T2.6).
 
@@ -19,8 +19,14 @@ KadoNotFoundError (frontmatter writes included); a note read or frontmatter
 read of a non-.md path raises KadoToolError (Kado's VALIDATION_ERROR);
 path_exists probes .md through read_frontmatter and every other path through
 read_file; write_frontmatter honours mode merge|replace and raises
-KadoConcurrencyError on a stale expected_modified. `modified[path] = None`
-makes the reads omit `modified`.
+KadoConcurrencyError on a stale expected_modified. write_note and write_file
+over an existing path hold to Kado's write guard (core/concurrency-guard): no
+expected_modified, or one that is not the path's `modified`, raises
+KadoToolError with Kado's CONFLICT payload and writes nothing; an absent path
+is created without one. Paths ending in UNGUARDED_SUFFIXES skip the guard:
+production still overwrites the readable /review instruction set without
+expected_modified (F-R3b-1 follow-up), so those tests keep their old fake.
+`modified[path] = None` makes the reads omit `modified`.
 """
 from __future__ import annotations
 
@@ -39,6 +45,14 @@ from lib.kado_client import (  # noqa: E402
 )
 
 FRONTMATTER_MODES = ("merge", "replace")
+GUARD_MISSING = ('kado-write returned an error: {"code":"CONFLICT","message":"expectedModified is required '
+                 'when updating an existing file. Read the file first to get the current modified timestamp."}')
+GUARD_STALE = ('kado-write returned an error: {"code":"CONFLICT",'
+               '"message":"File was updated in the background. Re-read before retrying."}')
+# The readable /review instruction set (`<stem>_review_instructions.md`): review-instructions.py drop (the
+# withdrawn MD) and lib/review_instructions_deliver._overwrite_step (the MD over an earlier run's) overwrite it
+# without expected_modified today. Remove the entry once both callers send the stamp.
+UNGUARDED_SUFFIXES = ("_review_instructions.md",)
 
 
 class Killed(BaseException):
@@ -175,14 +189,25 @@ class NoteFakeVault:
         self._bump(path)
         self.writes.append(path)
 
+    def _guard(self, path, expected_modified) -> None:
+        """Kado's write guard: an existing path is overwritten only with its current ``modified``."""
+        if path not in self.files or path.endswith(UNGUARDED_SUFFIXES):
+            return
+        if expected_modified is None:
+            raise KadoToolError(GUARD_MISSING)
+        if expected_modified != self.modified.get(path, 1):
+            raise KadoToolError(GUARD_STALE)
+
     def write_note(self, path, content, expected_modified=None):
         self._call("write_note", path)
+        self._guard(path, expected_modified)
         self._store(path, content)
         return {"path": path}
 
     def write_file(self, path, data, expected_modified=None):
         self._call("write_file", path)
         assert isinstance(data, bytes), "KadoClient.write_file takes bytes"
+        self._guard(path, expected_modified)
         self._store(path, data)
         return {"path": path}
 

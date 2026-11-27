@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.7
+# version: 0.3.8
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -38,7 +38,11 @@ text-derived, a low-entropy habit line is not recoverable from it. Spec 047
 T5.5 (ADR-9, F5-AC4, F5-AC5): a carried mark (` · done (previous review)`,
 a child mark after it) is item text — kept as rendered or as the user left
 it, never an edit, never a done tick; an unticked or deleted carried item is
-absent; a trailing done marker is cut and nothing before it. All
+absent; a trailing done marker is cut and nothing before it. F-R3b-1
+(spec 047 Phase 9 walk): the fake holds to Kado's write guard, replace
+--confirm sends the document's `modified` and replaces it, a document
+changed after the check stops with `error.code` CONFLICT, and a stopped
+write reports only a closed uppercase code, never Kado's message. All
 data is synthetic.
 """
 from __future__ import annotations
@@ -60,7 +64,7 @@ sys.path.insert(0, str(TESTS_DIR))
 from review_fake_vault import ReviewFakeVault  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
-from lib.kado_client import KadoAuthError, KadoConnectionError  # noqa: E402
+from lib.kado_client import KadoAuthError, KadoConnectionError, KadoToolError  # noqa: E402
 from test_review_doc import GOOD, INBOX, MARKER, SCRIPT_PATH, WEEKLY, _config, _doc_input, stage, week_read  # noqa: E402
 
 STEM = "2026-W13_review"
@@ -875,3 +879,68 @@ def test_replace_confirm_and_abort_are_exclusive_and_replace_needs_a_stage(mod, 
     capsys.readouterr()
     code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", STEM], ReviewFakeVault({}))
     assert code == 0 and out["status"] == "refused" and out["problems"] == ["read-missing"]
+
+
+# ---------------------------------------------------------------- F-R3b-1: Kado's write guard on replace
+
+CONFLICT_TEXT = 'kado-write returned an error: {"code":"CONFLICT","message":"File was updated in the background."}'
+
+
+def test_the_fake_refuses_an_overwrite_the_way_kados_write_guard_does():
+    fake = ReviewFakeVault({DOC_PATH: "old\n"})
+    for method, data in (("write_note", "new\n"), ("write_file", b"new\n")):
+        with pytest.raises(KadoToolError) as missing:
+            getattr(fake, method)(DOC_PATH, data)
+        assert '"code":"CONFLICT"' in str(missing.value)
+        with pytest.raises(KadoToolError) as stale:
+            getattr(fake, method)(DOC_PATH, data, expected_modified=fake.modified[DOC_PATH] + 1)
+        assert '"code":"CONFLICT"' in str(stale.value)
+        assert fake.files[DOC_PATH] == "old\n" and fake.writes == []
+    before = fake.read_frontmatter(DOC_PATH)["modified"]
+    fake.write_note(DOC_PATH, "new\n", expected_modified=before)
+    assert fake.text(DOC_PATH) == "new\n" and fake.read_frontmatter(DOC_PATH)["modified"] > before
+    fake.write_note(f"{INBOX}fresh.md", "created\n")          # an absent path is created without a guard
+    assert fake.text(f"{INBOX}fresh.md") == "created\n"
+
+
+def test_replace_confirm_sends_the_documents_modified_and_replaces_it(mod, instance, monkeypatch, capsys):
+    fake, text, stage_dir, _ = _review_exists(mod, monkeypatch, capsys, instance)
+    fake.files[DOC_PATH] = text.replace("- [ ] Approved", "- [x] Approved")
+    fake.modified[DOC_PATH] = 1764000000000              # the user's edit moved the stamp
+    code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", STEM, "--confirm", "--run-id", "r3"], fake)
+    assert code == 0 and out["status"] == "replaced", out
+    assert "- [ ] Approved" in fake.text(DOC_PATH) and "run_id: r3" in fake.text(DOC_PATH)
+    assert fake.modified[DOC_PATH] == 1764000000001
+
+
+def test_replace_confirm_over_a_document_changed_after_the_check_is_stopped_with_the_code(mod, instance,
+                                                                                          monkeypatch, capsys):
+    fake, text, stage_dir, _ = _review_exists(mod, monkeypatch, capsys, instance)
+    original = fake.read_frontmatter
+
+    def read_then_edit(path):
+        out = original(path)
+        if path == DOC_PATH:
+            fake.modified[DOC_PATH] += 1                     # the user saves between the check and the write
+        return out
+    fake.read_frontmatter = read_then_edit
+    code, out, _ = _run(mod, monkeypatch, capsys, ["replace", "--stem", STEM, "--confirm"], fake)
+    assert code == 0 and out["status"] == "stopped" and out["problems"] == ["kado-write-failed"]
+    assert out["error"] == {"kind": "KadoToolError", "code": "CONFLICT"}
+    assert fake.text(DOC_PATH) == text
+
+
+@pytest.mark.parametrize("error, expected", [
+    (CONFLICT_TEXT, {"kind": "KadoToolError", "code": "CONFLICT"}),
+    ('kado-write returned an error: {"code":"FORBIDDEN","message":"denied"}', {"kind": "KadoToolError", "code": "FORBIDDEN"}),
+    ("kado-write returned an error: denied", {"kind": "KadoToolError"}),
+    ('kado-write returned an error: {"code":"Secret Note Text","message":"x"}', {"kind": "KadoToolError"}),
+    ('kado-write returned an error: {"code":7,"message":"x"}', {"kind": "KadoToolError"}),
+])
+def test_a_stopped_write_reports_only_the_closed_uppercase_code(mod, instance, monkeypatch, capsys, error, expected):
+    stem, path = stage(instance, week_read(), GOOD)
+    fake = ReviewFakeVault({f"{WEEKLY}2026-W13.md": "# W13\n"})
+    fake.fail[("write_note", DOC_PATH)] = KadoToolError(error)
+    code, out, _ = _run(mod, monkeypatch, capsys, ["write", "--stem", stem, "--proposals", str(path)], fake)
+    assert code == 0 and out["status"] == "stopped" and out["error"] == expected
+    assert "denied" not in json.dumps(out) and "background" not in json.dumps(out)

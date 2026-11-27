@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.11.1
+# version: 0.11.2
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
@@ -42,7 +42,8 @@ Output: one JSON object on stdout, ASCII-escaped.
            sections-changed],
            errors? [pointers, or "<pointer>: <error>" for a section or carried check, or
            "carried-missing (<id>)"]
-         | status stopped, problems [kado-write-failed] or error {kind kado-unreachable|kado-auth, detail}
+         | status stopped, problems [kado-write-failed] with error {kind, code?} (code: Kado's uppercase error
+           code, e.g. CONFLICT, only when one is parsable), or error {kind kado-unreachable|kado-auth, detail}
     parse: status ok, stem, doc_path, approved, nothing_to_deliver,
            items {group: [{id?, origin tomo|user, kept, edited}]},
            counts {kept, unticked, deleted, added},
@@ -112,6 +113,7 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
+import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -128,11 +130,12 @@ from lib import review_digest as rdg  # noqa: E402
 from lib import review_growth as rgw  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_habits as rh  # noqa: E402
+from lib import review_kado_conflict as rkc  # noqa: E402
 from lib import review_new_note as rnn  # noqa: E402
 from lib import review_section_set as rss  # noqa: E402
 from lib import review_sections as rs  # noqa: E402
 from lib import review_stage  # noqa: E402
-from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError  # noqa: E402
+from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError, KadoToolError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import Period, render_name  # noqa: E402
 from lib.review_doc_read import doc_path_of, read_document  # noqa: E402
@@ -216,18 +219,36 @@ def route_new_note(vault: Vault, setup: rc.ReviewSetup, period_name: str, parts:
         part.routed = part.key in routed
 
 
-def doc_state(vault: Vault, doc_path: str) -> str:
-    """What sits at ``doc_path``: ``ABSENT``, ``NOT_TOMO`` (a file that is not Tomo's review) or ``TOMO_REVIEW``."""
+def doc_state(vault: Vault, doc_path: str) -> Tuple[str, Optional[int]]:
+    """``(state, modified)`` at ``doc_path``: the state ``ABSENT``, ``NOT_TOMO`` (a file that is not Tomo's
+    review) or ``TOMO_REVIEW``; ``modified`` the stamp Kado reported (None when absent or not reported)."""
     try:
-        content = vault.client.read_frontmatter(doc_path).get("content")
+        found = vault.client.read_frontmatter(doc_path)
     except KadoNotFoundError:
-        return ABSENT
+        return ABSENT, None
     except KadoAuthError as exc:
         raise Stopped("kado-auth", str(exc)) from None
     except KadoError as exc:
         raise Stopped("kado-unreachable", str(exc)) from None
+    content = found.get("content")
+    modified = found.get("modified")
+    modified = modified if isinstance(modified, int) and not isinstance(modified, bool) else None
     tomo = content.get("tomo") if isinstance(content, dict) else None
-    return TOMO_REVIEW if isinstance(tomo, dict) and tomo.get("doc_type") == rd.DOC_TYPE else NOT_TOMO
+    state = TOMO_REVIEW if isinstance(tomo, dict) and tomo.get("doc_type") == rd.DOC_TYPE else NOT_TOMO
+    return state, modified
+
+
+ERROR_CODE = re.compile(r"[A-Z][A-Z_]{0,39}")
+
+
+def write_error(exc: KadoError) -> dict:
+    """The stopped write's ``error``: the exception's class name, plus Kado's code when it is a closed
+    uppercase token (never the message)."""
+    error = {"kind": type(exc).__name__}
+    code = rkc.tool_error_code(exc) if isinstance(exc, KadoToolError) else None
+    if isinstance(code, str) and ERROR_CODE.fullmatch(code):
+        error["code"] = code
+    return error
 
 
 # ---------------------------------------------------------------- write
@@ -357,7 +378,7 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
     result = {"stem": args.stem, "doc_path": doc_path, "target": target, "target_exists": exists}
     if elsewhere:
         result["target_found_elsewhere"] = elsewhere
-    state = doc_state(vault, doc_path)
+    state, modified = doc_state(vault, doc_path)
     if state == NOT_TOMO:
         return {"status": "refused", **result, "problems": ["doc-name-taken"]}
     if state == TOMO_REVIEW and not allow_overwrite_review:
@@ -376,10 +397,10 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
     )
     text, counts = rd.render_document(inp)
     try:
-        vault.client.write_note(doc_path, text)
+        vault.client.write_note(doc_path, text, expected_modified=modified if state == TOMO_REVIEW else None)
     except KadoError as exc:
         return {"status": "stopped", "stem": args.stem, "target": target, "target_exists": exists,
-                "problems": ["kado-write-failed"], "error": {"kind": type(exc).__name__},
+                "problems": ["kado-write-failed"], "error": write_error(exc),
                 "calls": vault.client.call_count}
     _write_meta(stage, inp, counts, doc_path, text)
     _drop_stage_content(stage, proposals_path)

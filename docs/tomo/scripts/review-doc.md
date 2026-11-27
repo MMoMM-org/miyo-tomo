@@ -93,6 +93,11 @@ second read and no second model pass. A success is reported as `replaced`;
 counts and link stems — the reset); the stage content files go away as
 after `write`; a non-Tomo file at the path is still `doc-name-taken`,
 because the overwrite flag covers Tomo's own document and nothing else.
+The overwrite sends the `modified` stamp `doc_state` read as
+`expectedModified`, because Kado's write guard refuses an update of an
+existing file without one (`CONFLICT`) — and the stamp makes a user's save
+between that check and the write a refusal instead of a silent loss;
+creating an absent document sends none (F-R3b-1, spec 047 Phase 9 walk).
 
 `replace --abort` is the user declining to start over, or (spec 047 ADR-10)
 aborting Pass 1 after the read: the run that produced the kept stage and
@@ -151,6 +156,12 @@ A refused or failed Kado write leaves the vault unchanged; the script says
 the stage, `proposals.json` and the previous `meta.json` so the skill can
 retry without a second read. Only after Kado accepted the write are the
 content files removed and the counts recorded.
+
+`error` carries the exception's class and, when Kado's payload names one,
+its `code` (`CONFLICT`, …) — only when it is a closed uppercase token, never
+Kado's message, because a result carries counts and codes only and a
+message could echo vault text. The code tells a refused guard from any
+other failure; without it the F-R3b-1 walk saw only `KadoToolError`.
 
 ## WHY the Stage Content and `proposals.json` Are Deleted Here (ADR-9, Spec 047 ADR-10)
 

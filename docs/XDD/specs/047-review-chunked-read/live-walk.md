@@ -131,6 +131,8 @@ carryover sonnet $0.12 / 20 s / 15,397; proposer opus $4.45 / 286 s / 61,700. Pa
 
 Pass 2 (same session): `parse` approved, `preview`, `deliver` into `Calendar/303 Monthly/2026-03.md` (block replaced, 0 escaped lines, 0 problems); stage after delivery: `meta.json` only. Applied with Hashi by the owner. Main sonnet $0.52 (session $1.33 − Pass 1 $0.81), peak 120,282 (guidance ≤ $0.85).
 
+Finding F-R2-1 (owner, R1d/R2 cost → T9.3): the opus proposer is most of every Pass 1 (week $1.50 of $2.40, month $4.45 of $6.27); the owner asks whether sonnet suffices. Fixed for test in c647935f: `review-proposer` runs on `sonnet` (0.2.1), ADR-7 amended (solution.md v1.11), WHY and privacy docs updated. Spec review PASS, code review PASS; full suite 12,438 passed, 1 known failure. Check: R2b re-runs month 2026-03 on sonnet; the owner compares it with the opus document (delivered in R2) — on quality loss opus comes back.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |

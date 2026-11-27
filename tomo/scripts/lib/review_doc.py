@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.7.2
+# version: 0.7.3
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13; spec 047 ADR-6, ADR-12).
 
 Pure functions between the model's ``proposals.json`` and the document the script writes: ``load_proposals`` /
@@ -121,6 +121,8 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "Kado refused it", "cause_failed": "Kado did not return it", "not_condensed": "Not condensed",
         "carry_failed": "The previous reviews could not be taken into account.",
         "growth_mocs_changed": "MOCs changed", "growth_mocs_linked": "MOCs newly linked",
+        "growth_folder_one": "{folder}: 1 new note", "growth_folder_many": "{folder}: {n} new notes",
+        "growth_root": "vault root",
     },
     "de": {
         DONE: "Erledigt", OPEN: "Offen", THEMES: "Wiederkehrende Themen", GROWTH: "Vault-Wachstum",
@@ -145,6 +147,8 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "not_condensed": "Nicht verdichtet",
         "carry_failed": "Die letzten Rückblicke konnten nicht berücksichtigt werden.",
         "growth_mocs_changed": "Geänderte MOCs", "growth_mocs_linked": "Neu verlinkte MOCs",
+        "growth_folder_one": "{folder}: 1 neue Notiz", "growth_folder_many": "{folder}: {n} neue Notizen",
+        "growth_root": "Vault-Wurzel",
     },
 }
 

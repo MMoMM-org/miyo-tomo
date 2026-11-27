@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_review_growth.py — the "Vault growth" group the script builds (spec 047 T9.3, F-R1-3; PRD F2-AC1).
 
 Owner decision 2026-11-26 (T9.2 R1b/R1c): `review-doc.py write` builds the group from the created notes of the
@@ -7,8 +7,10 @@ read and the digests' growth candidates; the proposer no longer proposes `growth
 
 - every created note exactly once, grouped as the candidates group them: the candidate's text, its notes as
   links, then the dailies of their creation days (`group`, and end to end through `write`);
-- a created note in no candidate gets an item of its own: the note's link as its text, its creation day's daily
-  as its link when the day has one;
+- F-R3-1 (owner 2026-11-27, after R3): the created notes no candidate covers get one item per folder (the note's
+  parent folder, "vault root" / "Vault-Wurzel" for a note at the top), text "<folder>: <n> new notes" /
+  "<folder>: <n> neue Notizen" (singular "1 new note" / "1 neue Notiz"), no links; after the candidate items,
+  folders by path; a period every note of which a candidate covers gives no folder item;
 - a note a section item mentions stays in the group;
 - a `growth` group in proposals.json is not rendered, rejected nothing and fails nothing;
 - no created note → no item (the empty group renders as before: "nothing found" unmapped);
@@ -73,13 +75,37 @@ def test_every_created_note_is_in_the_group_once_with_its_candidate_text_and_cre
                    {"text": f"bikes {PRP}", "links": ["a", "b", "2026-03-24"]}]
 
 
-def test_a_created_note_in_no_candidate_gets_an_item_of_its_own():
-    read = _read({"N/a.md": "2026-03-24", "N/lone.md": "2026-03-24", "N/nodaily.md": "2026-03-12"},
-                 ["2026-03-24"])
+def test_created_notes_in_no_candidate_get_one_item_per_folder_with_a_count_and_no_links():
+    read = _read({"N/a.md": "2026-03-24", "N/lone.md": "2026-03-24", "N/nodaily.md": "2026-03-12",
+                  "P/Sub/x.md": "2026-03-01", "P/y.md": "2026-03-30", "P/Sub/z.md": "2026-03-24"},
+                 ["2026-03-01", "2026-03-24"])
     got = rgw.group(read, [_cand("one", "N/a.md")])
-    assert got == [{"text": "[[nodaily]]", "links": []},
-                   {"text": "one", "links": ["a", "2026-03-24"]},
-                   {"text": "[[lone]]", "links": ["2026-03-24"]}]
+    assert got == [{"text": "one", "links": ["a", "2026-03-24"]},
+                   {"text": "N: 2 new notes", "links": []},
+                   {"text": "P: 1 new note", "links": []},
+                   {"text": "P/Sub: 2 new notes", "links": []}]
+
+
+@pytest.mark.parametrize("language,one,many,root", [("en", "Q: 1 new note", "N: 2 new notes", "vault root: 1 new note"),
+                                                    ("de", "Q: 1 neue Notiz", "N: 2 neue Notizen",
+                                                     "Vault-Wurzel: 1 neue Notiz")])
+def test_the_folder_items_carry_the_count_words_of_the_review_language(language, one, many, root):
+    read = _read({"N/a.md": "2026-03-24", "N/b.md": "2026-03-02", "Q/c.md": "2026-03-10", "top.md": "2026-03-11"},
+                 [])
+    assert rgw.group(read, [], language) == [{"text": root, "links": []}, {"text": many, "links": []},
+                                             {"text": one, "links": []}]
+
+
+def test_folder_items_come_after_every_candidate_item_whatever_the_creation_days():
+    read = _read({"A/early.md": "2026-01-02", "B/late.md": "2026-03-30", "B/mid.md": "2026-02-15"}, [])
+    got = rgw.group(read, [_cand("late", "B/late.md"), _cand("mid", "B/mid.md")])
+    assert [item["text"] for item in got] == ["mid", "late", "A: 1 new note"]
+
+
+def test_a_period_whose_notes_a_candidate_all_covers_has_no_folder_item():
+    read = _read({"N/a.md": "2026-03-24", "P/b.md": "2026-03-24"}, [])
+    got = rgw.group(read, [_cand("all", "P/b.md", "N/a.md")])
+    assert got == [{"text": "all", "links": ["a", "b"]}]
 
 
 def test_candidates_of_several_units_are_merged_and_no_note_is_listed_twice():
@@ -104,7 +130,7 @@ def test_two_created_notes_of_one_stem_link_by_path():
 
 def test_a_day_of_a_not_condensed_unit_links_no_daily():
     read = _read({"N/a.md": "2026-03-24"}, ["2026-03-24"], not_condensed=[{"unit": "2026-W13", "days": ["2026-03-24"]}])
-    assert rgw.group(read, []) == [{"text": "[[a]]", "links": []}]
+    assert rgw.group(read, [_cand("one", "N/a.md")]) == [{"text": "one", "links": ["a"]}]
 
 
 # ── candidates: the digests read ──
@@ -141,8 +167,9 @@ def test_candidates_skip_a_passed_unit_with_no_digest_or_a_digest_that_is_not_an
 CREATED = {"Notes/Kettle descaling.md": "2026-03-10", "Notes/Shelf plan.md": "2026-03-12",   # 03-12: no daily
            "Notes/Bike chain.md": "2026-03-24", "Notes/Bike tyres.md": "2026-03-24"}
 EXPECTED = ["- [x] created condensed ([[Kettle descaling]], [[2026-03-10]])",
-            "- [x] [[Shelf plan]]",
-            "- [x] created condensed ([[Bike chain]], [[Bike tyres]], [[2026-03-24]])"]
+            "- [x] created condensed ([[Bike chain]], [[Bike tyres]], [[2026-03-24]])",
+            "- [x] Notes: 1 new note"]
+EXPECTED_DE = EXPECTED[:2] + ["- [x] Notes: 1 neue Notiz"]
 
 
 def _ms(day: str) -> int:
@@ -206,7 +233,7 @@ def test_the_german_heading_holds_the_same_group(make_walk):
     assert out["status"] == "written", out
     document = w.doc(MONTH_DOC)
     assert "\n## Vault growth\n" not in document
-    assert _group_lines(document, "Vault-Wachstum") == EXPECTED
+    assert _group_lines(document, "Vault-Wachstum") == EXPECTED_DE
 
 
 @pytest.mark.parametrize("language,heading,nothing", [("en", "Vault growth", "nothing found"),
@@ -239,7 +266,7 @@ def _moc_links(items: List[dict]) -> List[str]:
 
 def test_every_changed_moc_is_linked_once_in_one_item_after_the_created_notes():
     read = _read_mocs({"N/a.md": "2026-03-24"}, [f"{M}B MOC.md", f"{M}A MOC.md"], [], ["2026-03-24"])
-    assert rgw.group(read, []) == [{"text": "[[a]]", "links": ["2026-03-24"]},
+    assert rgw.group(read, []) == [{"text": "N: 1 new note", "links": []},
                                    {"text": "MOCs changed", "links": ["A MOC", "B MOC"]}]
 
 
@@ -291,8 +318,8 @@ def test_a_created_moc_stays_a_created_note_and_a_shared_stem_links_by_path():
     read = _read_mocs({f"{M}New MOC.md": "2026-03-24", "N/Topic.md": "2026-03-24"},
                       [f"{M}New MOC.md", f"{M}Topic.md"], [])
     got = rgw.group(read, [])
-    assert got == [{"text": "[[New MOC]]", "links": []},
-                   {"text": "[[N/Topic]]", "links": []},
+    assert got == [{"text": "100 MOCs: 1 new note", "links": []},
+                   {"text": "N: 1 new note", "links": []},
                    {"text": "MOCs changed", "links": [f"{M}Topic"]}]
 
 
@@ -327,8 +354,9 @@ def test_write_adds_the_moc_items_after_the_created_notes_with_links_and_label_w
     out = w.write(MONTH_STEM, MONTH, proposer=propose_from_inputs)
     assert out["status"] == "written" and out["counts"]["growth"] == 5, out
     document = w.doc(MONTH_DOC)
-    assert _group_lines(document, heading) == EXPECTED + [f"- [x] {changed} ([[Quiet MOC]])",
-                                                          f"- [x] {linked} ([[Topic MOC]])"]
+    lines = EXPECTED if language == "en" else EXPECTED_DE
+    assert _group_lines(document, heading) == lines + [f"- [x] {changed} ([[Quiet MOC]])",
+                                                       f"- [x] {linked} ([[Topic MOC]])"]
     assert PRP not in json.dumps(out) and "moc body" not in document
 
 
@@ -337,3 +365,20 @@ def test_write_renders_the_group_with_moc_changes_and_no_created_note(make_walk)
     out = w.write(MONTH_STEM, MONTH, proposer=propose_from_inputs)
     assert out["status"] == "written" and out["counts"]["growth"] == 1, out
     assert _group_lines(w.doc(MONTH_DOC), "Vault growth") == ["- [x] MOCs changed ([[Quiet MOC]])"]
+
+
+# ── round trip: a folder item (no links) survives write → approve → parse → deliver (F-R3-1) ──
+
+def test_a_folder_item_without_links_parses_and_delivers_like_any_growth_item(make_walk):
+    w = _walk(make_walk)
+    out = w.write(MONTH_STEM, MONTH, proposer=propose_from_inputs)
+    assert out["status"] == "written" and out["counts"]["growth"] == 3, out
+    w.approve(MONTH_DOC)
+    parsed = w.parse(MONTH_STEM)
+    assert parsed["approved"] is True and parsed["warnings"] == [], parsed
+    assert [(r["kept"], r["edited"]) for r in parsed["items"]["growth"]] == [(True, False)] * 3, parsed["items"]
+    assert w.preview(MONTH_STEM)["problems"] == []
+    before = len(w.vault.recorded)
+    assert w.deliver(MONTH_STEM)["status"] == "delivered"
+    delivered = "\n".join(w.vault.text(p) for p in w.vault.recorded[before:] if p != MONTH_DOC)
+    assert "Notes: 1 new note" in delivered and "[[Shelf plan]]" not in delivered

@@ -1,6 +1,6 @@
 # review_growth.py — the "Vault growth" group of the /review document, built from the created notes of the period.
-# version: 0.2.0
-"""The Vault growth group of the Pass 1 document (spec 047 T9.3, F-R1-3, F-R1-4; PRD F2-AC1).
+# version: 0.3.0
+"""The Vault growth group of the Pass 1 document (spec 047 T9.3, F-R1-3, F-R1-4, F-R3-1; PRD F2-AC1).
 
 Every note created in the period is in the group exactly once, whatever a section item or the proposer says
 about it. ``candidates(stage, read)`` loads the growth candidates ``{text, notes}`` of every digest whose unit
@@ -10,12 +10,14 @@ another read gives none. ``group(read, candidates)`` builds the items ``{text, l
 - the created notes are ``read["growth"]["created"]`` (each with its creation ``day``);
 - a candidate becomes one item: its ``text``, its notes that are created notes and not yet in an earlier item;
   a candidate left without a note is dropped (so notes of several units' digests are merged, none twice);
-- a created note in no candidate gets an item of its own whose text is the note's link and nothing else;
-- an item's links: the links of its notes when the text is not a note link, then the stems of the dailies of
-  the notes' creation days (the read's ``Sources``, so a day of a not-condensed unit links no daily);
+- a candidate item's links: the links of its notes, then the stems of the dailies of the notes' creation days
+  (the read's ``Sources``, so a day of a not-condensed unit links no daily);
 - a note's link is its stem, or its path without ``.md`` when another created note has the same stem;
-- notes in an item by (creation day, path); items by (their first note's creation day, its path);
-- after the created-note items, the MOC items of ``read["growth"]``: ``mocs_changed`` as one item (text the
+- notes in an item by (creation day, path); candidate items by (their first note's creation day, its path);
+- after the candidate items, one folder item per parent folder of the created notes in no candidate, in folder
+  path order: text the ``language``'s ``growth_folder_one`` (1 note) or ``growth_folder_many`` (``{n}`` notes)
+  with ``{folder}`` the folder path, or the ``growth_root`` label word for a note at the top of the vault; no links;
+- after the folder items, the MOC items of ``read["growth"]``: ``mocs_changed`` as one item (text the
   ``language``'s label word ``growth_mocs_changed``, links its MOCs), then ``mocs_linked_by_new`` minus the
   changed ones as one item (``growth_mocs_linked``); a MOC that is a created note is in neither; links in path
   order; an item without a MOC is left out;
@@ -23,7 +25,7 @@ another read gives none. ``group(read, candidates)`` builds the items ``{text, l
 
 No created note and no MOC item → ``[]`` (the group renders empty as before). The texts of the candidates are
 the digester's words; they reach the written document only, never stdout, stderr or ``meta.json``; a MOC item
-holds a label word and links, nothing of the MOC's text.
+holds a label word and links, a folder item a folder path, a count and label words, nothing of a note's text.
 
 No Kado, no model; reads the stage's ``digests/`` files only.
 
@@ -95,8 +97,19 @@ def _day_links(read: dict) -> Dict[str, List[str]]:
     return out
 
 
+def _folders(paths: Sequence[str], words: Dict[str, str]) -> List[dict]:
+    """One item ``{text, links: []}`` per parent folder of ``paths``, in folder path order, with its note count."""
+    counts: Dict[str, int] = {}
+    for path in paths:
+        folder = path.rsplit("/", 1)[0] if "/" in path else ""
+        counts[folder] = counts.get(folder, 0) + 1
+    return [{"text": (words["growth_folder_one"] if n == 1 else words["growth_folder_many"]).format(
+                folder=folder or words["growth_root"], n=n), "links": []}
+            for folder, n in sorted(counts.items())]
+
+
 def group(read: dict, found: Sequence[dict], language: str = "en") -> List[dict]:
-    """The group's items ``{text, links}``: every created note once, then the MOC items (module docstring)."""
+    """The group's items ``{text, links}``: the candidate items, the folder items, the MOC items (module docstring)."""
     growth = read.get("growth") or {}
     created = {str(c["path"]): str(c.get("day") or "") for c in growth.get("created") or []
                if isinstance(c, dict) and c.get("path")}
@@ -105,7 +118,7 @@ def group(read: dict, found: Sequence[dict], language: str = "en") -> List[dict]
     days = _day_links(read)
     order = lambda path: (created[path], path)              # noqa: E731 - the one sort key of notes
     taken: set = set()
-    items: List[Tuple[str, List[str], bool]] = []          # (text, notes, text is the note's link)
+    items: List[Tuple[str, List[str]]] = []                 # (candidate text, its notes)
     for candidate in found:
         notes = []
         for path in candidate["notes"]:
@@ -113,14 +126,14 @@ def group(read: dict, found: Sequence[dict], language: str = "en") -> List[dict]
                 taken.add(path)
                 notes.append(path)
         if notes:
-            items.append((candidate["text"], sorted(notes, key=order), False))
-    items += [(f"[[{link[path]}]]", [path], True) for path in sorted(set(created) - taken, key=order)]
+            items.append((candidate["text"], sorted(notes, key=order)))
     items.sort(key=lambda item: order(item[1][0]))
     out = []
-    for text, notes, own in items:
-        links = [] if own else [link[path] for path in notes]
+    for text, notes in items:
+        links = [link[path] for path in notes]
         for day in sorted({created[path] for path in notes}):
             links += [stem for stem in days.get(day, []) if stem not in links]
         out.append({"text": text, "links": links})
     words = labels(language)
+    out += _folders([path for path in created if path not in taken], words)
     return out + [{"text": words[word], "links": [link[path] for path in paths]} for word, paths in mocs]

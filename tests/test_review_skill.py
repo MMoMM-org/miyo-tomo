@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.20
+# version: 0.2.21
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -79,7 +79,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.3.2")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.3.3")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -91,13 +91,14 @@ def test_help_version_was_bumped():
 
 # The one STRICT line of the skill (spec 046 T6.3): the model hand-wrote the document mark and edited meta.json
 # after a refused resume in the live walk. Its `Why:` is the one rationale the runtime text may carry.
-# Its text and the four STRICT lines of step 5 (spec 047 T6.3) are pinned in tests/test_047_skill_contract.py.
+# Its text, the four STRICT lines of step 5 (spec 047 T6.3) and the step 4 STRICT (walk F-R5-1) are pinned in
+# tests/test_047_skill_contract.py.
 
 
 def test_the_skill_carries_one_strict_line_in_the_deliver_step():
     strict = [ln for ln in _section("8. Deliver").split("# STRICT")[1:]]
     assert len(strict) == 1 and "Why:" in strict[0]
-    assert _text(SKILL).count("# STRICT") == 5
+    assert _text(SKILL).count("# STRICT") == 6
 
 
 @pytest.mark.parametrize("path", [COMMAND, SKILL], ids=["command", "skill"])

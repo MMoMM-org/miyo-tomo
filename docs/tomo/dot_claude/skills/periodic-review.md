@@ -479,6 +479,20 @@ costs 15–17 agent runs, so reading Kado again and condensing from scratch woul
   previous kind that is not set up is a state line, never a setup question (F3-AC8): the review the user asked for is
   not interrupted for a kind they did not ask about.
 
+## Why Step 4's STRICT Block (Spec 047 Walk F-R5-1)
+
+WHY: step 4 asks for one visible line after a continued read and for the printed `report` after a new one. In three
+live runs of the spec 047 walk the session summarised the `review-read.py` result only in its own thinking, wrote no
+text to the user, and went straight on to `review-digest.py plan`. The user then saw neither which days were read and
+which are missing, nor how old a continued read is, nor which previous notes were found. The unadorned bullets were observed to deviate, so the repo rule for a `STRICT` block is met (see "Why STRICT Is Rare").
+
+The owner chose a `STRICT` block over a script-rendered line: the skipped output was no text at all, not a wrong
+text, and a line rendered by the script changes what the model copies, not whether it replies before going on. The
+block names the moment ("before any command of step 5 runs") so the order is checkable in a trace, and it covers both
+bullets, the continue line and the report, since both hand the result to the same next step. Its `Why:` is the
+failure mode in one line. Pinned in `tests/test_047_skill_contract.py` (`strict-read`,
+`test_step4_holds_one_strict_after_the_ok_bullets`).
+
 ## Why the Model Writes Only `proposals.json` (ADR-12)
 
 Since spec 047 the model that writes `proposals.json` is the `review-proposer` agent, and the rationale of what it
@@ -1130,7 +1144,7 @@ dialog to call — `AskUserQuestion` is not in its tools and every question is t
 added only when a `/review` run shows a deviation of its own.
 
 Spec 047 adds the four `STRICT` blocks of step 5, each for a deviation observed in an earlier run (see "Why Step
-5's STRICT Blocks"). The first `STRICT` it carried is in step 8 (spec 046 T6.3). The 2026-11-18 live walk observed the model hand-writing the
+5's STRICT Blocks"). The walk added one in step 4 (see "Why Step 4's STRICT Block"). The first `STRICT` it carried is in step 8 (spec 046 T6.3). The 2026-11-18 live walk observed the model hand-writing the
 document mark and editing `meta.json` after a refused resume (see "Why a `stopped` Delivery Asks Retry, Drop or Abort
 in Place").
 

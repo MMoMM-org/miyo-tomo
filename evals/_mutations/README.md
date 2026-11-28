@@ -142,6 +142,8 @@ Patches whose paid RED proof has not run yet. Each row names the offline model i
 
 **Spec 047 walk F-R3b-3 (`periodic-review` 0.3.1, not run):** step 1 gained one line (the `open` entry with `new_read`); `read-day-file` and `dispatch-one-per-message` only moved their hunks by one line, so each applies with zero offset and fuzz again. Their injected text is unchanged.
 
+**Spec 047 walk F-R5-1 (`periodic-review` 0.3.3, not run):** step 4 gained a STRICT line and a blank line before it; `read-day-file` and `dispatch-one-per-message` only moved their hunks by two lines, so each applies with zero offset and fuzz again. Their injected text is unchanged.
+
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
 |---|---|---|---|
 | `--mutation read-day-file` | `review-no-stage-read` | `review-no-stage-read/1-no-stage-read-in-main` — neutral step: after reading the review language, step 5 Reads the first day file of the stage once in the main session, and the STRICT keeps only its no-helper and not-condensed parts; offline model: `read_day_file` | not yet measured |

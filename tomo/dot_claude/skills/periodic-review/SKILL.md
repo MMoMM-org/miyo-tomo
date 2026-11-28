@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, Agent
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.3.2
+# version: 0.3.3
 
 Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/confirmed-<kind>.json` yourself; the review agents of step 5 write their own files (the digests, `carryover.json`, `proposals.json`), and every other change goes through the scripts below.
 
@@ -130,6 +130,8 @@ Branch on `status` first:
 - `ok` with `nothing_to_review` true → say that no daily note of the period holds content and name the days of `report.days`; when `advice` holds `check-key-access`, add that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders. Stop; nothing is written.
 - `ok` with `continued` true → say in one line that the review continues on the read made at `read_at` and reads nothing anew; then go on with the next bullet.
 - `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes`, `monthly_status` and `monthly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `advice` holds `check-key-access`, say that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders; the user checks its access. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Print one line per entry of `report.previous`: its `kind` and `name`, its `state`, its `cause` when set, and read in part when `partly_read` is true. A `not-set-up` entry is such a line too; ask no setup question for it. Then step 5.
+
+# STRICT — before any command of step 5 runs, show the continue line or the printed `report` to the user as text in your reply. Why: the read result was summarised only in thinking, and the run went on to `plan` with nothing shown.
 
 ## 5. Propose and write the document
 

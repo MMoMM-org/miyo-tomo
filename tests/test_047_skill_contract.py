@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_047_skill_contract.py — the periodic-review skill's step 4 and step 5 on the stage (spec 047 T6.3; ADR-8,
 ADR-10; PRD F3-AC6, F3-AC8, F6-AC1, F6-AC2, F6-AC3, F6-AC4, F6-AC5, F6-AC6, F6-AC8).
 
@@ -34,7 +34,7 @@ import pytest
 
 import test_review_digest as trdg
 from review_cli_contract import REPO, parse_call
-from review_skill_helpers import SKILL, _section, _text
+from review_skill_helpers import SKILL, SKILL_WHY, _section, _text
 
 AGENTS_DIR = REPO / "tomo" / "dot_claude" / "agents"
 STEP4 = "4. Read the period"
@@ -60,8 +60,8 @@ def test_allowed_tools_add_agent():
     assert [t.strip() for t in tools.split(",")] == ["Read", "Write", "Bash", "Agent"]
 
 
-def test_carries_version_0_3_1():
-    assert re.findall(r"^# version: .*$", _text(SKILL), re.MULTILINE) == ["# version: 0.3.2"]
+def test_carries_version_0_3_3():
+    assert re.findall(r"^# version: .*$", _text(SKILL), re.MULTILINE) == ["# version: 0.3.3"]
 
 
 # ── the old read files are gone ─────────────────────────────────────────────
@@ -94,6 +94,9 @@ STRICT_STAGE = ("# STRICT — never read a stage file or search the day files wi
                 "Why: a grep fallback and self-started helpers reviewed a sample of the period while claiming the "
                 "whole.")
 STEP5_STRICTS = (STRICT_BATCH, STRICT_TYPE, STRICT_FG, STRICT_STAGE)
+STRICT_READ = ("# STRICT — before any command of step 5 runs, show the continue line or the printed `report` to the "
+               "user as text in your reply. Why: the read result was summarised only in thinking, and the run went on "
+               "to `plan` with nothing shown.")
 
 PINS = [
     ("Periodic Review", "write-rule", WRITE_RULE),
@@ -169,6 +172,7 @@ PINS = [
     (STEP5, "report-carried-moved",
      "One line per entry of `carried_moved`: `count` carried items of the section `<section heading>` of its `key` "
      "moved to the group `to`."),
+    (STEP4, "strict-read", STRICT_READ),
     (STEP8, "strict-8", STRICT_8),
 ] + [(STEP5, f"strict-{n}", s) for n, s in enumerate(STEP5_STRICTS, 1)]
 
@@ -209,6 +213,27 @@ def test_continued_read_line():
     assert text.index("- `ok` with `nothing_to_review` true →") < line < text.index("- `ok` otherwise →")
 
 
+def test_step4_holds_one_strict_after_the_ok_bullets():
+    """Walk F-R5-1: the continue line or the report is shown as text before step 5 starts; one STRICT, one `Why:`."""
+    text = _section(STEP4)
+    assert text.count("# STRICT") == 1 and text.count("Why:") == 1
+    assert text.index("- `ok` otherwise →") < text.index(STRICT_READ)
+
+
+SKILL_WHY_STRICT_READ = (
+    "## Why Step 4's STRICT Block (Spec 047 Walk F-R5-1)",
+    "In three live runs of the spec 047 walk the session summarised the `review-read.py` result only in its own "
+    "thinking, wrote no text to the user, and went straight on to `review-digest.py plan`.",
+    "The owner chose a `STRICT` block over a script-rendered line:",
+)
+
+
+@pytest.mark.parametrize("sentence", SKILL_WHY_STRICT_READ, ids=["heading", "failure", "decision"])
+def test_why_doc_records_the_step4_strict(sentence):
+    found = _flat(_text(SKILL_WHY)).count(sentence)
+    assert found == 1, f"periodic-review.md must hold {sentence!r} exactly once, found {found}"
+
+
 def test_step4_5_ask_no_new_question():
     """F3-AC8: steps 4 and 5 ask no setup question for a previous kind; the only question there is review-exists."""
     text = _section(STEP4) + _section(STEP5)
@@ -241,7 +266,7 @@ def test_step5_order():
 def test_the_strict_blocks_are_one_line_each_with_one_why():
     lines = [ln for ln in _text(SKILL).splitlines() if ln.startswith("# STRICT")]
     assert lines == [ln for ln in lines if ln.count("Why:") == 1]
-    assert sorted(lines) == sorted((*STEP5_STRICTS, STRICT_8))
+    assert sorted(lines) == sorted((*STEP5_STRICTS, STRICT_8, STRICT_READ))
 
 
 def test_every_review_digest_call_parses_with_its_argparse(monkeypatch, tmp_path):

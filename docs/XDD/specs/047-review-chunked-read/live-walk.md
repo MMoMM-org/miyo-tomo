@@ -194,7 +194,11 @@ Owner decisions: F-R3-1 — uncovered notes one item per folder with a count, no
 
 Finding F-R3b-1 (→ T9.3): `replace` wrote over Tomo's own document without `expectedModified`; Kado refuses an update of an existing file without it (CONFLICT, `concurrency-guard.ts`). Present since spec 045; the fake vault never applied Kado's guard. Fixed in a1678a69 (`review-doc.py` 0.11.2: the document's `modified` is sent; the stopped result carries `error.code`, a closed uppercase token only); the shared fake (`tests/note_fake_vault.py`) now enforces the guard. Spec review PASS, code review PASS (mutation caught).
 
-Finding F-R3b-2 (→ T9.3, found by the stricter fake): Pass 2 overwrote `<stem>_review_instructions.md` unstamped on a re-delivery and on a drop. Owner: fix now. Fixed in 0061346f (`review_state.py` 0.7.1 `md_modified`, `review_instructions_deliver.py` 0.1.2, `review-instructions.py` 0.6.2; +1 Kado call on those two paths only); the fake's exemption removed. Spec review PASS, code review PASS. Full suite 12,487 passed, 1 known failure. Replace re-run pending.
+Finding F-R3b-2 (→ T9.3, found by the stricter fake): Pass 2 overwrote `<stem>_review_instructions.md` unstamped on a re-delivery and on a drop. Owner: fix now. Fixed in 0061346f (`review_state.py` 0.7.1 `md_modified`, `review_instructions_deliver.py` 0.1.2, `review-instructions.py` 0.6.2; +1 Kado call on those two paths only); the fake's exemption removed. Spec review PASS, code review PASS. Full suite 12,487 passed, 1 known failure.
+
+Retry (2026-11-28, session 63e0739c): `/review 2026-Q1` listed the R3 document `open` and asked Continue · Start over · Abort; Continue → `parse` of the R3 document (612 kept, not approved) → stop. Nothing written; R3b stage kept.
+
+Finding F-R3b-3 (→ T9.3): a Pass 1 whose write stopped leaves `proposals.json` staged, but the open-review question had no path to write it: Continue parses the old document, Start over reads the period anew. Owner: fix the flow. Fixed in 948f8bf5 (`review_state.py` 0.7.2 `new_read` when the stage holds `proposals.json`; `periodic-review` 0.3.1 asks Replace with the new read · Continue · Start over · Abort, Replace → `replace --confirm`). Spec review PASS, code review PASS (3 mutations caught). Full suite 12,494 passed, 1 known failure. Open (minor): on that Replace path the step 5 `proposals-invalid` re-dispatch and the `previous` report lines assume `plan` and step 4 ran in the session. Replace re-run pending.
 
 ## KPI table
 

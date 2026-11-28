@@ -176,14 +176,14 @@ of the notes inside section items and 10 nowhere. Its rules allowed that — "Le
 and the one-place rule of the sections both let a growth finding vanish into a section or into nothing — so the
 pre-047 behaviour (PRD F2-AC1: the document always holds the group with every created note of the period) was lost.
 A list of every created note is data, not judgement, so a script builds it: `review-doc.py write` takes the created
-notes of the read and groups them as the digests' growth candidates group them (`lib/review_growth.py`, its WHY
-document). No created note can be dropped, and the proposer's output shrinks. The alternative — a stricter proposer rule
+notes of the read and groups them by folder (`lib/review_growth.py`, its WHY document; until F-R3b-4 by the digests'
+growth candidates). No created note can be dropped, and the proposer's output shrinks. The alternative — a stricter proposer rule
 plus a write check with one rewrite — kept the model in a step a script does exactly, and was rejected.
 
 So the shape example no longer lists `growth` and the growth rule is gone. The proposer may still name a created note
 inside a section or group item: the group lists the note regardless. A `growth` group a proposer still writes (an
 instance not yet synced) is ignored by `write`, never refused ([review_growth](../../scripts/lib/review_growth.md)).
-The digester keeps its growth candidates: they are the script's grouping and texts.
+Since F-R3b-4 (#274) the digester writes no growth candidates either; the group is the script's alone.
 
 ## WHY It Never Reads `manifest.json`
 

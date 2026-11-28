@@ -22,9 +22,8 @@ WHY: one home per rule. The schema holds what a file can say on its own —
 field names, types, caps, id and key patterns, enums. What needs the stage —
 `read_id` equal to the read, `unit` equal to the file name, `days` equal to the
 unit's taking-part days, every source inside the unit, section keys among
-`context.sections`, growth notes among the unit's created notes, carryover
-`notes` equal to the found previous notes, ids unique, no path twice in one
-`sources` list or created note twice in `growth`, the byte cap — is
+`context.sections`, carryover `notes` equal to the found previous notes, ids
+unique, no path twice in one `sources` list, the byte cap — is
 `lib/review_digest.py`'s, because a schema cannot see the stage. Neither layer
 repeats the other.
 
@@ -32,20 +31,20 @@ repeats the other.
 
 WHY: the walkthrough (b) digest writes every group, empty ones as `[]`. A
 missing group would be ambiguous — "nothing found" or "forgot to look" — and
-the proposer reads every group of every unit. Requiring all ten keys makes an
+the proposer reads every group of every unit. Requiring all nine keys makes an
 omission a retry error instead of a silent gap.
 
 ## WHY These Caps
 
-WHY: ADR-2 and ADR-4. `done` and `open` ≤ 25, `notable`, `themes`,
-`child_notes` and growth candidates ≤ 15, items per section ≤ 30, carryover
+WHY: ADR-2 and ADR-4. `done` and `open` ≤ 25, `notable`, `themes` and
+`child_notes` ≤ 15, items per section ≤ 30, carryover
 items ≤ 30. The item caps keep a digest near its byte cap (`min(8192, 114688 //
 units)`) so the proposer's input stays ≤ 112 KB; the byte cap itself is the
 script's, since it depends on the number of units. The byte cap measures the
-compact digest without the growth `notes` and the `sources` lists, because a
-digester cannot condense a path; those paths are bounded by the unit and by
-`source-duplicate` / `growth-note-duplicate` instead
-([lib/review_digest](lib/review_digest.md), amended 2026-11-26).
+compact digest without the `sources` lists, because a digester cannot
+condense a path; those paths are bounded by the unit and by `source-duplicate`
+instead ([lib/review_digest](lib/review_digest.md), amended 2026-11-26 and at
+F-R3b-4).
 
 ## WHY a Single-Day Theme Is Allowed in a Digest
 
@@ -55,14 +54,19 @@ which sees all units, can apply the two-day rule (`review_doc` checks it on
 `proposals.json`). Refusing single-day themes in a digest would lose exactly
 the cross-unit themes.
 
-## WHY Growth Candidates Carry Their Notes
+## WHY a Digest Has No `growth` Key, and a Digest With One Is Refused (F-R3b-4, #274)
 
-WHY: v1.2 (owner deviation after the T1.5 measurement). Vault growth no longer
-travels whole to the proposer; the digester condenses each day's created
-notes into candidates `{text, sources, notes}`. `notes` (1–10 created-note
-paths) is what the "Vault growth" group links; `sources` (≥ 1 day stem) is the
-day-source rule the growth group already meets in `review_doc.check_item`. A
-candidate without notes has nothing to link and is refused.
+WHY: from v1.2 to F-R3b-4 the digester condensed its unit's created notes
+into growth candidates `{text, sources, notes}` for the Vault growth group.
+Owner decision 2026-11-28 after live walk R3b: the group is built from the
+created notes' folders alone (`lib/review_growth.py`), so no step reads a
+candidate and the schema dropped the key. The schema is closed
+(`additionalProperties: false`) like every other review schema, so a digest
+that still writes `growth` — a digester of an instance not yet synced — fails
+`check` with `schema (/)` and is retried once with that error. Ignoring the
+key instead would have needed an exception to the closed style for a key the
+runtime no longer names; an unsynced instance is fixed by syncing, and the
+retry costs one haiku run.
 
 ## WHY Carryover Ids and Types Are Closed
 
@@ -133,7 +137,9 @@ WHY: F1-AC1, F1-AC6. A digest's `days` must equal its unit's taking-part days
 (`review_digest.taking_part_days`); the job names exactly those days and their
 day files, so the digester is never asked to condense an empty day nor
 handed a day outside the period. A unit without a taking-part day has no job
-at all. `growth_files` are the unit's own creation-day files from `weeks.json`.
+at all. The job names no growth file: the digester reads no created note
+(F-R3b-4); `weeks.json` still lists each unit's `growth_files`, which no job
+carries.
 
 ## WHY a Digester Job Names Its `section_files`
 
@@ -218,29 +224,14 @@ item holds no failed note's items, so the record adds nothing. The rewritten
 `carryover.json` goes through `review_stage_codec.encode` like every other
 agent-read stage file (indented, UTF-8, one encoder).
 
-## WHY a Growth-Only Digest Error Drops the Candidates, Not the Unit (Spec 047 T9.3, F-R3-2)
+## WHY the Growth-Only Drop Is Gone (Spec 047 T9.3 F-R3-2, Removed at F-R3b-4)
 
-WHY: live walk R3 (2026-Q1, owner decision). Unit 2026-W04a failed twice with
-only `schema (/growth)`, so its four days were never condensed and the
-document named them "not condensed". The digest's `growth` candidates are
-only a grouping hint: `review-doc.py write` builds the Vault growth group
-from the read itself (`lib/review_growth.py`), and a note without a candidate
-is still listed. Losing the whole unit for a bad hint lost content for
-nothing. So when every error of a digest lies under `/growth`, `check`
-rewrites the digest with `growth: []` (`review_stage_codec.encode`; ASCII
-escapes only when a lone surrogate leaves UTF-8 no way to write it) and the
-unit passes on that same check with `notices: ["growth-dropped"]`. No retry
-is spent: the digester would be asked to fix a hint the document does not
-need. A digest with any error outside `/growth` keeps the retry → failed
-rule unchanged and the file untouched.
-
-The notice is stored on the unit's job in `condensed.json` (`{state, attempts,
-notices}`), so every later `check` reports it again for the passed unit; a
-second `check` rewrites nothing. The skill needs no action for it: the unit
-passed and is in the proposer's inputs. The digest is rewritten before
-`condensed.json` is saved: a crash between the two leaves a clean digest and
-an open job, which the next `check` or `plan` passes — only the notice is
-lost, never content, and never a passed job whose file still holds the bad
-candidates. `review_growth.candidates` reads the rewritten file and finds no
-candidate of the unit. `plan` does not drop: a present invalid file stays
-pending there, as before, and the next `check` decides.
+WHY: live walk R3 (2026-Q1) lost unit 2026-W04a to two failures of only
+`schema (/growth)`, so T9.3 F-R3-2 made `check` rewrite a digest whose every
+error lay under `/growth` with `growth: []` and pass the unit with
+`notices: ["growth-dropped"]`. With the candidates gone (F-R3b-4) there is no
+`/growth` content to drop: a `growth` key is an unknown field, refused like
+any other, so `lib/review_digest.drop_growth`, `under_growth` and the
+`growth-dropped` notice went, and a unit's `check` output is `{state,
+errors?}` again. A `notices` entry an older `condensed.json` still holds is
+not repeated.

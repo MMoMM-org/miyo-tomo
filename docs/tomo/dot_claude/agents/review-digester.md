@@ -21,14 +21,14 @@ The digester is the step that reads every day file, so no day is ever sampled.
 
 WHY: one unit is what fits one context comfortably (each file ≤ 32,768 B indented, the unit ≤ 128 KB) and what
 `review-digest.py check` can judge on its own: the digest's `days` must equal the unit's taking-part days, every source
-must lie inside the unit (`source-outside-unit`, `theme-day-outside-unit`, `growth-note-outside-unit`). A digester that
+must lie inside the unit (`source-outside-unit`, `theme-day-outside-unit`). A digester that
 saw several units would blur those checks, and one failed run would cost several weeks. One unit per run also lets
 the skill send all units of a quarter in one message and retry exactly the unit that failed.
 
 ## WHY `haiku`
 
 WHY: ADR-7. The digester records what the days say — what got done, what stayed open, what recurs, what the weekly
-note holds, which notes were created on which day — without judging across the period. The judgement-heavy work
+note holds — without judging across the period. The judgement-heavy work
 (themes over all days, open against later weeks, one place per finding, carried marks) is the proposer's. Recording
 on ≤ ~120 KB of input is the cheap-model job; a quarter runs 14–16 of them, so the model choice multiplies.
 
@@ -49,14 +49,23 @@ WHY: a month's or quarter's child marks (`weekly_only` / `not_in_weekly`) compar
 weekly notes itself. A quarter's monthly notes are not unit material; they go to the proposer directly
 (`review_period.CHILD`).
 
-## WHY Growth Candidates (v1.2)
+## WHY No Growth Candidates (Owner Decision 2026-11-28, F-R3b-4, #274)
 
-WHY: owner deviation after the T1.5 measurement: a quarter's created notes measured about 157.7 KB indented, four
-times the file ceiling, so the growth list cannot travel whole to the proposer. The digester reads its unit's
-`growth/<date>.json` files and writes `growth` candidates `{text, sources, notes}`: the creation days as sources (the
-day-source rule `review_doc.check_item` already applies to the growth group) and the created notes' paths in `notes`,
-which is what the "Vault growth" group links. `check` refuses a candidate whose notes are not the unit's created notes
-or whose sources are not their creation days.
+WHY: from v1.2 (owner deviation after the T1.5 measurement, a quarter's created notes about 157.7 KB indented) the
+digester read its unit's `growth/<date>.json` files and wrote `growth` candidates `{text, sources, notes}`, and from
+T9.3 `review-doc.py write` built the "Vault growth" group from them. In live walk R3b (quarter 2026-Q1) that group was
+65 candidate items of the digester's words plus each creation day's daily link (which read like a duplicate note) and
+a folder count over only the notes no candidate held ("Calendar/301 Daily: 44 neue Notizen" while the folder held
+more). The owner found it unreadable and decided that the group is built from the folders of the created notes alone
+([review_growth](../../scripts/lib/review_growth.md)). No step reads the candidates any more, so the digester no
+longer gets `growth_files` and writes no `growth` key: its input shrinks by the unit's growth files and the cheap
+model no longer spends output on texts nobody reads. The digest schema dropped `growth` and stays closed, so a
+digester that still writes it (an instance not yet synced) fails `check` with `schema (/)` and is retried, rather than
+having the key silently ignored ([review-digest](../../scripts/review-digest.md)).
+
+The stage still writes the `growth/` files and the unit budget of `lib/review_weeks.py` still counts them with the
+unit's day files: `review_stage.load` rebuilds `read["growth"]["created"]` from them, which the group needs. A day
+with a created note also still takes part (`review_weeks.takes_part`), so its unit is digested from its day file.
 
 ## WHY the Cap
 
@@ -65,16 +74,16 @@ WHY: ADR-2. The byte cap comes with the job (`cap_bytes`, `min(8,192, 114,688 //
 digest near it. Over the cap is `digest-too-large`, a failed attempt. The agent is told the number because only the
 script knows how many units the period has.
 
-## WHY the Cap Leaves Out the Growth Notes and the Sources (T9.3)
+## WHY the Cap Leaves Out the Sources (T9.3)
 
-WHY: paths cannot be condensed — a created note's path and a day's daily path are what the proposer links, so the
-digester can shorten a text but never a path. In live run R1a (2026-W13) the digest failed `digest-too-large` twice
-at 9,404 B compact against 8,192 B: 3,243 B of it were growth (43 note paths in 8 groups) and 3,160 B the 89
-`sources` lists; without the growth `notes` and the `sources` lists it was 2,871 B. So `cap_bytes` counts the digest without the growth `notes` and without
-every `sources` list, and those paths are bounded by the data instead: each must lie in the unit (the unit checks),
-no path twice in one `sources` list (`source-duplicate`) and no created note in two growth groups
-(`growth-note-duplicate`). Step 7 tells the agent both, so its retry knows that shortening texts is the only lever
-and that repeating a path is an error, not a way to keep a source. Owner decision 2026-11-26 (spec 047 README).
+WHY: paths cannot be condensed — a day's daily path is what the proposer links, so the digester can shorten a text
+but never a path. In live run R1a (2026-W13) the digest failed `digest-too-large` twice at 9,404 B compact against
+8,192 B: 3,243 B of it were growth (43 note paths in 8 groups, gone since F-R3b-4) and 3,160 B the 89 `sources`
+lists; without both it was 2,871 B. So `cap_bytes` counts the digest without every `sources` list, and those paths
+are bounded by the data instead: each must lie in the unit (the unit checks) and no path twice in one `sources` list
+(`source-duplicate`). Step 7 tells the agent both, so its retry knows that shortening texts is the only lever and
+that repeating a path is an error, not a way to keep a source. Owner decision 2026-11-26 (spec 047 README); the
+growth `notes` exemption of that decision left with the candidates (F-R3b-4).
 
 ## WHY `tools: Read, Write` and Never Kado
 

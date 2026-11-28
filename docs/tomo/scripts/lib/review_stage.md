@@ -182,6 +182,11 @@ that; each unit then names its `day_files`, `growth_files` and its
 `weekly_note` (the `children/weekly-<week>.json` of its week, `null` without
 one), so `review-digest.py plan` hands a digester exactly its files.
 `takes_part` is `review_weeks.takes_part` with the day's created count.
+Since F-R3b-4 (#274) the digester gets no growth files: `plan` drops
+`growth_files` from the job, and the `growth/` files stay because `load`
+rebuilds `growth.created` from them for the Vault growth group
+([review_growth](review_growth.md)). The unit weight and `takes_part` still
+count them; a follow-up may drop that coupling.
 
 ## WHY Every Name From a Stage File Is Checked Whole
 

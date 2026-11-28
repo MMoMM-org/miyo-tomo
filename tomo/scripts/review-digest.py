@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-digest.py — Plan and check the condensing jobs of a /review read: digesters, carryover, the proposer's inputs.
-# version: 0.2.0
+# version: 0.3.0
 """The condensing step of /review (spec 047 T4.3; PRD F1-AC6, F6-AC1, F6-AC2, F6-AC4, F6-AC8; ADR-4, ADR-8).
 
 After ``review-read.py`` wrote the stage ``tomo-tmp/review/<stem>/``, ``plan``
@@ -16,10 +16,10 @@ Output: one JSON object on stdout, ASCII-escaped. Paths are stage-relative.
                rounds [[job]] (≤ MAX_PARALLEL jobs per round; [] when nothing is left to run),
                done [units passed], not_condensed [{unit, days}], carryover_state none|pending|retry|passed|failed,
                proposer {inputs [paths in read order], out "proposals.json", carried}
-        job:   {agent review-digester, unit, days, day_files, growth_files, weekly_note, sections,
+        job:   {agent review-digester, unit, days, day_files, weekly_note, sections,
                 section_files [the context file(s) holding sections; [] when sections is false], out, cap_bytes}
                {agent review-carryover, previous_files, out "carryover.json", cap_bytes 12288}
-    check ok:  status ok, stem, units {<unit>: {state, notices? [growth-dropped], errors?}},
+    check ok:  status ok, stem, units {<unit>: {state, errors?}},
                carryover {state, notes [{path, state, items}], errors?}, retry [{agent, unit?, errors}],
                not_condensed [{unit, days}], carry_failed, ready, proposer
     stopped:   status stopped, stem, problems [nothing-condensed], not_condensed [every unit]
@@ -30,9 +30,7 @@ Rules:
     checked without counting an attempt; a proposals.json is deleted. check: every open job spends one
     attempt — 1st failure retry, 2nd failed; a carryover passing with one note's items invalid has those
     items removed from carryover.json, after condensed.json recorded the failed note; a passed carryover
-    whose file still holds invalid items is settled again. A digest whose every error lies under /growth
-    (rd.drop_growth) is rewritten with growth [] on that check and passes with notices [growth-dropped],
-    kept in condensed.json and repeated by every later check. Only taking-part units and
+    whose file still holds invalid items is settled again. Only taking-part units and
     their taking-part days are dispatched.
 
 Exit codes:
@@ -144,14 +142,6 @@ class Stage:
     def unit_errors(self, unit: dict) -> List[str]:
         return rd.check_digest(self.text(_digest(unit)), unit, self.read, read_id=self.read_id, cap_bytes=self.cap)
 
-    def drop_growth(self, unit: dict, errors: List[str]) -> List[str]:
-        """The errors that stand; a digest whose errors all lie under /growth is rewritten with growth []."""
-        dropped, standing = rd.drop_growth(self.text(_digest(unit)), errors, unit, self.read,
-                                           read_id=self.read_id, cap_bytes=self.cap)
-        if dropped is not None:
-            atomic_write_text(self.path / _digest(unit), _encode_digest(dropped))
-        return standing
-
     def section_files(self) -> List[str]:
         """The context files (``context.json`` and its spilled parts, manifest order) holding a non-empty
         ``sections`` list."""
@@ -168,19 +158,8 @@ def _digest(unit: dict) -> str:
     return f"{review_stage.DIGESTS}/{unit['unit']}.json"
 
 
-def _encode_digest(data: dict) -> str:
-    """``encode``; ASCII-escaped when the data holds a lone surrogate UTF-8 cannot carry."""
-    text = encode(data)
-    try:
-        text.encode("utf-8")
-    except UnicodeEncodeError:
-        text = json.dumps(data, indent=1, ensure_ascii=True) + "\n"
-    return text
-
-
 def _unit_out(job: dict, errors: Sequence[str] = ()) -> dict:
-    return {"state": job["state"], **({"notices": list(job["notices"])} if job.get("notices") else {}),
-            **({"errors": list(errors)} if errors else {})}
+    return {"state": job["state"], **({"errors": list(errors)} if errors else {})}
 
 
 def _open(job: dict) -> bool:
@@ -200,7 +179,6 @@ def _digester_job(stage: Stage, unit: dict) -> dict:
     sections = bool(stage.read.get("sections"))
     return {"agent": DIGESTER, "unit": unit["unit"], "days": days,
             "day_files": [f"{review_stage.DAYS}/{d}.json" for d in days],
-            "growth_files": [f"{review_stage.GROWTH}/{n}" for n in unit.get("growth_files") or []],
             "weekly_note": f"{review_stage.CHILDREN}/{weekly}" if weekly else None,
             "sections": sections, "section_files": stage.section_files() if sections else [],
             "out": _digest(unit), "cap_bytes": stage.cap}
@@ -301,11 +279,8 @@ def check(stage: Stage) -> dict:
         if not _open(job):
             units[name] = _unit_out(job)
             continue
-        found = stage.unit_errors(unit)
-        errors = stage.drop_growth(unit, found) if found else []
+        errors = stage.unit_errors(unit)
         job = rd.advance(job, errors, count=True)
-        if found and not errors:
-            job["notices"] = [rd.GROWTH_DROPPED]
         state["units"][name] = job
         units[name] = _unit_out(job, errors)
         if job["state"] == rd.RETRY:

@@ -1,5 +1,5 @@
 # review_digest.py — file checks of a /review unit digest and the carryover; the condensed.json job state.
-# version: 0.3.0
+# version: 0.4.0
 """Digest and carryover checks for ``/review`` condensing (spec 047 T4.2; PRD F1-AC1, F6-AC1, F6-AC2; ADR-4).
 
 ``check_digest(text, unit, read, *, read_id, cap_bytes)`` gives the errors of
@@ -17,19 +17,9 @@ Errors: the file-level ``digest-missing``, ``not-json``, ``schema (<pointer>)``,
 ``<pointer>: <code>``. No error holds a value of the file.
 
 Size: ``cap_bytes`` counts the UTF-8 bytes of the digest as compact JSON
-without the growth ``notes`` and without every ``sources`` list; those paths
-are bound by ``source-duplicate`` (a path twice in one ``sources`` list) and
-``growth-note-duplicate`` (a created note listed twice in ``growth``) beside
-the unit checks; a lone surrogate counts 3 bytes. ``CARRYOVER_CAP`` counts the carryover's bytes as written.
-
-Growth: ``under_growth(error)`` is true when the error's pointer is ``/growth``
-or below it (both error forms; a bare code names no pointer).
-``drop_growth(text, errors, unit, read, *, read_id, cap_bytes)`` returns
-``(digest with growth [] or None, errors that stand)``: the digest is returned
-with ``[]`` errors when every error is under ``/growth`` and the digest
-without its growth candidates checks clean; otherwise ``None`` with the errors
-plus those the digest without its candidates still has (a schema error hides
-every later check). ``GROWTH_DROPPED`` names that outcome.
+without every ``sources`` list; those paths are bound by ``source-duplicate``
+(a path twice in one ``sources`` list) beside the unit checks; a lone
+surrogate counts 3 bytes. ``CARRYOVER_CAP`` counts the carryover's bytes as written.
 
 Job state (``condensed.json``): ``new_state(read_id, units, *, carryover)``;
 ``advance(job, errors, *, count)`` and ``advance_carryover(job, check, *,
@@ -48,7 +38,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
 from lib.review_doc import Sources, note_stem
 from lib.review_weeks import takes_part
@@ -67,9 +57,7 @@ MISSING, NOT_JSON, DIGEST_TOO_LARGE, CARRYOVER_TOO_LARGE = (
 READ_ID, UNIT, DAYS = "read-id-mismatch", "unit-mismatch", "days-mismatch"
 SOURCE_OUTSIDE, THEME_DAY_OUTSIDE, UNKNOWN_SECTION = (
     "source-outside-unit", "theme-day-outside-unit", "unknown-section")
-GROWTH_NOTE_OUTSIDE, GROWTH_SOURCE_NOT_CREATED = "growth-note-outside-unit", "growth-source-not-created-day"
-SOURCE_DUPLICATE, GROWTH_NOTE_DUPLICATE = "source-duplicate", "growth-note-duplicate"
-GROWTH_DROPPED = "growth-dropped"
+SOURCE_DUPLICATE = "source-duplicate"
 NOTES_MISMATCH, CARRY_SOURCE_UNKNOWN, CARRY_ID_DUPLICATE = (
     "carryover-notes-mismatch", "carry-source-unknown", "carry-id-duplicate")
 
@@ -113,21 +101,20 @@ def _parse(text: Optional[str], cap: int, too_large: str, schema: Path, size=_by
 
 # ---------------------------------------------------------------- digests
 
-def _without_paths(value: Any, drop: Sequence[str] = ("sources",)) -> Any:
+def _without_sources(value: Any) -> Any:
     if isinstance(value, dict):
-        return {k: _without_paths(v, ("sources", "notes") if k == "growth" else drop)
-                for k, v in value.items() if k not in drop}
+        return {k: _without_sources(v) for k, v in value.items() if k != "sources"}
     if isinstance(value, list):
-        return [_without_paths(v, drop) for v in value]
+        return [_without_sources(v) for v in value]
     return value
 
 
 def digest_bytes(_text: str, data: Any) -> int:
-    """What ``cap_bytes`` measures: the compact UTF-8 JSON without growth ``notes`` and ``sources`` lists.
+    """What ``cap_bytes`` measures: the compact UTF-8 JSON without its ``sources`` lists.
 
     A lone surrogate (a ``\\ud800`` escape ``json.loads`` accepts) counts 3 bytes, like any code point of its range.
     """
-    compact = json.dumps(_without_paths(data), ensure_ascii=False, separators=(",", ":"))
+    compact = json.dumps(_without_sources(data), ensure_ascii=False, separators=(",", ":"))
     return len(compact.encode("utf-8", errors="surrogatepass"))
 
 
@@ -149,14 +136,12 @@ def _weekly_stems(unit: Mapping[str, Any], read: Mapping[str, Any]) -> Set[str]:
 
 
 class _Unit:
-    """What a source, a day and a created note of one unit may be."""
+    """What a source and a day of one unit may be."""
 
     def __init__(self, unit: Mapping[str, Any], read: Mapping[str, Any]):
         self.days = set(unit.get("days") or [])
         self.sources = Sources.of(dict(read))
         self.weekly = _weekly_stems(unit, read)
-        self.created = {str(c["path"]): str(c.get("day")) for c in (read.get("growth") or {}).get("created") or []
-                        if str(c.get("day")) in self.days}
 
     def day_of(self, source: str) -> Optional[str]:
         daily = self.sources.daily_of(source)
@@ -178,23 +163,6 @@ def _check_sources(scope: _Unit, at: List[Any], sources: List[str], weekly_ok: b
     return [_err(at + [j], SOURCE_OUTSIDE) for j, s in enumerate(sources)
             if scope.day_of(s) is None and not (weekly_ok and s.strip() in scope.weekly)
             ] + _duplicates(at, sources, set(), SOURCE_DUPLICATE)
-
-
-def _check_growth(scope: _Unit, i: int, candidate: dict, listed: Set[str]) -> List[str]:
-    errors = _duplicates(["growth", i, "notes"], candidate["notes"], listed, GROWTH_NOTE_DUPLICATE)
-    created_days = set()
-    for j, path in enumerate(candidate["notes"]):
-        if path in scope.created:
-            created_days.add(scope.created[path])
-        else:
-            errors.append(_err(["growth", i, "notes", j], GROWTH_NOTE_OUTSIDE))
-    for j, source in enumerate(candidate["sources"]):
-        day = scope.day_of(source)
-        if day is None:
-            errors.append(_err(["growth", i, "sources", j], SOURCE_OUTSIDE))
-        elif day not in created_days:
-            errors.append(_err(["growth", i, "sources", j], GROWTH_SOURCE_NOT_CREATED))
-    return errors + _duplicates(["growth", i, "sources"], candidate["sources"], set(), SOURCE_DUPLICATE)
 
 
 def check_digest(text: Optional[str], unit: Mapping[str, Any], read: Mapping[str, Any], *, read_id: str,
@@ -223,33 +191,7 @@ def check_digest(text: Optional[str], unit: Mapping[str, Any], read: Mapping[str
             errors.append(_err(["sections", i, "key"], UNKNOWN_SECTION))
         for k, entry in enumerate(section["items"]):
             errors += _check_sources(scope, ["sections", i, "items", k, "sources"], entry["sources"], False)
-    listed: Set[str] = set()
-    for i, candidate in enumerate(data["growth"]):
-        errors += _check_growth(scope, i, candidate, listed)
     return errors
-
-
-def under_growth(error: str) -> bool:
-    """The error's pointer (``schema (<pointer>)`` or ``<pointer>: <code>``) is ``/growth`` or below it."""
-    if error.startswith("schema (") and error.endswith(")"):
-        pointer = error[len("schema ("):-1]
-    else:
-        pointer = error.partition(": ")[0]
-    return pointer == "/growth" or pointer.startswith("/growth/")
-
-
-def drop_growth(text: Optional[str], errors: Sequence[str], unit: Mapping[str, Any], read: Mapping[str, Any], *,
-                read_id: str, cap_bytes: int) -> Tuple[Optional[dict], List[str]]:
-    """``(the digest with growth [], [])`` when every error is under ``/growth`` and the rest checks clean;
-    else ``(None, the errors plus those the digest without its candidates still has)``."""
-    if not errors or text is None or not all(under_growth(e) for e in errors):
-        return None, list(errors)
-    data = json.loads(text)
-    dropped = {**data, "growth": []}
-    rest = check_digest(json.dumps(dropped), unit, read, read_id=read_id, cap_bytes=cap_bytes)
-    if rest:
-        return None, list(errors) + [e for e in rest if e not in errors]
-    return dropped, []
 
 
 # ---------------------------------------------------------------- carryover

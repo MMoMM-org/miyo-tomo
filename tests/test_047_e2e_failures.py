@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_047_e2e_failures.py — failure, resume and re-review of /review end to end on the new flow
 (spec 047 T8.2; PRD F3-AC1, F3-AC11, F4-AC9, F5-AC6, F6-AC1..F6-AC8, F7-AC2, F2-AC1; SDD Complex Logic (b), (c),
 (d), Error Handling).
@@ -31,15 +31,16 @@ test is about what reaches it. Pinned here:
   after `finish()` and found (T3.2 carry-over);
 - a found note that carried nothing: `written.previous` `found, carried 0` and its line (F3-AC11, T5.6
   carry-over);
-- vault growth: created notes on two days of two units reach the proposer as each unit's growth candidates and
-  the written group is the group of the notes the read lists, by creation day (F2-AC1, T8.1 carry-over).
+- vault growth: created notes on two days of two units never reach the proposer (no digest carries growth,
+  F-R3b-4) and the written group is the group of the notes the read lists, one item per folder (F2-AC1, T8.1
+  carry-over).
 
 The growth group's "before" (T8.1 carry-over): no pre-047 growth path remains to run — spec 046's growth group
 was model-written from read.json's `growth.created` (path and links, no creation day), so there is no 046
 renderer input to replay. The expected group is derived explicitly instead: the created notes the period
-reader lists (`review-read.py`'s `_read`, `growth.created`) by the creation day of their `created` stamp, one
-item per day (the fixture digester's one candidate per day) linking that day's notes and then its daily, in day
-order. Since spec 047 T9.3 (F-R1-3) `review-doc.py write` builds this group; the fixture proposer proposes none.
+reader lists (`review-read.py`'s `_read`, `growth.created`), one item for their folder linking them in path
+order (spec 047 F-R3b-4). Since spec 047 T9.3 (F-R1-3) `review-doc.py write` builds this group; the fixture
+proposer proposes none.
 
 All data is synthetic. Every write a walk attempts lies under the inbox (the `make_walk` fixture).
 """
@@ -546,7 +547,7 @@ def _growth_lines(document: str) -> List[str]:
     return [re.sub(r"\s*%%t\d+%%$", "", line) for line in part.split("\n") if line.startswith("- [")]
 
 
-def test_vault_growth_reaches_the_proposer_per_unit_and_is_the_group_the_read_lists(make_walk):
+def test_vault_growth_never_reaches_the_proposer_and_is_the_group_the_read_lists(make_walk):
     w = make_walk(MONTH_CASE)
     for path, day in CREATED.items():
         w.vault.files[path] = f"# {Path(path).stem}\nnew note\n"
@@ -557,19 +558,14 @@ def test_vault_growth_reaches_the_proposer_per_unit_and_is_the_group_the_read_li
 
     def proposer(props: dict, stage: Path, inputs: list) -> dict:
         for name in (n for n in inputs if n.startswith("digests/")):
-            growth = json.loads((stage / name).read_text(encoding="utf-8"))["growth"]
-            if growth:
-                seen[name[len("digests/"):-len(".json")]] = [(c["sources"], sorted(c["notes"])) for c in growth]
+            seen[name] = sorted(json.loads((stage / name).read_text(encoding="utf-8")))
         return propose_from_inputs(props, stage, inputs)
 
     assert w.read(MONTH_PERIOD, MONTH)["report"]["growth"]["created"] == len(CREATED)
     out = w.write(MONTH_STEM, MONTH, proposer=proposer)
-    assert out["status"] == "written" and out["counts"]["growth"] == 2, out
-    assert seen == {"2026-W11": [(["2026-03-10"], ["Notes/Kettle descaling.md"])],
-                    "2026-W13": [(["2026-03-24"], ["Notes/Bike chain.md", "Notes/Bike tyres.md"])]}
-    days = sorted({CREATED[c["path"]] for c in listed})
-    notes = {day: sorted(Path(c["path"]).stem for c in listed if CREATED[c["path"]] == day) for day in days}
+    assert out["status"] == "written" and out["counts"]["growth"] == 1, out
+    assert seen and all("growth" not in keys for keys in seen.values()), seen
+    notes = sorted(c["path"] for c in listed)
     assert _growth_lines(w.doc(MONTH_DOC)) == [
-        f"- [x] created condensed ({', '.join(f'[[{n}]]' for n in notes[day])}, [[{day}]])" for day in days]
-    assert fingerprint(w.doc(MONTH_DOC))["links"]["growth"] == [["other"] * len(notes[day]) + ["daily"]
-                                                               for day in days]
+        f"- [x] Notes ({', '.join(f'[[{Path(n).stem}]]' for n in notes)})"]
+    assert fingerprint(w.doc(MONTH_DOC))["links"]["growth"] == [["other"] * len(notes)]

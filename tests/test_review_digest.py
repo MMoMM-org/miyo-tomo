@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test_review_digest.py — spec 047 T4.2/T4.3: digest and carryover file checks, the condensed.json job state,
 the ``review-digest.py plan | check`` CLI.
 
@@ -16,13 +16,11 @@ Mechanisms a mutation of ``lib/review_digest.py`` falsifies:
 - every source a daily of the unit — a W14 day in W13's digest is refused;
 - the unit's weekly-note stem accepted in ``child_notes`` only;
 - theme days and section keys inside the unit / the mapping;
-- growth ``notes`` ⊆ the unit's created notes and each growth source a day on
-  which one of its notes was created — a growth source outside the unit is
-  refused as outside, not as a day without a created note;
-- the byte caps: digest ``cap_bytes`` on the compact digest without its growth ``notes`` and ``sources``
-  lists (T9.3, R1a), carryover ``CARRYOVER_CAP`` on the bytes as written; no path twice in one ``sources``
-  list (after ``strip()``), no created note twice in ``growth`` (same or another group); a lone
-  surrogate counts 3 bytes and never raises;
+- a digest with a ``growth`` key is refused by the schema (spec 047 F-R3b-4, #274: the digester writes
+  no growth candidates);
+- the byte caps: digest ``cap_bytes`` on the compact digest without its ``sources`` lists (T9.3, R1a),
+  carryover ``CARRYOVER_CAP`` on the bytes as written; no path twice in one ``sources`` list (after
+  ``strip()``); a lone surrogate counts 3 bytes and never raises;
 - carryover notes == the found previous notes, sources among them, ids unique;
 - the state model: 1st counted failure ``retry``, 2nd ``failed``; a valid file
   passes, without an attempt when not counted; an invalid one is not touched
@@ -36,8 +34,7 @@ SDD Internal API Changes, Complex Logic (b), (c), (d), ADR-4, ADR-8). Stages are
 found), 2026-03 (six units W09 … W14, previous month found, previous quarter missing) and 2026-Q1
 (14 units, no previous note found). Mechanisms a mutation of the script falsifies:
 - the rounds: one round up to ``MAX_PARALLEL`` jobs, a second above it;
-- only taking-part units and their taking-part days are dispatched; growth files of the unit's
-  creation days only; the job fields;
+- only taking-part units and their taking-part days are dispatched; the job fields (no ``growth_files``);
 - the proposer's inputs in read order: context, passed digests, the passed carryover, the marked
   child level; never the manifest, a day or a growth file; ``carried`` follows the carryover;
 - plan validates present files without an attempt, re-offers a unit failed in an earlier session,
@@ -50,9 +47,8 @@ found), 2026-03 (six units W09 … W14, previous month found, previous quarter m
   ``carryover.json``, which is written with ``review_stage_codec.encode``; a crash between the two
   writes and a second check keeps the failed note and its removed items;
 - the three refusals; no note text on stdout or stderr;
-- (T9.3 F-R3-2) every error under ``/growth`` → the digest rewritten with ``growth: []`` and the unit
-  ``passed`` with ``notices [growth-dropped]`` on the first check, kept by later checks; an error
-  outside ``/growth`` (or one a schema error hid) → retry as before, the digest untouched.
+- (F-R3b-4) a digest that still carries ``growth`` → retry with ``schema (/)``, the digest untouched;
+  no unit output carries ``notices``.
 """
 from __future__ import annotations
 
@@ -116,8 +112,6 @@ W13_DIGEST = {
     "themes": [{"text": f"Sleep {SECRET}", "days": ["2026-03-23"], "sources": ["2026-03-23"]}],
     "sections": [{"key": "s1", "items": [{"text": f"Kept calm {SECRET}", "sources": ["2026-03-26"]}]}],
     "child_notes": [{"text": f"Weekly says {SECRET}", "sources": ["2026-W13"]}],
-    "growth": [{"text": f"Two new notes {SECRET}", "sources": ["2026-03-25", "2026-03-29"],
-                "notes": ["Notes/Alpha.md", "Notes/Beta.md"]}],
 }
 CARRYOVER = {
     "read_id": R,
@@ -166,8 +160,7 @@ def test_the_w13_digest_passes():
 def test_the_w14_digest_of_walkthrough_b_passes():
     digest = {"read_id": R, "unit": "2026-W14", "days": W14_DAYS,
               "done": [{"text": "5 km run", "sources": ["2026-03-31"]}], "open": [], "themes": [], "sections": [],
-              "child_notes": [], "notable": [],
-              "growth": [{"text": "Gamma", "sources": ["2026-03-31"], "notes": ["Notes/Gamma.md"]}]}
+              "child_notes": [], "notable": []}
     assert rd.check_digest(_text(digest), W14, READ, read_id=R, cap_bytes=CAP) == []
 
 
@@ -187,7 +180,8 @@ def _drop_day(d):
 
 DIGEST_CASES = [
     ("digest-missing", NO_FILE, ["digest-missing"]),
-    ("schema", lambda d: d.pop("growth"), ["schema (/)"]),
+    ("schema", lambda d: d.pop("themes"), ["schema (/)"]),
+    ("schema-growth-is-unknown", lambda d: d.update(growth=[]), ["schema (/)"]),
     ("schema-nested", lambda d: d["done"][0].update(text=""), ["schema (/done/0/text)"]),
     ("read-id-mismatch", lambda d: d.update(read_id="other"), ["/read_id: read-id-mismatch"]),
     ("unit-mismatch", lambda d: d.update(unit="2026-W14"), ["/unit: unit-mismatch"]),
@@ -203,23 +197,8 @@ DIGEST_CASES = [
     ("theme-day-outside-unit", lambda d: d["themes"][0]["days"].append("2026-03-31"),
      ["/themes/0/days/1: theme-day-outside-unit"]),
     ("unknown-section", lambda d: d["sections"][0].update(key="s9"), ["/sections/0/key: unknown-section"]),
-    ("growth-note-outside-unit-w14", lambda d: d["growth"][0]["notes"].append("Notes/Gamma.md"),
-     ["/growth/0/notes/2: growth-note-outside-unit"]),
-    ("growth-note-outside-unit-not-created", lambda d: d["growth"][0]["notes"].append("Notes/Old.md"),
-     ["/growth/0/notes/2: growth-note-outside-unit"]),
-    ("growth-source-not-created-day", lambda d: d["growth"][0]["sources"].append("2026-03-24"),
-     ["/growth/0/sources/2: growth-source-not-created-day"]),
-    ("growth-source-outside-unit", lambda d: d["growth"][0]["sources"].__setitem__(0, "2026-03-30"),
-     ["/growth/0/sources/0: source-outside-unit"]),
     ("source-duplicate", lambda d: d["done"][0]["sources"].append("2026-03-24"),
      ["/done/0/sources/1: source-duplicate"]),
-    ("source-duplicate-growth", lambda d: d["growth"][0]["sources"].append("2026-03-25"),
-     ["/growth/0/sources/2: source-duplicate"]),
-    ("growth-note-duplicate", lambda d: d["growth"].append(
-        {"text": "Alpha again", "sources": ["2026-03-25"], "notes": ["Notes/Alpha.md"]}),
-     ["/growth/1/notes/0: growth-note-duplicate"]),
-    ("growth-note-duplicate-same-group", lambda d: d["growth"][0]["notes"].append("Notes/Alpha.md"),
-     ["/growth/0/notes/2: growth-note-duplicate"]),
     ("source-duplicate-after-strip", lambda d: d["open"][0]["sources"].insert(0, " " + DAILY.format("2026-03-25")),
      ["/open/0/sources/1: source-duplicate"]),
 ]
@@ -240,12 +219,11 @@ def _measured(data) -> int:
 
 
 def test_digest_bytes_counts_a_tiny_digest_by_hand():
-    """``{"done":[{"text":"é","notes":["n"]}],"growth":[{"text":"a"}]}``: 61 characters, ``é`` 2 bytes → 62.
+    """``{"done":[{"text":"é","notes":["n"]}]}``: 37 characters, ``é`` 2 bytes → 38.
 
-    ``notes`` outside ``growth`` stays in the measure."""
-    tiny = {"done": [{"text": "é", "sources": ["x"], "notes": ["n"]}],
-            "growth": [{"text": "a", "sources": ["y"], "notes": ["z"]}]}
-    assert rd.digest_bytes("", tiny) == 62
+    Only ``sources`` lists leave the measure; any other list (here ``notes``) stays in it."""
+    tiny = {"done": [{"text": "é", "sources": ["x"], "notes": ["n"]}]}
+    assert rd.digest_bytes("", tiny) == 38
 
 
 def test_digest_bytes_counts_a_lone_surrogate_as_three_bytes():
@@ -260,7 +238,7 @@ def test_a_lone_surrogate_escape_is_checked_not_raised():
     assert rd.check_digest(text, W13, READ, read_id=R, cap_bytes=10) == ["digest-too-large"]
 
 
-def test_growth_notes_and_sources_do_not_count_toward_the_cap():
+def test_sources_lists_do_not_count_toward_the_cap():
     size = _measured(W13_DIGEST)
     assert len(_text(W13_DIGEST).encode("utf-8")) > size
     assert rd.check_digest(_text(W13_DIGEST), W13, READ, read_id=R, cap_bytes=size) == []
@@ -278,20 +256,9 @@ def test_indentation_does_not_count_toward_the_cap():
         assert rd.check_digest(text, W13, READ, read_id=R, cap_bytes=size) == [], indent
 
 
-R1A_NOTE = "Notes/2026-03 Import/Created note number {:02d} of the bulk import.md"
-R1A_GROUPS = [6, 6, 6, 5, 5, 5, 5, 5]   # 43 created notes in 8 growth groups
-
-
 def _r1a():
-    """A 2026-W13 read and digest shaped like live run R1a: 43 created notes in 8 growth groups, 89 sources lists."""
+    """A 2026-W13 digest shaped like live run R1a without its growth candidates: 81 sources lists."""
     read = copy.deepcopy(READ)
-    notes, groups = iter(range(sum(R1A_GROUPS))), []
-    read["growth"]["created"] = []
-    for g, size in enumerate(R1A_GROUPS):
-        day = W13_TAKING[g % len(W13_TAKING)]
-        paths = [R1A_NOTE.format(next(notes)) for _ in range(size)]
-        read["growth"]["created"] += [{"path": p, "links": [], "day": day} for p in paths]
-        groups.append({"text": f"Import {g}", "sources": [DAILY.format(day)], "notes": paths})
     content = [d for d in W13_TAKING if d != "2026-03-29"]
 
     def entries(n, word):
@@ -301,22 +268,22 @@ def _r1a():
     digest = {"read_id": R, "unit": "2026-W13", "days": W13_TAKING,
               "done": entries(25, "Done"), "open": entries(25, "Open"), "notable": entries(15, "Note"),
               "themes": [dict(e, days=[content[i % 5]]) for i, e in enumerate(entries(10, "Theme"))],
-              "sections": [{"key": "s1", "items": entries(6, "Calm")}], "child_notes": [], "growth": groups}
+              "sections": [{"key": "s1", "items": entries(6, "Calm")}], "child_notes": []}
     return read, digest
 
 
 def test_an_r1a_shaped_week_passes_the_cap():
     read, digest = _r1a()
     text = _text(digest)
-    lists = sum(len(digest[g]) for g in ("done", "open", "notable", "themes", "growth")) + 6
-    assert (lists, sum(len(g["notes"]) for g in digest["growth"])) == (89, 43)
-    assert len(text.encode("utf-8")) > CAP and _measured(digest) < 3_500
+    lists = sum(len(digest[g]) for g in ("done", "open", "notable", "themes")) + 6
+    assert lists == 81
+    assert len(text.encode("utf-8")) > 2 * _measured(digest) and _measured(digest) < 3_500
     assert rd.check_digest(text, W13, read, read_id=R, cap_bytes=CAP) == []
 
 
 def test_the_weekly_stem_of_another_unit_is_outside():
     digest = {"read_id": R, "unit": "2026-W14", "days": W14_DAYS, "done": [], "open": [], "themes": [],
-              "sections": [], "notable": [], "growth": [],
+              "sections": [], "notable": [],
               "child_notes": [{"text": "x", "sources": ["2026-W13"]}]}
     assert rd.check_digest(_text(digest), W14, READ, read_id=R, cap_bytes=CAP) == [
         "/child_notes/0/sources/0: source-outside-unit"]
@@ -616,7 +583,7 @@ def _units(stage: Path) -> list:
 def _empty_digest(stage: Path, unit: dict, **groups) -> dict:
     loaded = rs.load(stage)
     data = {"read_id": _read_id(stage), "unit": unit["unit"], "days": rd.taking_part_days(unit, loaded),
-            "done": [], "open": [], "notable": [], "themes": [], "sections": [], "child_notes": [], "growth": []}
+            "done": [], "open": [], "notable": [], "themes": [], "sections": [], "child_notes": []}
     data.update(groups)
     return data
 
@@ -658,7 +625,7 @@ def test_plan_w14_is_one_round_of_its_digester_and_the_carryover(tmp_path, capsy
     assert out["read_at"] == json.loads((stage / "manifest.json").read_text())["read_at"]
     assert out["rounds"] == [[
         {"agent": "review-digester", "unit": "2026-W14", "days": ["2026-03-30", "2026-03-31"],
-         "day_files": ["days/2026-03-30.json", "days/2026-03-31.json"], "growth_files": [], "weekly_note": None,
+         "day_files": ["days/2026-03-30.json", "days/2026-03-31.json"], "weekly_note": None,
          "sections": False, "section_files": [], "out": "digests/2026-W14.json", "cap_bytes": 8192},
         {"agent": "review-carryover", "previous_files": ["previous/week-2026-W13.json", "previous/month-2026-02.json"],
          "out": "carryover.json", "cap_bytes": 12288}]]
@@ -682,9 +649,8 @@ def test_plan_march_dispatches_six_digesters_and_the_carryover_of_the_found_note
     assert "days/2026-03-28.json" not in by_unit["2026-W13"]["day_files"]
     assert by_unit["2026-W13"]["weekly_note"] == "children/weekly-2026-W13.json"
     assert by_unit["2026-W12"]["weekly_note"] is None
-    # the creation day's growth file goes to its unit only
-    assert by_unit["2026-W11"]["growth_files"] == ["growth/2026-03-10.json"]
-    assert [u for u, j in by_unit.items() if j["growth_files"]] == ["2026-W11"]
+    # no job names a growth file: the digester reads no created note (F-R3b-4)
+    assert not any("growth_files" in j for j in jobs)
     assert by_unit["2026-W14"]["days"] == ["2026-03-30", "2026-03-31"]       # clipped to the month
     assert jobs[-1]["previous_files"] == ["previous/month-2026-02.json"]     # the missing quarter is no input
     assert {j["cap_bytes"] for j in jobs[:-1]} == {json.loads((stage / "weeks.json").read_text())["digest_cap_bytes"]}
@@ -1039,95 +1005,12 @@ def test_an_unexpected_exception_leaves_only_its_class_name(tmp_path, capsys, mo
     assert (out, err) == ("", "RuntimeError\n")
 
 
-# ================================================================ T9.3 F-R3-2: a growth-only error drops the candidates
+# ================================================================ F-R3b-4: the digest carries no growth candidates
 
-ALPHA = {"text": f"Alpha {SECRET}", "sources": ["2026-03-25"], "notes": ["Notes/Alpha.md"]}
-
-
-def _drop(mutate=None, cap=CAP):
-    """``drop_growth`` on a mutated copy of W13_DIGEST, with the errors ``check_digest`` gives it."""
-    data = copy.deepcopy(W13_DIGEST)
-    if mutate:
-        mutate(data)
-    text = _text(data)
-    errors = rd.check_digest(text, W13, READ, read_id=R, cap_bytes=cap)
-    return errors, rd.drop_growth(text, errors, W13, READ, read_id=R, cap_bytes=cap)
-
-
-def _sixteen(d):
-    d["growth"] = [dict(ALPHA, text=f"Alpha {i}") for i in range(16)]
-
-
-def _eleven_notes(d):
-    d["growth"][0]["notes"] = [f"Notes/N{i}.md" for i in range(11)]
-
-
-DROP_CASES = [
-    ("sixteen-candidates", _sixteen, ["schema (/growth)"]),
-    ("eleven-notes", _eleven_notes, ["schema (/growth/0/notes)"]),
-    ("growth-note-duplicate", lambda d: d["growth"].append(ALPHA), ["/growth/1/notes/0: growth-note-duplicate"]),
-    ("growth-source-not-created-day", lambda d: d["growth"][0]["sources"].append("2026-03-24"),
-     ["/growth/0/sources/2: growth-source-not-created-day"]),
-    ("growth-note-outside-unit", lambda d: d["growth"][0]["notes"].append("Notes/Gamma.md"),
-     ["/growth/0/notes/2: growth-note-outside-unit"]),
-]
-
-
-@pytest.mark.parametrize("name,mutate,expected", DROP_CASES, ids=[c[0] for c in DROP_CASES])
-def test_a_growth_only_error_drops_the_candidates_and_keeps_the_rest(name, mutate, expected):
-    errors, (dropped, standing) = _drop(mutate)
-    assert errors == expected, "fixture: the error lies under /growth only"
-    assert standing == []
-    assert dropped == dict(copy.deepcopy(W13_DIGEST), growth=[])
-    assert list(dropped) == list(W13_DIGEST), "key order kept"
-    assert rd.check_digest(_text(dropped), W13, READ, read_id=R, cap_bytes=CAP) == []
-
-
-def _mixed_schema(d):
-    _sixteen(d)
-    d["sections"][0]["key"] = "bad"
-
-
-def _mixed_check(d):
-    d["growth"].append(ALPHA)
-    d["done"][0]["sources"] = ["2026-03-30"]
-
-
-def _hidden_days(d):
-    _sixteen(d)
-    _drop_day(d)
-
-
-KEEP_CASES = [
-    ("mixed-schema", _mixed_schema, CAP, ["schema (/growth)", "schema (/sections/0/key)"],
-     ["schema (/growth)", "schema (/sections/0/key)"]),
-    ("mixed-check", _mixed_check, CAP, ["/done/0/sources/0: source-outside-unit",
-                                        "/growth/1/notes/0: growth-note-duplicate"],
-     ["/done/0/sources/0: source-outside-unit", "/growth/1/notes/0: growth-note-duplicate"]),
-    # the schema error hid the days check: the digest without its growth would still fail it
-    ("hidden-behind-the-schema", _hidden_days, CAP, ["schema (/growth)"],
-     ["schema (/growth)", "/days: days-mismatch"]),
-    ("too-large-and-growth", lambda d: d["growth"].append(ALPHA), 100,
-     ["digest-too-large", "/growth/1/notes/0: growth-note-duplicate"],
-     ["digest-too-large", "/growth/1/notes/0: growth-note-duplicate"]),
-    ("no-error", None, CAP, [], []),
-]
-
-
-@pytest.mark.parametrize("name,mutate,cap,expected,standing", KEEP_CASES, ids=[c[0] for c in KEEP_CASES])
-def test_an_error_outside_growth_keeps_the_digest(name, mutate, cap, expected, standing):
-    errors, result = _drop(mutate, cap=cap)
-    assert errors == expected
-    assert result == (None, standing)
-
-
-@pytest.mark.parametrize("error,under", [
-    ("schema (/growth)", True), ("schema (/growth/3/notes)", True), ("/growth/0/notes/2: growth-note-duplicate", True),
-    ("/growth/1/sources/0: source-outside-unit", True), ("schema (/)", False), ("schema (/sections/0/key)", False),
-    ("/days: days-mismatch", False), ("digest-too-large", False), ("digest-missing", False), ("not-json", False),
-    ("/growthy: x", False), ("schema (/growthy)", False)])
-def test_under_growth_reads_the_pointer_of_both_error_forms(error, under):
-    assert rd.under_growth(error) is under
+def test_the_growth_drop_is_gone_from_the_lib():
+    assert not any(hasattr(rd, name) for name in ("drop_growth", "under_growth", "GROWTH_DROPPED",
+                                                  "GROWTH_NOTE_OUTSIDE", "GROWTH_SOURCE_NOT_CREATED",
+                                                  "GROWTH_NOTE_DUPLICATE"))
 
 
 def _growth_stage(tmp_path: Path) -> Path:
@@ -1137,86 +1020,18 @@ def _growth_stage(tmp_path: Path) -> Path:
         previous=[_missing("month", "2026-02")], sections=_section_rows(1)))
 
 
-def _w11(stage: Path) -> dict:
-    return next(u for u in _units(stage) if u["unit"] == "2026-W11")
-
-
-def _w11_digest(stage: Path, growth) -> dict:
-    return _empty_digest(stage, _w11(stage), done=[{"text": f"run {SECRET}", "sources": ["2026-03-10"]}],
-                         sections=[{"key": "s1", "items": [{"text": f"kept {SECRET}", "sources": ["2026-03-11"]}]}],
-                         growth=growth)
-
-
-ALPHA_W11 = {"text": f"Alpha {SECRET}", "sources": ["2026-03-10"], "notes": ["Notes/Alpha.md"]}
-SIXTEEN_W11 = [dict(ALPHA_W11, text=f"Alpha {i}") for i in range(16)]
-
-
-def _growth_check(tmp_path, capsys, growth, mutate=None):
+def test_check_retries_a_digest_that_still_carries_growth_and_leaves_it(tmp_path, capsys):
     stage = _growth_stage(tmp_path)
     _plan(capsys, stage)
     _write_digests(stage)
-    digest = _w11_digest(stage, growth)
-    if mutate:
-        mutate(digest)
+    w11 = next(u for u in _units(stage) if u["unit"] == "2026-W11")
+    digest = _empty_digest(stage, w11, done=[{"text": f"run {SECRET}", "sources": ["2026-03-10"]}],
+                           growth=[{"text": f"Alpha {SECRET}", "sources": ["2026-03-10"], "notes": ["Notes/Alpha.md"]}])
     _put(stage, "digests/2026-W11.json", digest)
-    return stage, digest, _check(capsys, stage)
-
-
-@pytest.mark.parametrize("growth", [SIXTEEN_W11, [dict(ALPHA_W11, notes=["Notes/Alpha.md"] * 11)],
-                                    [ALPHA_W11, ALPHA_W11]], ids=["sixteen", "eleven-notes", "note-duplicate"])
-def test_check_passes_a_growth_only_unit_with_the_notice_and_empties_its_growth(tmp_path, capsys, growth):
-    from lib.review_stage_codec import encode
-    stage, digest, out = _growth_check(tmp_path, capsys, growth)
-    assert out["units"]["2026-W11"] == {"state": "passed", "notices": ["growth-dropped"]}
-    assert all(r.get("unit") != "2026-W11" for r in out["retry"])
-    assert out["not_condensed"] == [] and "digests/2026-W11.json" in out["proposer"]["inputs"]
-    text = (stage / "digests/2026-W11.json").read_text(encoding="utf-8")
-    assert json.loads(text) == dict(digest, growth=[]) and text == encode(json.loads(text))
-    assert json.loads(text)["sections"] == digest["sections"] and json.loads(text)["done"] == digest["done"]
-    assert _condensed(stage)["units"]["2026-W11"] == {"state": "passed", "attempts": 1, "notices": ["growth-dropped"]}
-    assert rd.check_digest(text, _w11(stage), rs.load(stage), read_id=_read_id(stage),
-                           cap_bytes=json.loads((stage / "weeks.json").read_text())["digest_cap_bytes"]) == [], \
-        "the rewritten digest passes the cap and every check"
-
-
-def test_the_growth_group_sees_no_candidate_of_a_dropped_unit(tmp_path, capsys):
-    from lib import review_growth
-    stage, _, out = _growth_check(tmp_path, capsys, SIXTEEN_W11)
-    assert out["units"]["2026-W11"]["state"] == "passed", "candidates reads only a passed unit's digest"
-    assert review_growth.candidates(stage, rs.load(stage)) == []
-
-
-def test_a_second_check_keeps_the_notice_and_changes_nothing(tmp_path, capsys):
-    stage, _, first = _growth_check(tmp_path, capsys, SIXTEEN_W11)
-    text, state = (stage / "digests/2026-W11.json").read_text(encoding="utf-8"), _condensed(stage)
-    second = _check(capsys, stage)
-    assert second["units"]["2026-W11"] == first["units"]["2026-W11"] == {"state": "passed",
-                                                                         "notices": ["growth-dropped"]}
-    assert (stage / "digests/2026-W11.json").read_text(encoding="utf-8") == text and _condensed(stage) == state
-    assert _plan(capsys, stage)["done"] == MARCH_UNITS and _condensed(stage)["units"]["2026-W11"] == state["units"][
-        "2026-W11"], "plan keeps the passed job and its notice"
-
-
-def test_a_mixed_growth_and_sections_error_retries_and_leaves_the_digest(tmp_path, capsys):
-    def bad_key(d):
-        d["sections"][0]["key"] = "bad"
-    stage, _, out = _growth_check(tmp_path, capsys, SIXTEEN_W11, mutate=bad_key)
-    errors = ["schema (/growth)", "schema (/sections/0/key)"]
-    assert out["units"]["2026-W11"] == {"state": "retry", "errors": errors}
-    assert {"agent": "review-digester", "unit": "2026-W11", "errors": errors} in out["retry"]
     before = (stage / "digests/2026-W11.json").read_text(encoding="utf-8")
-    assert len(json.loads(before)["growth"]) == 16, "the digest is untouched"
-    assert _check(capsys, stage)["units"]["2026-W11"] == {"state": "failed", "errors": errors}
+    out = _check(capsys, stage)
+    assert out["units"]["2026-W11"] == {"state": "retry", "errors": ["schema (/)"]}
+    assert {"agent": "review-digester", "unit": "2026-W11", "errors": ["schema (/)"]} in out["retry"]
+    assert all("notices" not in unit for unit in out["units"].values())
     assert (stage / "digests/2026-W11.json").read_text(encoding="utf-8") == before
     assert "notices" not in _condensed(stage)["units"]["2026-W11"]
-
-
-def test_a_dropped_digest_with_a_lone_surrogate_is_written_not_raised(tmp_path, capsys):
-    stage = _growth_stage(tmp_path)
-    _plan(capsys, stage)
-    _write_digests(stage)
-    text = _text(_w11_digest(stage, SIXTEEN_W11)).replace(f"run {SECRET}", "run \\ud800")
-    _put(stage, "digests/2026-W11.json", text)
-    assert _check(capsys, stage)["units"]["2026-W11"] == {"state": "passed", "notices": ["growth-dropped"]}
-    rewritten = json.loads((stage / "digests/2026-W11.json").read_text(encoding="utf-8"))
-    assert rewritten["growth"] == [] and rewritten["done"][0]["text"] == "run \ud800"

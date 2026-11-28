@@ -394,8 +394,9 @@ returns spec 046's result unchanged, which
 ## WHY `write` Builds the Vault Growth Group Itself (Spec 047 T9.3, F-R1-3)
 
 Owner decision 2026-11-26: in the live runs T9.2 R1b and R1c the proposer built no growth group, and 10 of 43 created
-notes appeared nowhere in the document. `write` now puts `lib/review_growth.group(read, candidates(stage, read))` in
-the growth group after the checks and the habits, so the document always lists every created note of the period
+notes appeared nowhere in the document. `write` now puts `lib/review_growth.group(read, setup.language,
+setup.calendar_base)` in the growth group after the checks and the habits (until F-R3b-4 it also passed the digests'
+growth candidates; the group is now one item per folder, calendar folders counted, #274), so the document always lists every created note of the period
 (PRD F2-AC1). It runs on the stage `write` already loaded, before the stage is discarded, and prints nothing of it but
 the count in `counts.growth`. A `growth` group in `proposals.json` is never read (`review_doc.MODEL_GROUPS` leaves it
 out) and never refused; the reasons are in [review_growth](lib/review_growth.md).

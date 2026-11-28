@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_047_t4_4_condense_gate.py — the document waits for the condensing; the walk condenses (spec 047 T4.4).
 
 PRD F6-AC1, SDD ADR-4, Internal API Changes (`condense-incomplete`), Application Data Models (`Sources`),
@@ -12,8 +12,8 @@ Implementation Gotchas (`replace --confirm` keeps `condensed.json` and `carryove
 - `review_doc.Sources` leaves out the dailies of a not-condensed unit, so an item resting only on one of its
   days is rejected exactly as an item outside the period is (spec 045), and its link is dropped from a mixed one;
 - `replace --confirm` after `review-exists` renders from the kept `condensed.json` and `carryover.json`;
-- the e2e walk condenses: growth candidates from `growth/` files sourced by their creation day pass check, and
-  a walk that skips the condensing is refused.
+- the e2e walk condenses: a month with a created note passes check with digests that carry no growth
+  candidates (spec 047 F-R3b-4), and a walk that skips the condensing is refused.
 All data is synthetic.
 """
 from __future__ import annotations
@@ -271,16 +271,14 @@ def _local_ms(day: str) -> int:
     return int(datetime.combine(date.fromisoformat(day), datetime.min.time()).replace(hour=12).timestamp() * 1000)
 
 
-def test_the_walk_condenses_growth_candidates_sourced_by_their_creation_day(walk):
+def test_the_walk_condenses_a_month_with_a_created_note_without_growth_candidates(walk):
     note = f"{MOCS}Topic MOC.md"
     walk.vault.stamp(note, created=_local_ms("2026-03-24"), modified=_local_ms("2026-03-24"))
     assert walk.read(MONTH_PERIOD, MONTH)["status"] == "ok"
     stage = walk.stage(MONTH_STEM)
     plan = walk.run("review-digest", "plan", "--stem", MONTH_STEM)
     files = condense_files(plan, stage)
-    growth = [(name, g) for name, d in files.items() if name.startswith("digests/") for g in d["growth"]]
-    assert growth == [("digests/2026-W13.json",
-                       {"text": "created condensed", "sources": ["2026-03-24"], "notes": [note]})], growth
+    assert not any("growth" in d for name, d in files.items() if name.startswith("digests/"))
     assert walk.condense(MONTH_STEM)["units"]["2026-W13"] == {"state": "passed"}
     out = walk.write(MONTH_STEM, MONTH, proposals(MONTH))
     assert out["status"] == "written", out

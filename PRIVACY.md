@@ -72,8 +72,10 @@ quarter:
 - **Weekly notes** of the weeks that overlap the month or quarter, for a
   monthly or quarterly review, and for a quarterly review the **monthly notes**
   of the quarter's three months.
-- **Vault growth** — the **paths** of the notes created in the period and of
-  the MOCs changed in it, not their content.
+- **Vault growth** — the **number** of notes created in the period and the
+  **paths** of the MOCs changed in it, not their content. The list of the
+  created notes goes into the review document, which a script writes, and is
+  handed to no model.
 - **Your previous reviews** — the notes of the periods before, read through
   Kado like every other note: for a weekly review the previous week's note and
   the note of the month before the month the week starts in, for a monthly

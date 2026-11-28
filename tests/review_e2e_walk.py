@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.1
+# version: 0.6.2
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -39,8 +39,8 @@ walk passes `config=QUARTER_CONFIG`.
 
 The condensing (spec 047 T4.4): `write` runs step 5 the way the skill does
 before the proposals — `review-digest.py plan`, the agents' files built by the
-privacy fixture's `condense_files` (digests with growth candidates from the
-stage's `growth/` files, the carryover from its `previous/` files), `check` —
+privacy fixture's `condense_files` (the digests from the stage's `days/` files,
+the carryover from its `previous/` files), `check` —
 unless `condense=False`; a stage `plan` refuses (no read) is left alone, so
 `write`'s own refusal still shows. `condense` keeps `check`'s answer in
 `checked`; `write(..., proposer=)` hands the proposals, the stage and that

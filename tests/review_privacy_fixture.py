@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.1
+# version: 0.6.0
 """review_privacy_fixture.py — the marked vault of the /review privacy walk
 (tests/test_review_privacy.py; spec 045 T5.4).
 
@@ -29,8 +29,7 @@ adds them (`QUARTER_MARCH_DAYS`); the quarter walk uses that vault.
 The condensing (spec 047 T4.4): `condense_files(plan, stage, text)` builds the
 files the agents would write for every job of a `review-digest.py plan`
 answer — a digest per unit (one `done` entry on the unit's first day with a
-daily, growth candidates from the unit's `growth/` files sourced by their
-creation day's daily, at most 10 notes each) and the carryover: by default
+daily; no growth candidates, spec 047 F-R3b-4) and the carryover: by default
 the found previous notes with nothing to carry (`items` 0, the document says
 "found, nothing carried"), so a proposal without a carried item passes the
 coverage rule (spec 047 T5.4). With `carry=True` (the opt-in) the carryover
@@ -229,15 +228,8 @@ def _day_stems(stage: Path, job: dict) -> dict:
 def _digest(job: dict, stage: Path, read_id: str, text: str) -> dict:
     stems = _day_stems(stage, job)
     done = [{"text": f"{job['unit']} {text}", "sources": [stems[d]]} for d in job["days"] if d in stems][:1]
-    growth = []
-    for name in job["growth_files"]:
-        doc = _stage_json(stage, name)
-        paths = [c["path"] for c in doc["created"]]
-        if doc["date"] in stems:
-            growth += [{"text": f"created {text}", "sources": [stems[doc["date"]]], "notes": paths[i:i + 10]}
-                       for i in range(0, len(paths), 10)]
     return {"read_id": read_id, "unit": job["unit"], "days": list(job["days"]), "done": done, "open": [],
-            "notable": [], "themes": [], "sections": [], "child_notes": [], "growth": growth[:15]}
+            "notable": [], "themes": [], "sections": [], "child_notes": []}
 
 
 def _carryover(job: dict, stage: Path, read_id: str, text: str, carry: bool | int = False) -> dict:
@@ -341,25 +333,23 @@ def condense(stage: Path, text: str = "condensed", carry: bool | int = False) ->
 
 # ---------------------------------------------------------------- the fixture proposer (spec 047 T8.1)
 
-def _reachable(stage: Path, inputs: list) -> tuple[set, list]:
-    """``(source stems the inputs carry, growth candidates of the input digests)``."""
+def _reachable(stage: Path, inputs: list) -> set:
+    """The source stems the inputs carry."""
     stems: set = set()
-    growth: list = []
     for name in inputs:
         doc = _stage_json(stage, name)
         if name.startswith("digests/"):
             stems.update(doc["days"])
-            growth += doc.get("growth") or []
         elif name.startswith("children/"):
             stems.add(_stem(doc["path"]))
         elif name == "carryover.json":
             stems.update(_stem(n["path"]) for n in doc["notes"])
-    return stems, growth
+    return stems
 
 
 def propose_from_inputs(props: dict, stage: Path, inputs: list) -> dict:
     """``props`` cut to what the proposer's ``inputs`` carry (the growth group is the script's, never proposed)."""
-    stems, _ = _reachable(stage, inputs)
+    stems = _reachable(stage, inputs)
 
     def kept(items: list) -> list:
         return [item for item in items if all(str(s) in stems for s in item.get("sources") or [])]

@@ -11,7 +11,7 @@
  # STRICT — every `Agent()` call names `subagent_type` with the job's `agent`. Why: a call without it starts a general-purpose agent with every tool and none of the review agent's rules.
  # STRICT — every `Agent()` call passes `run_in_background: false`. Why: a backgrounded agent answers after the run went on, before its file exists.
  
-@@ -185,7 +184,7 @@
+@@ -184,7 +183,7 @@
  Run `check` at most twice after each `plan`. Branch on `status` first:
  - `refused` → the `refused` lines of `plan` above.
  - `stopped` with `nothing-condensed` → say that no week of the period could be condensed and name every entry of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written.

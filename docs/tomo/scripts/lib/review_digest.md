@@ -55,20 +55,19 @@ nothing. The weekly note is the first `weekly` child entry of the unit's
 `week`, and only when `weeks.json` names a `weekly_note` for the unit — the
 same first-entry rule `review_stage` uses to name `weekly-<week>.json`.
 
-## WHY Growth Candidates Follow the Day-Source Rule
+## WHY No Growth Checks Remain (F-R3b-4, #274)
 
-ADR-4 (amended 2026-11-23): a growth candidate's `sources` are creation days
-and its `notes` are the created-note paths. The proposer copies the
-candidate's sources into the "Vault growth" group, which `check_item` checks
-like every non-child group: at least one daily of the period. So a source is
-first a daily of the unit (else `source-outside-unit`), then a day on which at
-least one of the candidate's own notes was created (else
-`growth-source-not-created-day`) — a link to a day that did not create the
-notes would point the user at the wrong day. `notes` must be among the
-unit's created notes (`growth-note-outside-unit`): a note created in another
-unit belongs to that unit's digest, and a path never created in the period is
-invented. The created notes come from the loaded `growth.created` entries with
-their `day`, the same files the digester read.
+From ADR-4's amendment of 2026-11-23 to F-R3b-4 a digest carried growth
+candidates `{text, sources, notes}`, and the module checked them:
+`growth-note-outside-unit` (a note not among the unit's created notes),
+`growth-source-not-created-day` (a source day that created none of the
+candidate's notes) and `growth-note-duplicate` (a created note in two
+candidates). Owner decision 2026-11-28 after live walk R3b: the Vault growth
+group is built from the created notes' folders alone (`lib/review_growth.py`),
+so no step reads a candidate, the digest schema dropped `growth`, and those
+codes, the `_Unit.created` table and `drop_growth` / `under_growth` (below)
+went with it. A `growth` key is now an unknown field of the closed schema,
+refused as `schema (/)` like any other.
 
 ## WHY Errors Are Pointers and Codes, Never Text
 
@@ -96,9 +95,9 @@ any other failure.
 The carryover cap counts the UTF-8 bytes of the file as written. The digest
 cap (amended 2026-11-26, owner, T9.2 R1a / T9.3) counts `digest_bytes`: the
 UTF-8 bytes of the digest as compact JSON (`separators=(",", ":")`, no
-indentation) without the growth `notes` arrays and without every `sources`
-list (entries of `done`, `open`, `notable`, `child_notes`, `themes`, section
-items and growth). Why: the digester can shorten a text but never a path, and
+indentation) without every `sources` list (entries of `done`, `open`,
+`notable`, `child_notes`, `themes` and section items; until F-R3b-4 also the
+growth `notes` arrays). Why: the digester can shorten a text but never a path, and
 paths are what the proposer links. In R1a (2026-W13) the digest was 9,871 B
 raw / 9,404 B compact against 8,192 B, with 3,243 B of growth note paths (43
 notes, 8 groups) and 3,160 B of `sources`; without them it was 2,871 B. The
@@ -110,43 +109,24 @@ and counts 3 bytes, the width of any code point of its range; a strict encode
 would raise and crash `check_digest` instead of returning its errors.
 
 The paths left out of the measure are bounded by the data instead. Each is
-already bound to the unit (`source-outside-unit`, `growth-note-outside-unit`);
-two count checks add the rest:
-
-- `source-duplicate` — a path that appears a second time in one `sources`
-  list, at the pointer of the second occurrence (compared after `strip()`).
-- `growth-note-duplicate` — a created note listed a second time in `growth`,
-  in another group or in the same one, at the pointer of the second
-  occurrence.
+already bound to the unit (`source-outside-unit`); one count check adds the
+rest: `source-duplicate` — a path that appears a second time in one `sources`
+list, at the pointer of the second occurrence (compared after `strip()`).
 
 So the paths of a digest are at most the unit's dailies (path and stem) and
-weekly note per `sources` list, and each created note of the unit once.
+weekly note per `sources` list.
 `digest-too-large` keeps its name and stays a bare file-level code; the size
 is measured only once the text parses as JSON (`not-json` alone otherwise,
 as before).
 
-## WHY drop_growth Reads Pointers and Re-checks the Digest Without Its Candidates
+## WHY drop_growth Is Gone (T9.3 F-R3-2, Removed at F-R3b-4)
 
-`under_growth` classifies an error by the pointer the module itself wrote:
-`schema (<pointer>)` (one per distinct `absolute_path` of a jsonschema error)
-or `<pointer>: <code>`. The digest schema is closed (`additionalProperties:
-false` everywhere), so every pointer is made of fixed keys and indices and
-holds neither `": "` nor `")"`; the pointer is exact, not a prefix guess on a
-message. A pointer counts when it is `/growth` or starts with `/growth/`
-(`/growthy` does not). Bare file-level codes (`digest-missing`, `not-json`,
-`digest-too-large`) name no pointer and are never under `/growth`; so is
-`schema (/)`, e.g. a missing `growth` key.
-
-All errors under `/growth` is not yet enough: a schema error stops
-`check_digest` before every stage check, so `schema (/growth)` alone can hide
-a `days-mismatch`. `drop_growth` therefore checks the digest again with
-`growth: []` and drops only when that check is clean. When it is not, the
-digest is kept and the standing errors are the original ones plus those the
-re-check found, so the retry shows the digester everything at once. Size:
-dropping growth only shrinks `digest_bytes`, but a `digest-too-large` is
-bare, hence never dropped — the owner's rule is "every error under
-`/growth`". The module stays pure: it returns the dropped data and the CLI
-writes it.
+T9.3 F-R3-2 added `under_growth` (an error's pointer is `/growth` or below)
+and `drop_growth` (a digest whose every error lies under `/growth` is
+returned with `growth: []` once the digest without its candidates re-checks
+clean), so a bad grouping hint no longer cost a unit. Without candidates
+there is nothing to drop; both functions and `GROWTH_DROPPED` were removed
+rather than kept for a key the schema refuses.
 
 ## WHY the Carryover Has Two Failure Levels
 

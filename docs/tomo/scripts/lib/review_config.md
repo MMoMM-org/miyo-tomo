@@ -32,6 +32,15 @@ returns None otherwise, so `start` can report `setup: missing` and the skill
 runs Feature 1 first (F2-AC8). A granularity with `enabled: false` is treated
 as no folder: the user switched those notes off.
 
+`calendar_base(config, profile)` (spec 047 F-R3b-4, #274) gives
+`concepts.calendar.base_path`, config over profile like `inbox_folder`, and
+`review_setup` carries it as `ReviewSetup.calendar_base` so `review-doc.py
+write` can pass it to the Vault growth group, which counts the created notes
+of a calendar folder instead of linking them
+([review_growth](review_growth.md)). It is not part of the review setup's
+validation: a missing or blank base path means no folder is a calendar folder,
+never `setup-invalid`.
+
 `folder_for(config, profile, granularity)` is public because the setup
 preview (`review-session.py match`) resolves the same folders before any
 setup exists: the weekly, monthly or quarterly folder to list and the daily folder to

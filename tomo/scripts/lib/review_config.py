@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.3.2
+# version: 0.3.3
 """The ``/review`` setup of one period kind (spec 045, T2.1, T2.3; spec 046, T1.3).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -10,7 +10,8 @@ section — so what ``review-session.py start`` reads and what
 
 ``folder_for(config, profile, granularity)`` resolves one periodic folder
 (config over profile, None when disabled or blank) for the reader and for the
-setup preview alike.
+setup preview alike; ``calendar_base(config, profile)`` the calendar base path
+(``concepts.calendar.base_path``, config over profile, None when neither names one).
 ``review_setup(config, profile, kind)`` returns a ``ReviewSetup``, None while
 the setup is missing, or raises ``SetupInvalid`` (JSON pointers) when a
 present setup is broken; its ``sections`` and ``off_limits`` are the rows stored
@@ -132,6 +133,7 @@ class ReviewSetup:
     tracker_types: Dict[str, str] = field(default_factory=dict)
     sections: List[dict] = field(default_factory=list)
     off_limits: List[dict] = field(default_factory=list)
+    calendar_base: Optional[str] = None
 
     def place_level(self, target_headings: Sequence[Tuple[int, str]]) -> int:
         """Level of the review heading in a target with these ``(level, text)`` headings."""
@@ -183,6 +185,12 @@ def folder_for(config: dict, profile: dict, granularity: str) -> Optional[str]:
                 return None
             return _str(entry.get("path"))
     return None
+
+
+def calendar_base(config: dict, profile: dict) -> Optional[str]:
+    """``concepts.calendar.base_path``, else the profile's ``concept_defaults.calendar.base_path``; None without."""
+    return (_str(get_path(config, ("concepts", "calendar", "base_path"))[1])
+            or _str(get_path(profile, ("concept_defaults", "calendar", "base_path"))[1]))
 
 
 def inbox_folder(config: dict, profile: dict) -> Optional[str]:
@@ -283,7 +291,7 @@ def review_setup(config: dict, profile: dict, kind: str, *, today: Optional[date
         template_base=_str(get_path(config, ("templates", "base_path"))[1]), template_variant=variant,
         own_sections=own_sections, daily_sections=lists["sections"], skip_sections=lists["skip_sections"],
         task_notes=lists["task_notes"], max_chars_per_day=max_chars, tracker_types=tracker_types(config),
-        sections=rows[SECTIONS], off_limits=rows[OFF_LIMITS],
+        sections=rows[SECTIONS], off_limits=rows[OFF_LIMITS], calendar_base=calendar_base(config, profile),
     )
 
 

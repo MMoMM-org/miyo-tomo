@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.2.0
 """test_review_digest_schemas.py — spec 047 T4.1: the digest and carryover file contracts.
 
 The two closed schemas under ``tomo/schemas/`` are what ``review-digest.py check``
@@ -7,7 +7,8 @@ validates the agents' files against first (SDD ADR-4, Application Data Models).
 The positive fixtures are the W14 digest and carryover of the SDD's walkthrough (b);
 every refusal case mutates one field of them, so a test fails exactly when the
 schema stops enforcing that one rule (an unknown field, a nested required key, an empty text, a cap,
-an id or key pattern, a type enum, the growth candidates' notes bounds). A walk over a
+an id or key pattern, a type enum). A digest has no ``growth`` key since spec 047 F-R3b-4 (#274): one that still
+carries it is refused as an unknown field, like any other. A walk over a
 full document (one of every nested object) pins the rest: every value's type, every
 string's non-emptiness, every object's closedness, and every enum member. Each pattern
 is pinned end to end at every place it applies: both anchors, both bounds of every
@@ -44,7 +45,6 @@ W14_DIGEST = {
     "sections": [],
     "child_notes": [],
     "notable": [],
-    "growth": [],
 }
 W14_CARRYOVER = {
     "read_id": "R",
@@ -79,14 +79,6 @@ def _entry(i: int = 0) -> dict:
     return {"text": f"item {i}", "sources": ["2026-03-31"]}
 
 
-def _growth(n_notes: int = 1) -> dict:
-    return {
-        "text": "Two new notes on running",
-        "sources": ["2026-03-31"],
-        "notes": [f"Atlas/Notes/Run {i}.md" for i in range(n_notes)],
-    }
-
-
 def _carry_item(i: int = 1) -> dict:
     return {"id": f"c{i}", "type": "open", "text": "t", "sources": ["2026-W13"]}
 
@@ -118,11 +110,6 @@ def test_section_with_known_key_pattern_validates(digest, key):
     digest.validate(_with(W14_DIGEST, sections=[{"key": key, "items": [_entry()]}]))
 
 
-@pytest.mark.parametrize("n_notes", [1, 10])
-def test_growth_candidate_validates_with_one_to_ten_notes(digest, n_notes):
-    digest.validate(_with(W14_DIGEST, growth=[_growth(n_notes)]))
-
-
 _THEME = {"text": "Running", "days": ["2026-03-31"], "sources": ["2026-03-31"]}
 
 
@@ -134,7 +121,6 @@ _THEME = {"text": "Running", "days": ["2026-03-31"], "sources": ["2026-03-31"]}
         ("notable", _with(W14_DIGEST, notable=[_entry(i) for i in range(15)])),
         ("themes", _with(W14_DIGEST, themes=[_THEME] * 15)),
         ("child_notes", _with(W14_DIGEST, child_notes=[_entry(i) for i in range(15)])),
-        ("growth", _with(W14_DIGEST, growth=[_growth() for _ in range(15)])),
         ("section items", _with(W14_DIGEST, sections=[{"key": "s1", "items": [_entry(i) for i in range(30)]}])),
     ],
 )
@@ -187,23 +173,16 @@ def test_digest_refuses_a_section_key_outside_the_pattern(digest, key):
     _refused(digest, _with(W14_DIGEST, sections=[{"key": key, "items": [_entry()]}]))
 
 
-def test_digest_refuses_a_growth_candidate_without_notes(digest):
-    candidate = _growth()
-    del candidate["notes"]
-    _refused(digest, _with(W14_DIGEST, growth=[candidate]))
-    _refused(digest, _with(W14_DIGEST, growth=[_growth(0)]))
+@pytest.mark.parametrize("growth", [[], [{"text": "Two new notes", "sources": ["2026-03-31"],
+                                        "notes": ["Atlas/Notes/Run.md"]}]], ids=["empty", "one-candidate"])
+def test_digest_refuses_a_growth_key_as_an_unknown_field(digest, growth):
+    _refused(digest, _with(W14_DIGEST, growth=growth))
 
 
-def test_digest_refuses_a_growth_candidate_with_more_than_ten_notes(digest):
-    _refused(digest, _with(W14_DIGEST, growth=[_growth(11)]))
-
-
-def test_digest_refuses_a_growth_candidate_without_sources(digest):
-    _refused(digest, _with(W14_DIGEST, growth=[{**_growth(), "sources": []}]))
-
-
-def test_digest_refuses_more_than_15_growth_candidates(digest):
-    _refused(digest, _with(W14_DIGEST, growth=[_growth() for _ in range(16)]))
+def test_the_digest_schema_names_no_growth():
+    schema = json.loads(DIGEST_SCHEMA.read_text(encoding="utf-8"))
+    assert "growth" not in schema["properties"] and "growth" not in schema["required"]
+    assert schema["additionalProperties"] is False
 
 
 def test_digest_refuses_a_theme_without_days(digest):
@@ -291,7 +270,7 @@ def _nested_doc(owner: str, obj: dict) -> tuple[str, dict]:
         return "carryover", _with(W14_CARRYOVER, notes=[obj])
     if owner == "item":
         return "carryover", _with(W14_CARRYOVER, items=[obj])
-    field = {"entry": "done", "theme": "themes", "section": "sections", "growth": "growth"}[owner]
+    field = {"entry": "done", "theme": "themes", "section": "sections"}[owner]
     return "digest", _with(W14_DIGEST, **{field: [obj]})
 
 
@@ -301,7 +280,6 @@ _NESTED_OBJECTS = {
     "entry": _entry(),
     "theme": _THEME,
     "section": _SECTION,
-    "growth": _growth(),
 }
 
 
@@ -367,7 +345,6 @@ FULL_DIGEST = _with(
     themes=[copy.deepcopy(_THEME)],
     sections=[copy.deepcopy(_SECTION)],
     child_notes=[{"text": "weekly note says", "sources": ["2026-W14"]}],
-    growth=[_growth()],
 )
 _FULL = {"digest": FULL_DIGEST, "carryover": W14_CARRYOVER}
 

@@ -224,13 +224,11 @@ def _valid_agent_files(ws: Path) -> None:
 
     def digest(unit: str, days: list[str]) -> dict:
         return {"read_id": READ_ID, "unit": unit, "days": days, "done": [], "open": [], "notable": [],
-                "themes": [], "sections": [], "child_notes": [], "growth": []}
+                "themes": [], "sections": [], "child_notes": []}
 
     w10 = digest("2026-W10", ["2026-03-03", "2026-03-04"])
     w10["done"] = [{"text": "Kettle descaled", "sources": [DAILY.format("2026-03-03")]}]
     w11 = digest("2026-W11", ["2026-03-10"])
-    w11["growth"] = [{"text": "Kettle care", "sources": [DAILY.format("2026-03-10")],
-                      "notes": ["Notes/Kettle care.md"]}]
     (stage / "digests" / "2026-W10.json").write_text(json.dumps(w10), encoding="utf-8")
     (stage / "digests" / "2026-W11.json").write_text(json.dumps(w11), encoding="utf-8")
     (stage / "carryover.json").write_text(json.dumps({
@@ -290,7 +288,7 @@ def enc(event: dict) -> str:
 
 def job_prompt(job: dict, errors: list | None = None) -> str:
     """The skill's step 5 template for a job: `<key>: <JSON value>` lines, the run's keys first."""
-    keys = (["stem", "unit", "read_id", "days", "day_files", "growth_files", "weekly_note", "sections",
+    keys = (["stem", "unit", "read_id", "days", "day_files", "weekly_note", "sections",
              "section_files", "out", "cap_bytes", "language"] if job["agent"] == "review-digester"
             else ["stem", "read_id", "previous_files", "out", "cap_bytes", "language"])
     values = {**job, "stem": STEM, "read_id": READ_ID, "language": "en"}
@@ -413,7 +411,7 @@ def run_agent(t: Trace, tid: str, job: dict, *, agent: str, reads: list[str], re
 
 def _job_reads(job: dict) -> list[str]:
     if job["agent"] == "review-digester":
-        return job["day_files"] + job["growth_files"]
+        return job["day_files"]
     return job["previous_files"]
 
 

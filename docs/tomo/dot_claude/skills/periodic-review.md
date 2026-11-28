@@ -576,7 +576,9 @@ step 5 only orchestrates, and every decision of the orchestration is a script's:
   quarter and the carryover run at once and the step takes one agent's time, not sixteen. Each call names its
   `subagent_type` and `run_in_background: false`, and its prompt is the template the skill names: stem, unit,
   `read_id`, the file list, `out`, `cap_bytes`, the review language — paths, ids, dates and the language only, never
-  note text (the main session has none to give). The reply is one line per agent.
+  note text (the main session has none to give). The reply is one line per agent. The digester template has no
+  `growth_files` line since F-R3b-4 (#274): the digester reads no created note, the Vault growth group is the
+  script's ([review-digester](../agents/review-digester.md)), and the template stays the job's fields one to one.
 - **`review-digest.py check --stem`** judges every file the agents wrote and spends one attempt per open job: the first
   failure comes back in `retry` with its errors, and its job — the one `plan` listed for that `agent` and `unit` —
   is sent again by its template with the errors verbatim (`errors: <errors>` as the last prompt line, the pattern of

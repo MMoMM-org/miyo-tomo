@@ -28,7 +28,7 @@ rendered as `[[stem]]`, the link form the owner's notes already use.
 Growth items were checked by the same rule until spec 047 T9.3; since then
 the growth group is not the model's (`MODEL_GROUPS` leaves it out, as it
 leaves out habits) and `review-doc.py write` builds it from the created
-notes ([review_growth](review_growth.md)).
+notes per folder and the MOC lists ([review_growth](review_growth.md)).
 
 An item whose `text` is empty after cleaning (whitespace only, or nothing
 but `%%` marks) passes the schema's `minLength: 1` yet has nothing to

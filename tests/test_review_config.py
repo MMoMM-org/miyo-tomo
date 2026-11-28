@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """test_review_config.py — Behavioural tests for lib.review_config (spec 045 T2.1).
 
 Covers the /review setup model:
@@ -370,6 +370,22 @@ def test_inbox_folder_is_config_over_profile_or_none():
     assert rc.inbox_folder({"concepts": {"inbox": "Eingang/"}}, PROFILE) == "Eingang/"
     assert rc.inbox_folder({}, PROFILE) == "100 Inbox/"
     assert rc.inbox_folder({"concepts": {"inbox": "  "}}, {}) is None
+
+
+def test_calendar_base_is_config_over_profile_or_none():
+    """F-R3b-4 (#274): the growth group counts the created notes under ``concepts.calendar.base_path``."""
+    profile = {"concept_defaults": {"calendar": {"base_path": "Calendar/"}}}
+    assert rc.calendar_base({"concepts": {"calendar": {"base_path": "Kalender/"}}}, profile) == "Kalender/"
+    assert rc.calendar_base({}, profile) == "Calendar/"
+    assert rc.calendar_base({"concepts": {"calendar": {"base_path": " "}}}, {}) is None
+    assert rc.calendar_base(CONFIG, PROFILE) is None
+
+
+def test_review_setup_carries_the_calendar_base():
+    config = {**CONFIG, "concepts": {**CONFIG["concepts"], "calendar": {**CONFIG["concepts"]["calendar"],
+                                                                         "base_path": "Calendar/"}}}
+    assert rc.review_setup(config, PROFILE, "week").calendar_base == "Calendar/"
+    assert rc.review_setup(CONFIG, PROFILE, "week").calendar_base is None
 
 
 def test_request_dict_adds_the_first_and_last_day():

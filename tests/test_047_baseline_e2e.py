@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_047_baseline_e2e.py — the before-state of the /review document and of Pass 2 (spec 047 T1.3, ADR-11).
 
 Spec 047 rebuilds how /review reads a period; PRD F2-AC1 asks that the document keeps its shape and F2-AC2
@@ -468,14 +468,12 @@ def test_a_quarter_day_reaches_the_proposer_with_the_material_of_a_week_read(mak
         check = w.condense(case.stem)
         stage = w.stage(case.stem)
         day = json.loads((stage / "days" / "2026-03-23.json").read_text(encoding="utf-8"))
-        growth = [json.loads((stage / g).read_text(encoding="utf-8")) for g in job["growth_files"]]
-        for doc in (day, *growth):
-            doc.pop("read_id")
+        day.pop("read_id")
         digest = {k: v for k, v in files[job["out"]].items() if k != "read_id"}
-        seen[kind] = (job["unit"], job["days"], job["day_files"], job["growth_files"], day, growth, digest)
+        seen[kind] = (job["unit"], job["days"], job["day_files"], day, digest)
         assert job["out"] in check["proposer"]["inputs"], check["proposer"]
     assert seen[QUARTER] == seen[WEEK]
-    assert seen[WEEK][0] == "2026-W13" and "monday" in json.dumps(seen[WEEK][4])
+    assert seen[WEEK][0] == "2026-W13" and "monday" in json.dumps(seen[WEEK][3])
 
 
 MONTH_SECTION_ROW = {"id": "s1", "heading": "Theme", "level": 2, "parent": None, "occurrence": 1,

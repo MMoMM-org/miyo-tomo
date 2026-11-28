@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_047_agents.py — the three /review agents (spec 047 T6.2; ADR-7; PRD F1-AC3, F1-AC4, F1-AC5, F2-AC3,
 F4-AC1, F4-AC2, F4-AC3, F4-AC4, F4-AC5, F4-AC6, F4-AC8, F4-AC10, F4-AC11, F6-AC2, F7-AC5).
 
@@ -64,7 +64,7 @@ def _count(agent: str, phrase: str) -> int:
 # ── frontmatter (ADR-7, F7-AC5) ──────────────────────────────────────────────
 
 
-VERSIONS = {"review-digester": "0.1.4", "review-carryover": "0.1.1", "review-proposer": "0.2.1"}
+VERSIONS = {"review-digester": "0.2.0", "review-carryover": "0.1.1", "review-proposer": "0.2.1"}
 
 
 @pytest.mark.parametrize("agent", AGENTS)
@@ -142,7 +142,7 @@ def _schema(name: str) -> dict:
 
 def test_the_digester_names_every_digest_field():
     schema = _schema("review-digest.schema.json")
-    fields = set(schema["required"]) | {"text", "sources", "days", "key", "items", "notes"}
+    fields = set(schema["required"]) | {"text", "sources", "days", "key", "items"}
     text = _text("review-digester")
     assert all(f"`{f}`" in text for f in fields), sorted(f for f in fields if f"`{f}`" not in text)
     assert "`schemas/review-digest.schema.json`" in text
@@ -186,8 +186,7 @@ _COMMON = [
 PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
     # review-digester
     ("review-digester", "every-day-file", "Read every file of `day_files`, one Read call per file; skip no day."),
-    ("review-digester", "growth-and-weekly",
-     "Read every file of `growth_files` and the `weekly_note` when it is not null, one Read call per file."),
+    ("review-digester", "weekly-note", "Read the `weekly_note` when it is not null, one Read call."),
     ("review-digester", "section-files",
      "`sections` true → read every file of `section_files` and take only their `sections` entries."),
     ("review-digester", "no-context-by-name", "never read a context file by name."),
@@ -199,15 +198,11 @@ PINS = [(a, label, phrase) for a in AGENTS for label, phrase in _COMMON] + [
      "Each source is a path from the `dailies` list of a day file of this unit; never a linked note."),
     ("review-digester", "single-day-theme", "keep a matter that shows on one day only."),
     ("review-digester", "weekly-child-notes", "each source the weekly note's `path`; no `weekly_note` → `[]`."),
-    ("review-digester", "growth-notes", "`notes` the `path` values of their `created` entries (1 to 10)"),
-    ("review-digester", "growth-creation-day",
-     "`sources` the `dailies` path of the day file whose `date` equals the growth file's `date`"),
     ("review-digester", "no-judgement", "Record what the days say; never rank, judge or drop a finding"),
     ("review-digester", "language", "Write every `text` in `language`, one short statement each."),
     ("review-digester", "cap", "Keep the file within `cap_bytes` bytes and the schema's item limits"),
-    ("review-digester", "cap-measure", "`cap_bytes` counts the file without the growth `notes` and the `sources` lists."),
-    ("review-digester", "no-path-twice",
-     "Never list a path twice in one `sources` list, nor a created note in two growth groups."),
+    ("review-digester", "cap-measure", "`cap_bytes` counts the file without the `sources` lists."),
+    ("review-digester", "no-path-twice", "Never list a path twice in one `sources` list."),
     ("review-digester", "retry-rebuilds",
      "| The prompt carries `errors` | Activities 1–8, building `out` anew from the inputs; avoid in it what each "
      "`errors` entry names, in the field its pointer names; never read `out` |"),
@@ -394,6 +389,11 @@ def test_the_proposer_names_context_json_only_for_the_period_kind():
 
 def test_the_digester_never_names_context_json():
     assert "context.json" not in _text("review-digester")
+
+
+def test_the_digester_names_no_growth_file_and_no_growth_key():
+    """F-R3b-4 (#274): the digester reads no created note and writes no growth candidate."""
+    assert "growth" not in _text("review-digester")
 
 
 def test_the_proposer_groups_line_comes_before_the_quarter_line():

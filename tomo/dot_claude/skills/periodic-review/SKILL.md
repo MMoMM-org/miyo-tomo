@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, Agent
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.3.1
+# version: 0.3.2
 
 Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/confirmed-<kind>.json` yourself; the review agents of step 5 write their own files (the digests, `carryover.json`, `proposals.json`), and every other change goes through the scripts below.
 
@@ -155,7 +155,6 @@ unit: <unit>
 read_id: <read_id>
 days: <days>
 day_files: <day_files>
-growth_files: <growth_files>
 weekly_note: <weekly_note>
 sections: <sections>
 section_files: <section_files>

@@ -9,7 +9,7 @@
  
  ```bash
  python3 scripts/review-digest.py plan --stem <stem>
-@@ -180,7 +180,7 @@
+@@ -179,7 +179,7 @@
  python3 scripts/review-digest.py check --stem <stem>
  ```
  

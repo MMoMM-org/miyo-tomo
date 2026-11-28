@@ -1,6 +1,6 @@
 --- a/skills/periodic-review/SKILL.md
 +++ b/skills/periodic-review/SKILL.md
-@@ -132,7 +132,7 @@
+@@ -133,7 +133,7 @@
  
  ## 5. Propose and write the document
  
@@ -9,7 +9,7 @@
  
  ```bash
  python3 scripts/review-digest.py plan --stem <stem>
-@@ -179,7 +179,7 @@
+@@ -180,7 +180,7 @@
  python3 scripts/review-digest.py check --stem <stem>
  ```
  

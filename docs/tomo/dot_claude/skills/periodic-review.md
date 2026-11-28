@@ -43,7 +43,8 @@ the user and calls the dialog straight after a Read, with no visible text, and t
 `claude plugin eval` never offers `AskUserQuestion` either, so the paid evidence can only prove the typed path. Every
 question of this skill is therefore the same message as the content it refers to: the content, then one numbered
 option line as the last line (`1 Deliver · 2 Abort`, `1 Confirm · 2 Correct · 3 Abort`, `1 Resume · 2 Drop`,
-`1 Continue · 2 Start over · 3 Abort`, `1 Replace · 2 Keep it`, `1 Start over · 2 Abort` — also for the marker
+`1 Continue · 2 Start over · 3 Abort`, `1 Replace with the new read · 2 Continue · 3 Start over · 4 Abort`,
+`1 Replace · 2 Keep it`, `1 Start over · 2 Abort` — also for the marker
 without a heading above it, see Pass 2 — and for a heading choice the numbered `headings` list with
 "Which number, or 0 Abort?" so every listed number stays valid), and the turn ends.
 The next user message is the answer, mapped to an option by number or by word; anything else is asked again in plain
@@ -80,8 +81,11 @@ never from files the model inspects:
 
 - `failed-delivery` → `1 Resume · 2 Drop`: resume reruns `review-instructions.py deliver` (steps already done are
   skipped, F5-AC10); drop runs `review-instructions.py drop` (see "Why drop Withdraws").
-- `open` → `1 Continue · 2 Start over · 3 Abort`: continue is Pass 2 (see "Why Pass 2 Is parse, Then preview"); start
-  over goes through `review-doc.py replace` (see "Why Start Over Asks Twice"); abort leaves the document as it is.
+- `open` without `new_read` → `1 Continue · 2 Start over · 3 Abort`: continue is Pass 2 (see "Why Pass 2 Is parse,
+  Then preview"); start over goes through `review-doc.py replace` (see "Why Start Over Asks Twice"); abort leaves the
+  document as it is.
+- `open` with `new_read` → `1 Replace with the new read · 2 Continue · 3 Start over · 4 Abort` (see "Why an Open
+  Review With a Staged New Read Offers Replace").
 - `delivered` → one line: the set waits for Hashi or for the user to apply it by hand; no second set is delivered
   (F6-AC2, the script would refuse it as `set-exists` anyway). A set Hashi applied in full is no longer `delivered`:
   the stem reads `applied`, and a rerun of the period (Start over) writes its new set over it — the skill has no line
@@ -708,6 +712,26 @@ the user decides.
 `write` says `written`. The skill therefore branches on its `status` by the same list it has for `write`, with
 `replaced` read as `written`; the first draft of the skill reported the output "as a written one" without a branch,
 which would have read a `refused` or `stopped` answer for `doc_path` and `counts` it does not carry (T5.2 fix round).
+
+## Why an Open Review With a Staged New Read Offers Replace (Spec 047 Walk F-R3b-3)
+
+WHY: in the live walk a quarter Pass 1 finished (`proposals.json` in the stage), then its `write` stopped, and the
+older document of the period stayed in the inbox as `open`. On the next `/review` the skill offered only Continue
+(Pass 2 on the old document) and Start over (step 4 with `--fresh`, which discards the staged read and reads the
+whole quarter again). No path wrote the proposals already made. `start` now
+marks such an entry `new_read` (the stage holds `proposals.json`, which `review-doc.py write` and `review-doc.py replace` delete once a document is
+written or the read aborted; WHY in `docs/tomo/scripts/lib/review_state.md`), and the skill adds a first option.
+
+Replace goes straight to `review-doc.py replace --confirm`: the stage already holds the read and the
+proposals, and `replace --confirm` needs nothing else (it is `write` with the `review-exists` refusal lifted), so
+there is no new read and no proposer run. The question itself is the confirm that "Why Start Over Asks Twice" asks
+for: it says the document will be replaced and the user's edits in it are lost, so the skill does not ask a second
+time. The output is branched by step 5's `write` list with `replaced` as `written`, which already covers every
+answer `replace --confirm` gives (`stopped`, `proposals-invalid`, `condense-incomplete`, `read-stale`,
+`doc-name-taken`, `sections-changed`, the shared refusals); the branches that rerun `plan`, step 4 or the proposer
+are the same recovery a stopped `write` gets in step 5. Continue, Start over and Abort stay what they are for a plain
+`open` entry, so the user can still prefer the edited old document or a fresh read. An `open` entry without
+`new_read` keeps the three options unchanged.
 
 ## Why Pass 2 Is `parse`, Then `preview`, and Deliver Is a Plain-Text Question (F5-AC1, F5-AC2)
 

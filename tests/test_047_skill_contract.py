@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_047_skill_contract.py — the periodic-review skill's step 4 and step 5 on the stage (spec 047 T6.3; ADR-8,
 ADR-10; PRD F3-AC6, F3-AC8, F6-AC1, F6-AC2, F6-AC3, F6-AC4, F6-AC5, F6-AC6, F6-AC8).
 
@@ -60,8 +60,8 @@ def test_allowed_tools_add_agent():
     assert [t.strip() for t in tools.split(",")] == ["Read", "Write", "Bash", "Agent"]
 
 
-def test_carries_version_0_3_0():
-    assert re.findall(r"^# version: .*$", _text(SKILL), re.MULTILINE) == ["# version: 0.3.0"]
+def test_carries_version_0_3_1():
+    assert re.findall(r"^# version: .*$", _text(SKILL), re.MULTILINE) == ["# version: 0.3.1"]
 
 
 # ── the old read files are gone ─────────────────────────────────────────────

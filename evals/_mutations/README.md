@@ -140,6 +140,8 @@ Patches whose paid RED proof has not run yet. Each row names the offline model i
 
 **Spec 047 T6.4 (`periodic-review` 0.3.0, not run; the paid run is the owner's go, spec 047 T9.1):** the `/review` case `review-no-stage-read` (not gated). Both patches are neutral steps or a plain form change, not a request to misbehave. Not proven by a mutation: `0-proposer-handed-back` is the control (precondition: the run reached the proposer and its one-line reply came back in the hand-back frame) and pairs every `not_contains` grader, which passes on an empty run; `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof. The other gates (`2-proposer-reads-no-raw-stage`, `3-agent-calls-typed`, `4-agent-calls-foreground`, `6-no-agent-outside-plan`, `7-agent-replies-one-line`) are proven offline only, each by a model of its own in the test (`proposer_reads_manifest`, `untyped_call`, `backgrounded_digester`, `unplanned_unit`, `multi_line_reply`); no patch drives them yet.
 
+**Spec 047 walk F-R3b-3 (`periodic-review` 0.3.1, not run):** step 1 gained one line (the `open` entry with `new_read`); `read-day-file` and `dispatch-one-per-message` only moved their hunks by one line, so each applies with zero offset and fuzz again. Their injected text is unchanged.
+
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
 |---|---|---|---|
 | `--mutation read-day-file` | `review-no-stage-read` | `review-no-stage-read/1-no-stage-read-in-main` — neutral step: after reading the review language, step 5 Reads the first day file of the stage once in the main session, and the STRICT keeps only its no-helper and not-condensed parts; offline model: `read_day_file` | not yet measured |

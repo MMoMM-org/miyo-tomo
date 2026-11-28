@@ -423,6 +423,24 @@ set in the inbox is whatever the set says. A document whose frontmatter
 Kado cannot read or that carries no `review_period` is listed under
 `skipped_review_docs` with its reason rather than dropped.
 
+## WHY `new_read` Is the Presence of `proposals.json` (Spec 047 Walk F-R3b-3)
+
+WHY: in the spec 047 live walk a quarter Pass 1 finished its proposals, then
+its `write` stopped, so the older review document of the period stayed in
+the inbox, state `open`. The state cannot tell that apart from an open
+document with nothing behind it: the document and `meta.json` are the old
+run's. The stage can: `review-doc.py` deletes `proposals.json` when `write`
+or `replace --confirm` writes the document and when `replace --abort`
+discards the read, so a `proposals.json` next to an open document is a newer
+Pass 1 whose document was never written. `open_reviews` therefore sets
+`new_read` per entry from `<meta_root>/<stem>/proposals.json` existing — a
+file check only, its content is never read, and any other stage file
+(`meta.json`, the read, the digests) leaves it false. It is a listing key,
+not a state: the review is `open` either way and every other reader of the
+state (`status`, `deliver`) is unchanged. The file name is a local constant
+because `review-doc.py` (hyphenated, a script) cannot be imported from
+`lib/`; it must stay equal to that script's `PROPOSALS_FILE`.
+
 ## WHY the Stem Falls Back to `<period>_review`
 
 WHY: SDD Data Storage Changes fixes the stem as `<period-name>_review`.

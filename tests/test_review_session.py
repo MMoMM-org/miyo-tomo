@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.7
+# version: 0.3.8
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -952,13 +952,13 @@ def test_start_lists_the_open_reviews_by_period_with_their_state(mod, instance, 
     assert code == 0 and out["status"] == "ok"
     assert out["open_reviews"] == [
         {"period": "2026-W09", "kind": "week", "doc_path": INBOX + "2026-W09 Review.md",
-         "stem": "2026-W09_review", "state": "open"},
+         "stem": "2026-W09_review", "state": "open", "new_read": False},
         {"period": "2026-03", "kind": "month", "doc_path": INBOX + "2026-03 Review.md",
-         "stem": "2026-03_review", "state": "failed-delivery"},
+         "stem": "2026-03_review", "state": "failed-delivery", "new_read": False},
         {"period": "2026-W12", "kind": "week", "doc_path": INBOX + "Renamed by the user.md",
-         "stem": "2026-W12_review", "state": "failed-delivery"},
+         "stem": "2026-W12_review", "state": "failed-delivery", "new_read": False},
         {"period": "2026-W13", "kind": "week", "doc_path": INBOX + "2026-W13 Review.md",
-         "stem": "2026-W13_review", "state": "open"},
+         "stem": "2026-W13_review", "state": "open", "new_read": False},
     ]
     assert out["skipped_review_docs"] == []
     searches = [p for m, p in fake.events if m == "search_by_frontmatter"]
@@ -967,6 +967,26 @@ def test_start_lists_the_open_reviews_by_period_with_their_state(mod, instance, 
     assert reads == sorted([INBOX + "2026-W13 Review.md", INBOX + "Renamed by the user.md",
                             INBOX + "2026-03 Review.md", INBOX + "2026-W09 Review.md"])
     assert not any(m == "read_note" for m, _ in fake.events)
+
+
+def test_start_marks_an_open_review_whose_stage_holds_a_new_read(mod, instance, monkeypatch, capsys):
+    """Spec 047 walk F-R3b-3: a quarter Pass 1 whose `write` stopped leaves proposals.json in the stage beside
+    the older open document; `start` says so per entry (new_read), and only for that stage."""
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review"),
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", stem="2026-W12_review"),
+    })
+    root = instance / "tomo-tmp" / "review"
+    (root / "2026-W13_review").mkdir(parents=True)
+    (root / "2026-W13_review" / "proposals.json").write_text("{}", encoding="utf-8")
+    (root / "2026-W12_review").mkdir(parents=True)
+    (root / "2026-W12_review" / "meta.json").write_text(json.dumps({"stem": "2026-W12_review"}), encoding="utf-8")
+
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "2026-W13")
+    assert code == 0 and out["status"] == "ok"
+    assert [(r["stem"], r["state"], r["new_read"]) for r in out["open_reviews"]] == [
+        ("2026-W12_review", "open", False), ("2026-W13_review", "open", True)]
 
 
 def test_start_orders_the_open_reviews_under_the_configured_week_format_and_rule(mod, instance, monkeypatch, capsys):

@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.7.1
+# version: 0.7.2
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -48,7 +48,10 @@ drops an ``applied`` review whose meta carries ``applied_reported`` (the
 caller that reported it writes the flag), lists a document whose stem fails
 ``safe_stem`` under ``skipped_review_docs`` with ``stem-unsafe``, and orders
 by period start under the configured week rule and name formats, inferring a
-missing ``review_kind`` by parsing the period under them.
+missing ``review_kind`` by parsing the period under them. Each entry carries
+``new_read``: whether ``<meta_root>/<stem>/proposals.json`` exists, a Pass 1
+whose document was never written (``review-doc.py`` deletes the file once it
+writes the document or aborts the read).
 
 ``safe_stem`` is the one guard for a stem: a plain folder name under
 ``tomo-tmp/review/``, never empty, ``.``, ``..`` or carrying ``/`` or ``\\``.
@@ -88,6 +91,7 @@ MOVE_NOTE = "move_note"
 SECTION_ACTIONS = ("insert_under_marker", "replace_section", "replace_between_markers")
 _UNSAFE_MARKS = ("/", "\\", "..")
 _NOT_A_FOLDER = ("", ".")
+PROPOSALS_FILE = "proposals.json"   # review-doc.py's PROPOSALS_FILE; that script is not importable from lib
 
 
 # ---------------------------------------------------------------- the stem
@@ -325,10 +329,11 @@ class OpenReview:
     doc_path: str
     stem: str
     state: str
+    new_read: bool = False
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, object]:
         return {"period": self.period, "kind": self.kind, "doc_path": self.doc_path,
-                "stem": self.stem, "state": self.state}
+                "stem": self.stem, "state": self.state, "new_read": self.new_read}
 
 
 def _str(value) -> Optional[str]:
@@ -358,8 +363,9 @@ def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, va
     """``(reviews ordered by period start, skipped)`` over ``(doc_path, frontmatter)`` pairs, each
     classified through ``stem_state`` with ``vault`` and ``inbox``; ``skipped`` names a document
     with unreadable frontmatter, no period or an unsafe stem. A withdrawn review and an applied one
-    whose meta says ``applied_reported`` are not listed. ``formats`` are the configured name
-    formats per kind, merged over the defaults."""
+    whose meta says ``applied_reported`` are not listed. ``new_read`` is true when the stem's stage
+    under ``meta_root`` holds ``proposals.json``. ``formats`` are the configured name formats per kind,
+    merged over the defaults."""
     formats = dict(DEFAULT_FORMATS, **(formats or {}))
     reviews: List[Tuple[date, OpenReview]] = []
     skipped: List[dict] = []
@@ -382,6 +388,8 @@ def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, va
         state = stem_state(vault, doc, meta, stem, inbox)
         if state is None or (state == APPLIED and applied_reported(meta)):
             continue
-        reviews.append((_period_start(period, kind, rule, formats), OpenReview(period, kind, doc_path, stem, state)))
+        new_read = (Path(meta_root) / stem / PROPOSALS_FILE).is_file()
+        reviews.append((_period_start(period, kind, rule, formats),
+                        OpenReview(period, kind, doc_path, stem, state, new_read)))
     reviews.sort(key=lambda item: (item[0], item[1].period, item[1].doc_path))
     return [review for _, review in reviews], skipped

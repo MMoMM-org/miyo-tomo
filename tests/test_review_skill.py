@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.18
+# version: 0.2.19
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -45,6 +45,9 @@ an open-review question went on with the next entry and the new request; no
 line for `mode` `replace` in the preview, for `check-key-access`, nor for
 `drop`'s shared refusals (`setup-missing`, `setup-invalid`,
 `inbox-not-configured`); the heading pick did not name `place.anchor`.
+RED before the spec 047 walk fix F-R3b-3: an `open` entry whose stage holds a
+newer read (`new_read`) was offered only Continue, Start over and Abort — no
+path wrote the staged proposals.
 """
 from __future__ import annotations
 
@@ -76,7 +79,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.3.0")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.3.1")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -200,7 +203,7 @@ def test_open_reviews_are_handled_before_the_new_request_in_listed_order():
 
 OPEN_REVIEW_STATES = {
     "failed-delivery": "- `failed-delivery` → ask `1 Resume · 2 Drop`. Resume → step 8 with the entry's `stem`. Drop → step 9 with the entry's `stem`.",
-    "open": ("- `open` → ask `1 Continue · 2 Start over · 3 Abort`. Continue → step 6 with the entry's `stem`. "
+    "open": ("- `open` without `new_read` → ask `1 Continue · 2 Start over · 3 Abort`. Continue → step 6 with the entry's `stem`. "
              "Start over → step 4 with the entry's `period` and `kind` (the `write` there refuses with "
              "`review-exists` and step 5 asks before replacing). Abort → say in one line that the document stays "
              "as it is and end the run: no further entry, not the new request."),
@@ -218,6 +221,28 @@ OPEN_REVIEW_STATES = {
 @pytest.mark.parametrize("state", OPEN_REVIEW_STATES)
 def test_every_listed_state_has_its_offer(state):
     assert OPEN_REVIEW_STATES[state] in _section("1. Start"), state
+
+
+OPEN_NEW_READ = ("- `open` with `new_read` → say that a newer read of the period is staged whose document was not "
+                 "written, and that replacing the document with it discards the user's edits in it; ask "
+                 "`1 Replace with the new read · 2 Continue · 3 Start over · 4 Abort`.")
+OPEN_NEW_READ_REPLACE = ("Replace with the new read → run `python3 scripts/review-doc.py replace --stem <stem> "
+                         "--confirm` with the entry's `stem` and branch on its `status` by the list of step 5's "
+                         "`write`, `replaced` as `written`.")
+OPEN_NEW_READ_REST = "Continue, Start over and Abort → as for `open` without `new_read`."
+
+
+@pytest.mark.parametrize("sentence", [OPEN_NEW_READ, OPEN_NEW_READ_REPLACE, OPEN_NEW_READ_REST,
+                                      OPEN_REVIEW_STATES["open"]],
+                         ids=["new-read-question", "new-read-replace", "new-read-rest", "plain-open"])
+def test_an_open_review_with_a_staged_new_read_is_offered_the_replace(sentence):
+    """Spec 047 walk F-R3b-3: a quarter Pass 1 whose `write` stopped left proposals.json staged beside the older
+    open document; the plain three options either read the old document (Continue) or discarded the staged read
+    (Start over). Each sentence matches exactly once in the whole skill, the replace one only after the question."""
+    assert _flat(SKILL).count(sentence) == 1, sentence
+    text = _section("1. Start")
+    assert text.index(OPEN_NEW_READ) < text.index(OPEN_NEW_READ_REPLACE) < text.index(OPEN_NEW_READ_REST)
+    assert _flat(SKILL).count("`1 Continue · 2 Start over · 3 Abort`") == 1
 
 
 def test_an_abort_at_an_open_review_question_ends_the_whole_run():

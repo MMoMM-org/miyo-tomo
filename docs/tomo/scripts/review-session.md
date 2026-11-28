@@ -408,8 +408,9 @@ because Kado's `byFrontmatter` returns an empty frontmatter; the document's
 own keys (`review_period`, `review_kind`, `review_stem`, `tomo.state`) name
 the review, so a renamed document is still found and listed. `tomo-tmp` is
 consulted only for the content-free `meta.json` (`steps_done`,
-`failed_step`, `withdrawn`, `applied_reported`) and never decides whether a
-review exists. The listing and the state are `lib/review_state` (WHY:
+`failed_step`, `withdrawn`, `applied_reported`) and for whether the stage
+holds `proposals.json` (`new_read`, existence only), and never decides
+whether a review exists. The listing and the state are `lib/review_state` (WHY:
 `docs/tomo/scripts/lib/review_state.md`); the script only resolves the
 inbox (config over profile) and passes the documents on with the vault,
 together with the configured week rule **and** the configured name formats
@@ -419,6 +420,17 @@ the rule alone, and the default ISO format overrode it). An inbox that
 neither the config nor the profile names is reported as `problems:
 [inbox-not-configured]` with an empty listing rather than a crash: the
 request is still usable and the setup dialogue fixes the rest.
+
+### WHY Each Entry Carries `new_read` (Spec 047 Walk F-R3b-3)
+
+WHY: a Pass 1 whose `write` stopped leaves its proposals staged beside the
+period's older open document. Without a key for it the skill offered
+Continue (Pass 2 on the old document) or Start over (a full new read with
+`--fresh`, discarding the staged one); no path wrote what was already
+proposed. `new_read` (from `lib/review_state.open_reviews`, WHY in
+`docs/tomo/scripts/lib/review_state.md`) lets the skill offer the replace.
+It is part of every entry, `false` included, so the shape of an entry does
+not depend on the stage.
 
 ### WHY the Listing Probes the Set JSON (T4.3) and `start` Writes `applied_reported`
 

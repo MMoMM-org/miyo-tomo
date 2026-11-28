@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_state_listing.py — lib/review_state.open_reviews, the listing `review-session.py start` prints
 (spec 045 T2.3, T4.3, P5; SDD Complex Logic review_state OUTPUT; ADR-6).
 
@@ -9,7 +9,8 @@ review_stem or <period>_review, classified through stem_state (the fake records 
 listing that classifies without the probe fails), ordered by period start under the configured rule AND name
 formats, a missing review_kind inferred by parsing the period under the configured formats, unreadable,
 period-less and stem-unsafe documents skipped with a reason, withdrawn reviews and applied reviews already
-reported never listed, the half-withdrawn stem listed as failed-delivery until meta says withdrawn.
+reported never listed, the half-withdrawn stem listed as failed-delivery until meta says withdrawn; an open
+document whose stage still holds proposals.json carries new_read true (spec 047 walk F-R3b-3), any other stage false.
 """
 from __future__ import annotations
 
@@ -42,13 +43,13 @@ def test_open_reviews_lists_every_document_by_period_with_its_state(tmp_path):
     assert skipped == []
     assert [r.to_dict() for r in reviews] == [
         {"period": "2026-W09", "kind": "week", "doc_path": INBOX + "2026-W09 Review.md",
-         "stem": "2026-W09_review", "state": "open"},
+         "stem": "2026-W09_review", "state": "open", "new_read": False},
         {"period": "2026-03", "kind": "month", "doc_path": INBOX + "2026-03 Review.md",
-         "stem": "2026-03_review", "state": "failed-delivery"},
+         "stem": "2026-03_review", "state": "failed-delivery", "new_read": False},
         {"period": "2026-W12", "kind": "week", "doc_path": INBOX + "My renamed review.md",
-         "stem": "2026-W12_review", "state": "failed-delivery"},
+         "stem": "2026-W12_review", "state": "failed-delivery", "new_read": False},
         {"period": "2026-W13", "kind": "week", "doc_path": INBOX + "2026-W13 Review.md",
-         "stem": "2026-W13_review", "state": "open"},
+         "stem": "2026-W13_review", "state": "open", "new_read": False},
     ]
 
 
@@ -173,6 +174,24 @@ def test_open_reviews_skips_unreadable_and_period_less_documents(tmp_path):
     assert [r.period for r in reviews] == ["2026-W13"]
     assert skipped == [{"doc_path": INBOX + "broken.md", "reason": "frontmatter-unreadable"},
                        {"doc_path": INBOX + "no period.md", "reason": "period-missing"}]
+
+
+# ---------------------------------------------------------------- the staged new read (spec 047 F-R3b-3)
+
+def test_an_open_document_whose_stage_holds_proposals_carries_new_read(tmp_path):
+    """Falsifies a listing that never looks at the stage, and one that reads any stage file as a new read:
+    the stage of W13 holds proposals.json (a Pass 1 whose write stopped), the stage of W12 only meta.json."""
+    stage = tmp_path / "2026-W13_review"
+    stage.mkdir()
+    (stage / "proposals.json").write_text("{}", encoding="utf-8")
+    _meta(tmp_path, "2026-W12_review", steps_done=[], failed_step="")
+    docs = [(INBOX + "2026-W13 Review.md", _doc("2026-W13", "week", stem="2026-W13_review")),
+            (INBOX + "2026-W12 Review.md", _doc("2026-W12", "week", stem="2026-W12_review"))]
+    reviews, skipped = rs.open_reviews(docs, tmp_path, _empty_vault(), INBOX)
+    assert skipped == []
+    assert [(r.period, r.state, r.new_read) for r in reviews] == [("2026-W12", "open", False),
+                                                                   ("2026-W13", "open", True)]
+    assert reviews[1].to_dict()["new_read"] is True and reviews[0].to_dict()["new_read"] is False
 
 
 # ---------------------------------------------------------------- the quarter (spec 046 T1.4)

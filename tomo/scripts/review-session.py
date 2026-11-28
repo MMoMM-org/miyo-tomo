@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.8.1
+# version: 0.8.2
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -37,7 +37,8 @@ Output: one JSON object on stdout, ASCII-escaped.
              | error {kind invalid-period|unfinished-period|not-periodic-note|unknown-argument,
                       expected, example, last_finished?},
            setup {week present|missing, month present|missing, quarter present|missing},
-           open_reviews [{period, kind, doc_path, stem, state}] ordered by period,
+           open_reviews [{period, kind, doc_path, stem, state, new_read}] ordered by period
+             (new_read true: the stage holds proposals.json, a read whose document was not written),
            skipped_review_docs [{doc_path, reason}], problems [inbox-not-configured]?,
            notices [applied-not-recorded]? (the applied flag could not be written),
            error {kind kado-unreachable|kado-auth, detail} when stopped

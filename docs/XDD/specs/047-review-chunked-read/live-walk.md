@@ -212,18 +212,24 @@ Cost $4.93 (main sonnet 35 turns $1.75, proposer $1.06, 16 digester runs $2.03, 
 
 Pass 2 (same session d191014e): `/review 2026-Q1` → `open` → Continue → `parse`: approved, 18 groups, 116 items, 116 kept, 0 edited, 0 owner items → `preview` → owner Deliver → `deliver` `delivered`, 13 sections, mode `replace` (`block-replaced`), 0 problems, 0 escaped lines, 0 dropped; set `.json` + `.md` in the inbox. Cost $1.03 (main only; the session carried the Pass 1 context, peak 171,768), 1.3 min machine time. Hashi apply (owner): 14 of 14 actions `applied`, 14 of 14 boxes ticked; target has 1 `## Tomo Review` heading and 1 `tomo-review 2026-Q1` marker. Observation: the set's `.md` frontmatter still reads `state: pending-apply` after the apply.
 
+### R4 — week 2026-W14 (2026-11-28, session d309c979) — Pass 1, Pass 2, Hashi apply
+
+Fresh session. `start`: the 2026-Q1 review listed `applied`, no question → `review-read.py` (1 unit, 5 s) → `plan` → 1 digester (haiku) + carryover (sonnet) → `check`: unit passed, carryover passed (2026-W13 20 items, 2026-02 9 items) → proposer (sonnet) → `write` `written`, target `Calendar/302 Weekly/2026-W14.md` absent. Counts: 12 section groups, done 0, open 0, themes 0, habits 12, growth 6; previous: 2026-W13 found (read report `partly_read`), 20 carried; 2026-02 found, 9 carried. Pass 1 $1.05 (main $0.53, digester $0.07, carryover $0.14, proposer $0.31), 2.2 min.
+
+Pass 2 (same session): Continue → `parse` approved, 55 kept, 0 unticked, 0 deleted, 0 added → `preview` → Deliver → `deliver` mode `new-note`, 0 problems, 0 escaped lines, notice `templater_hint`. $0.33, 0.4 min machine time. Hashi apply (owner): target created, 1 `tomo-review 2026-W14` marker, 1 of 1 box ticked. Stage after write: `meta.json` only; main session read no stage file.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
 |---|---|---|---|---|---|---|---|
-| Days not read because of size | 0 | hard | 0 | 0 | 0 | | |
-| Sample / grep fallbacks | 0 | hard | 0 | 0 | 0 | | |
-| Main-session reads of stage files | 0 | hard | 0 | 0 | 0 | | |
+| Days not read because of size | 0 | hard | 0 | 0 | 0 | 0 | |
+| Sample / grep fallbacks | 0 | hard | 0 | 0 | 0 | 0 | |
+| Main-session reads of stage files | 0 | hard | 0 | 0 | 0 | 0 | |
 | Carried items placed twice / without previous link | 0 / 0 | quality | 0 / 0 (R1d, owner) | | | | |
-| Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | 0 after write | | |
-| Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
+| Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | 0 after write | 0 after write | |
+| Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | $1.05 / 2.2 min | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | $6.48 / 15.2 min (W04a not condensed); R3c $4.93 / 9.9 min | — | — |
-| Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | $1.03 (R3c session, Pass 1 context carried) | | |
+| Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | $1.03 (R3c session, Pass 1 context carried) | $0.33 (same session as Pass 1) | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |
 | Owner: at least as useful as the spec 046 document | yes/no | quality | | | yes (R3c, owner 2026-11-28) | — | — |

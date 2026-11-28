@@ -486,9 +486,9 @@ live runs of the spec 047 walk the session summarised the `review-read.py` resul
 text to the user, and went straight on to `review-digest.py plan`. The user then saw neither which days were read and
 which are missing, nor how old a continued read is, nor which previous notes were found. The unadorned bullets were observed to deviate, so the repo rule for a `STRICT` block is met (see "Why STRICT Is Rare").
 
-The owner chose a `STRICT` block over a script-rendered line: the skipped output was no text at all, not a wrong
-text, and a line rendered by the script changes what the model copies, not whether it replies before going on. The
-block names the moment ("before any command of step 5 runs") so the order is checkable in a trace, and it covers both
+The owner chose a `STRICT` block over a script-rendered line: a walk decision (2026-11-28), no reason stated. The
+skipped output was no text at all, not a wrong text, so the walk rerun after the fix checks whether the block makes
+the model reply before going on. The block names the moment ("before any command of step 5 runs") so the order is checkable in a trace, and it covers both
 bullets, the continue line and the report, since both hand the result to the same next step. Its `Why:` is the
 failure mode in one line. Pinned in `tests/test_047_skill_contract.py` (`strict-read`,
 `test_step4_holds_one_strict_after_the_ok_bullets`).

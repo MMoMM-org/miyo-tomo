@@ -210,6 +210,8 @@ Finding F-R3b-4 (→ T9.3, closes #274): owner decision: Calendar folders as cou
 
 Cost $4.93 (main sonnet 35 turns $1.75, proposer $1.06, 16 digester runs $2.03, carryover $0.08); active time 9.9 min machine (11:39:12 → 11:50:45 minus 1.7 min owner choice at Replace). Observations: the main session posted one status line per agent notification (16 lines, a miscount 17 → 16 corrected mid-run), which is most of its 35 turns; `review-read.py` on the quarter now runs right at the Bash timeout.
 
+Pass 2 (same session d191014e): `/review 2026-Q1` → `open` → Continue → `parse`: approved, 18 groups, 116 items, 116 kept, 0 edited, 0 owner items → `preview` → owner Deliver → `deliver` `delivered`, 13 sections, mode `replace` (`block-replaced`), 0 problems, 0 escaped lines, 0 dropped; set `.json` + `.md` in the inbox. Cost $1.03 (main only; the session carried the Pass 1 context, peak 171,768), 1.3 min machine time. Hashi apply (owner): 14 of 14 actions `applied`, 14 of 14 boxes ticked; target has 1 `## Tomo Review` heading and 1 `tomo-review 2026-Q1` marker. Observation: the set's `.md` frontmatter still reads `state: pending-apply` after the apply.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
@@ -222,6 +224,6 @@ Cost $4.93 (main sonnet 35 turns $1.75, proposer $1.06, 16 digester runs $2.03, 
 | Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | $6.48 / 15.2 min (W04a not condensed); R3c $4.93 / 9.9 min | — | — |
-| Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | | | |
+| Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | $1.03 (R3c session, Pass 1 context carried) | | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |
 | Owner: at least as useful as the spec 046 document | yes/no | quality | | | | — | — |

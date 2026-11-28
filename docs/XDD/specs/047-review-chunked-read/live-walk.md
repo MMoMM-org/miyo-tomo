@@ -224,7 +224,7 @@ Session 1: `start` (W14 `applied`, one line) → `review-read.py` (6 units, 51 s
 
 Session 2: `start` (`open_reviews` empty) → `review-read.py` `continued: true`, same `read_id`, nothing read anew → `plan` → 6 digesters (haiku; all 6, none had passed) + carryover (sonnet) → `check` all passed, carryover passed (2026-02 9 items, 2025-Q4) → proposer (sonnet) → `write` `review-exists` → owner Replace → `replaced`. Counts: 16 section groups, growth 19, habits 12. Stage after write: `meta.json` only; main session read no stage file. $2.53 (main $0.85, digesters $0.63, carryover $0.12, proposer $0.93), 5.8 min machine time (4.1 min owner choice at Replace excluded). R5 total $2.76.
 
-Finding F-R5-1 (→ T9.3, open): on `continued: true` the session did not say that the review continues on the read made at `read_at` (SKILL step 4); no text block at all between the read and the dispatch.
+Finding F-R5-1 (→ T9.3, open): on `continued: true` the session did not say that the review continues on the read made at `read_at` (SKILL step 4); no text block at all between the read and the dispatch. The same step's printed `report` was not shown in R3c and R4 either (no text between the `review-read.py` result and `plan`). Owner: STRICT block (offered: a script-rendered line, STRICT, accept).
 
 Not covered: the interruption fell before the dispatch, so "dispatches only the jobs not passed" ran with 0 passed units; a partly passed round was not walked live.
 

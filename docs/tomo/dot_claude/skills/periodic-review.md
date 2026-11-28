@@ -482,8 +482,8 @@ costs 15–17 agent runs, so reading Kado again and condensing from scratch woul
 ## Why Step 4's STRICT Block (Spec 047 Walk F-R5-1)
 
 WHY: step 4 asks for one visible line after a continued read and for the printed `report` after a new one. In three
-live runs of the spec 047 walk the session summarised the `review-read.py` result only in its own thinking, wrote no
-text to the user, and went straight on to `review-digest.py plan`. The user then saw neither which days were read and
+live runs of the spec 047 walk (R3c, R4, R5) the session showed nothing of the `review-read.py` result and went
+straight on to `review-digest.py plan`. The user then saw neither which days were read and
 which are missing, nor how old a continued read is, nor which previous notes were found. The unadorned bullets were observed to deviate, so the repo rule for a `STRICT` block is met (see "Why STRICT Is Rare").
 
 The owner chose a `STRICT` block over a script-rendered line: a walk decision (2026-11-28), no reason stated. The

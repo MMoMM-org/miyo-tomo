@@ -222,8 +222,8 @@ def test_step4_holds_one_strict_after_the_ok_bullets():
 
 SKILL_WHY_STRICT_READ = (
     "## Why Step 4's STRICT Block (Spec 047 Walk F-R5-1)",
-    "In three live runs of the spec 047 walk the session summarised the `review-read.py` result only in its own "
-    "thinking, wrote no text to the user, and went straight on to `review-digest.py plan`.",
+    "In three live runs of the spec 047 walk (R3c, R4, R5) the session showed nothing of the `review-read.py` "
+    "result and went straight on to `review-digest.py plan`.",
     "The owner chose a `STRICT` block over a script-rendered line:",
 )
 

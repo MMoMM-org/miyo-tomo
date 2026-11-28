@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_doc_discard.py — review-doc.py discard: an open review is marked, never deleted (spec 047 walk F-R5-2).
 
 On tests/note_fake_vault (Kado's write guard and frontmatter merge) with a stage built by lib/review_stage.write:
@@ -200,4 +200,17 @@ def test_discard_never_merges_unguarded_when_the_read_reports_no_modified(mod, i
     assert code == 0 and out == {"status": "stopped", "stem": STEM, "doc_path": DOC, "reason": "kado-failed",
                                  "error": {"kind": "modified-missing"}}
     assert fake.events == [("read_frontmatter", DOC)] and fake.text(DOC) == DOC_TEXT
+    _kept(folder)
+
+
+def test_discard_stops_when_the_kado_client_cannot_be_built(mod, instance, monkeypatch, capsys):
+    folder = _staged(instance)
+
+    def cannot_build():
+        raise KadoAuthError("private")
+
+    code, out, err = _discard(mod, monkeypatch, capsys, cannot_build)
+    assert code == 0 and out == {"status": "stopped", "stem": STEM, "doc_path": DOC, "reason": "kado-failed",
+                                 "error": {"kind": "KadoAuthError"}}
+    assert "private" not in json.dumps(out) and "private" not in err
     _kept(folder)

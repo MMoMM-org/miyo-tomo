@@ -1,5 +1,5 @@
 # review_kado_conflict.py — why Kado refused a /review delivery write: its error code and the reason, as names.
-# version: 0.1.0
+# version: 0.1.1
 """Read a ``KadoError`` a ``/review`` delivery caught (spec 045 ADR-11, P6 live walk; split out of
 ``review_delivery`` at spec 046 T6.2).
 
@@ -7,7 +7,8 @@
 ``code`` (the exact ``"code":"CONFLICT"`` token when the payload is not JSON); ``is_conflict`` says Kado refused the
 guard (the client's ``KadoConcurrencyError``, or a tool error whose code is ``CONFLICT``); ``conflict_reason`` names
 why: ``open-unsaved`` for Kado's dirty-editor message, ``changed-since-read`` for the write guard's message and for
-``KadoConcurrencyError``, else ``unknown`` — never Kado's message itself.
+``KadoConcurrencyError``, else ``unknown`` — never Kado's message itself. ``error_of`` is a failed write's
+``error`` for a script's output: the exception's class name, plus Kado's code when it is a closed uppercase token.
 
 Imports the exception classes only; no Kado call, no clock, no file I/O.
 
@@ -16,6 +17,7 @@ Design notes: docs/tomo/scripts/lib/review_kado_conflict.md
 from __future__ import annotations
 
 import json
+import re
 from typing import Optional
 
 from lib.kado_client import KadoConcurrencyError, KadoError, KadoToolError
@@ -25,6 +27,7 @@ TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix be
 OPEN_UNSAVED, CHANGED_SINCE_READ, UNKNOWN_CONFLICT = "open-unsaved", "changed-since-read", "unknown"
 EDITOR_PHRASE = "open in the editor with unsaved changes"   # Kado's dirty-editor refusal (note-adapter conflictEditorError)
 GUARD_PHRASE = "updated in the background"                  # Kado's write guard (concurrency-guard)
+ERROR_CODE = re.compile(r"[A-Z][A-Z_]{0,39}")                # a closed code token, never free text
 
 
 def tool_error_payload(exc: KadoToolError) -> Optional[dict]:
@@ -67,3 +70,13 @@ def conflict_reason(exc: KadoError) -> str:
     if GUARD_PHRASE in message:
         return CHANGED_SINCE_READ
     return UNKNOWN_CONFLICT
+
+
+def error_of(exc: KadoError) -> dict:
+    """``{kind, code?}``: the exception's class name, plus Kado's code when it is a closed uppercase token
+    (never the message)."""
+    error = {"kind": type(exc).__name__}
+    code = tool_error_code(exc) if isinstance(exc, KadoToolError) else None
+    if isinstance(code, str) and ERROR_CODE.fullmatch(code):
+        error["code"] = code
+    return error

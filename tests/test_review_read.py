@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -46,13 +46,17 @@ and the real lib.review_day readers:
   bytes (day + growth files), over_ceiling and over_budget and writes no file;
   the scaled 2026-Q1 read loads back as read_period returned it; a stamped
   weeks.json without its units is a stage-invalid discard, not exit 1
+- spec 047 walk F-R5-2: after review-doc.py discard the period is read anew
+  (continued false, Kado called), never continued on the old read
 
 All data is synthetic.
 """
 from __future__ import annotations
 
+import contextlib
 import copy
 import importlib.util
+import io
 import json
 import shutil
 import sys
@@ -950,3 +954,29 @@ def test_a_quarter_without_monthly_notes_reports_none_found_and_stores_none(mod,
     assert code == 0 and out["status"] == "ok"
     assert out["report"]["monthly_status"] == "none-found"
     assert _loaded(instance, Q1_STEM)["monthly"] == []
+
+
+# ---------------------------------------------------------------- spec 047 walk F-R5-2: a discarded review
+
+def _discard_the_open_review(instance: Path) -> None:
+    """review-doc.py discard on the stem, as the skill's Discard runs it: the stage holds the read, meta.json the
+    document's path, and the document is Tomo's open review."""
+    from note_fake_vault import NoteFakeVault
+    doc = "100 Inbox/2026-W13 Review.md"
+    (_stage(instance) / "meta.json").write_text(json.dumps({"stem": W13_STEM, "doc_path": doc}), encoding="utf-8")
+    (_stage(instance) / "proposals.json").write_text("{}", encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("review_doc_script_discard", SCRIPTS_DIR / "review-doc.py")
+    review_doc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(review_doc)
+    review_doc.KadoClient = NoteFakeVault({doc: "---\ntomo:\n  doc_type: review\n  state: pending-approval\n---\n"})
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        assert review_doc.main(["discard", "--stem", W13_STEM]) == 0
+    assert json.loads(printed.getvalue())["status"] == "discarded"
+
+
+def test_after_a_discard_the_period_is_read_anew_not_continued(mod, instance, monkeypatch, capsys):
+    # RED while review-doc.py has no discard: the stored read would continue (no Kado call, continued true)
+    out = _reread(mod, instance, monkeypatch, capsys, _discard_the_open_review)
+    assert "discarded" not in out                                # the stage was empty, not thrown away by the read
+    assert not (_stage(instance) / "proposals.json").exists()

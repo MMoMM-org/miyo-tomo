@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_state_listing.py — lib/review_state.open_reviews, the listing `review-session.py start` prints
 (spec 045 T2.3, T4.3, P5; SDD Complex Logic review_state OUTPUT; ADR-6).
 
@@ -10,7 +10,9 @@ listing that classifies without the probe fails), ordered by period start under 
 formats, a missing review_kind inferred by parsing the period under the configured formats, unreadable,
 period-less and stem-unsafe documents skipped with a reason, withdrawn reviews and applied reviews already
 reported never listed, the half-withdrawn stem listed as failed-delivery until meta says withdrawn; an open
-document whose stage still holds proposals.json carries new_read true (spec 047 walk F-R3b-3), any other stage false.
+document whose stage still holds proposals.json carries new_read true (spec 047 walk F-R3b-3), any other stage false;
+a document marked `tomo.state: discarded` is never listed and costs no Kado call, an open one beside it still is
+(spec 047 walk F-R5-2).
 """
 from __future__ import annotations
 
@@ -192,6 +194,23 @@ def test_an_open_document_whose_stage_holds_proposals_carries_new_read(tmp_path)
     assert [(r.period, r.state, r.new_read) for r in reviews] == [("2026-W12", "open", False),
                                                                    ("2026-W13", "open", True)]
     assert reviews[1].to_dict()["new_read"] is True and reviews[0].to_dict()["new_read"] is False
+
+
+
+# ---------------------------------------------------------------- a discarded review (spec 047 F-R5-2)
+
+def test_a_discarded_document_is_never_listed_and_an_open_one_still_is(tmp_path):
+    """Falsifies a listing that ignores the discard mark: W13 is marked `discarded` (the listing would classify it
+    `open`), W12 is open. The discarded stem costs no probe."""
+    _meta(tmp_path, "2026-W13_review", steps_done=[], failed_step="")
+    vault, fake = _vault({})
+    docs = [(INBOX + "2026-W13 Review.md", _doc("2026-W13", "week", "discarded", stem="2026-W13_review")),
+            (INBOX + "2026-W12 Review.md", _doc("2026-W12", "week", stem="2026-W12_review"))]
+    reviews, skipped = rs.open_reviews(docs, tmp_path, vault, INBOX)
+    assert skipped == []
+    assert [(r.period, r.state) for r in reviews] == [("2026-W12", "open")]
+    assert fake.events == []
+    assert getattr(rs, "DOC_STATE_DISCARDED", None) == "discarded"
 
 
 # ---------------------------------------------------------------- the quarter (spec 046 T1.4)

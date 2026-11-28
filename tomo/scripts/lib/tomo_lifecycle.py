@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """tomo_lifecycle.py — Pure-data state machine for all Tomo-produced doc-types.
 
 ADR-1 (SDD §Architecture Decisions): the state machine is a plain dict-of-dicts
@@ -14,7 +14,8 @@ All doc-types produced by Tomo are represented:
   moc-proposal   — /moc-propose output; accepted after MOC-consumption
   garden-audit   — /garden-audit report; accepted after its fixes render
   instructions   — Pass-2 / MOC-consumption output; applied when Hashi is done
-  review         — /review inbox document; approved when its set is delivered
+  review         — /review inbox document; approved when its set is delivered, discarded when the user
+                   discards it at /review (the file stays)
 
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/solution.md §Application Data Models
       docs/XDD/specs/045-weekly-monthly-review/solution.md ADR-10 (review)
@@ -105,7 +106,7 @@ STATE_MACHINE: dict[str, dict[str, Any]] = {
         # spec 045 ADR-10 — "<period> Review.md" in the inbox; same shape as
         # suggestions. The review_* keys are top-level frontmatter, not here.
         "initial": None,
-        "states": ["pending-approval", "approved"],
+        "states": ["pending-approval", "approved", "discarded"],
         "transitions": [
             {"from": None, "to": "pending-approval", "trigger": "review-doc write"},
             {
@@ -113,8 +114,12 @@ STATE_MACHINE: dict[str, dict[str, Any]] = {
                 "to": "approved",
                 "trigger": "review-instructions deliver, doc_mark step",
             },
+            # spec 047 walk F-R5-2: Discard at an open entry of /review (an open
+            # document may be approved over a partly applied set)
+            {"from": "pending-approval", "to": "discarded", "trigger": "review-doc discard"},
+            {"from": "approved", "to": "discarded", "trigger": "review-doc discard"},
         ],
-        "terminal": ["approved"],
+        "terminal": ["approved", "discarded"],
     },
     "source": {
         # Source items have no outgoing transitions once captured.

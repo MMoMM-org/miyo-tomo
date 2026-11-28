@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, Agent
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked periodic note, or nothing"
 ---
 # Periodic Review
-# version: 0.3.3
+# version: 0.3.4
 
 Review one finished week, month or quarter with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/confirmed-<kind>.json` yourself; the review agents of step 5 write their own files (the digests, `carryover.json`, `proposals.json`), and every other change goes through the scripts below.
 
@@ -42,8 +42,13 @@ Say one line per entry of `skipped_review_docs` with its `doc_path` and `reason`
 
 Handle every entry of `open_reviews` before the new request, in the order listed. Print each by `period`, `kind` and `state`, then branch on `state`:
 - `failed-delivery` → ask `1 Resume · 2 Drop`. Resume → step 8 with the entry's `stem`. Drop → step 9 with the entry's `stem`.
-- `open` without `new_read` → ask `1 Continue · 2 Start over · 3 Abort`. Continue → step 6 with the entry's `stem`. Start over → step 4 with the entry's `period` and `kind` (the `write` there refuses with `review-exists` and step 5 asks before replacing). Abort → say in one line that the document stays as it is and end the run: no further entry, not the new request.
-- `open` with `new_read` → say that a newer read of the period is staged whose document was not written, and that replacing the document with it discards the user's edits in it; ask `1 Replace with the new read · 2 Continue · 3 Start over · 4 Abort`. Replace with the new read → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` with the entry's `stem` and branch on its `status` by the list of step 5's `write`, `replaced` as `written`. Continue, Start over and Abort → as for `open` without `new_read`.
+- `open` without `new_read` → ask `1 Continue · 2 Start over · 3 Discard · 4 Abort`. Continue → step 6 with the entry's `stem`. Start over → step 4 with the entry's `period` and `kind` (the `write` there refuses with `review-exists` and step 5 asks before replacing). Discard → the Discard line below. Abort → say in one line that the document stays as it is and end the run: no further entry, not the new request.
+- `open` with `new_read` → say that a newer read of the period is staged whose document was not written, and that replacing the document with it discards the user's edits in it; ask `1 Replace with the new read · 2 Continue · 3 Start over · 4 Discard · 5 Abort`. Replace with the new read → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` with the entry's `stem` and branch on its `status` by the list of step 5's `write`, `replaced` as `written`. Continue, Start over, Discard and Abort → as for `open` without `new_read`.
+- Discard at an `open` entry → run `python3 scripts/review-doc.py discard --stem <stem> --doc-path "<doc_path>"` with the entry's `stem` and `doc_path`, and branch on its `status`. `discarded` → say in one line that the document was marked discarded, stays in the inbox for the user to delete, and is no longer listed; then go on with the next entry. `stopped` → say in one line by `reason`, then end the run: no further entry, not the new request; nothing was marked and the read stays:
+  - `doc-changed` → the document was edited, or is open in Obsidian with unsaved changes: the user saves it (Cmd+S) or closes it first, then runs `/review` again.
+  - `doc-missing` → no review document was found at `doc_path`.
+  - `not-a-review` → the note at `doc_path` is not Tomo's review document.
+  - `kado-failed` → Kado refused or failed the mark; show `error` verbatim.
 - `delivered` → say in one line that its instruction set waits for Hashi, or for the user to apply it by hand; no second set is delivered.
 - `move-refused` → say in one line that the target note existed when Hashi applied the move, so the inbox copy is still there; the user decides in Obsidian.
 - `target-missing` → say in one line that the target note is gone since delivery; the user decides in Obsidian.

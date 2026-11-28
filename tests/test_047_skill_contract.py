@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_047_skill_contract.py — the periodic-review skill's step 4 and step 5 on the stage (spec 047 T6.3; ADR-8,
 ADR-10; PRD F3-AC6, F3-AC8, F6-AC1, F6-AC2, F6-AC3, F6-AC4, F6-AC5, F6-AC6, F6-AC8).
 
@@ -19,6 +19,9 @@ in tomo/dot_claude/skills/periodic-review/SKILL.md and that the names it uses ar
 - the four STRICT blocks of step 5, each one line with a one-line ``Why:``
 - the Pass 1 abort runs only ``review-doc.py replace --stem <stem> --abort``
 - every ``review-digest.py`` call parses with the script's own argparse parser
+- step 1 (spec 047 walk F-R5-2): both ``open`` questions offer Discard before Abort; Discard runs
+  ``review-doc.py discard`` with the entry's stem and path, says the ``discarded`` line and goes on, and says a
+  ``stopped`` reason by code (``doc-changed`` with Cmd+S) and ends the run; the call parses with the script's parser
 
 Each prose pin (``PINS``) is a phrase on the one line that owns it, matched EXACTLY once in the whole skill and
 found in its step; deleting that line fails the row (proven by a sweep outside the repo, see the T6.3 report).
@@ -37,6 +40,7 @@ from review_cli_contract import REPO, parse_call
 from review_skill_helpers import SKILL, SKILL_WHY, _section, _text
 
 AGENTS_DIR = REPO / "tomo" / "dot_claude" / "agents"
+STEP1 = "1. Start"
 STEP4 = "4. Read the period"
 STEP5 = "5. Propose and write the document"
 STEP8 = "8. Deliver"
@@ -60,8 +64,8 @@ def test_allowed_tools_add_agent():
     assert [t.strip() for t in tools.split(",")] == ["Read", "Write", "Bash", "Agent"]
 
 
-def test_carries_version_0_3_3():
-    assert re.findall(r"^# version: .*$", _text(SKILL), re.MULTILINE) == ["# version: 0.3.3"]
+def test_carries_version_0_3_4():
+    assert re.findall(r"^# version: .*$", _text(SKILL), re.MULTILINE) == ["# version: 0.3.4"]
 
 
 # ── the old read files are gone ─────────────────────────────────────────────
@@ -172,6 +176,27 @@ PINS = [
     (STEP5, "report-carried-moved",
      "One line per entry of `carried_moved`: `count` carried items of the section `<section heading>` of its `key` "
      "moved to the group `to`."),
+    (STEP1, "discard-ask-open",
+     "- `open` without `new_read` → ask `1 Continue · 2 Start over · 3 Discard · 4 Abort`."),
+    (STEP1, "discard-route-open", "Discard → the Discard line below."),
+    (STEP1, "discard-ask-new-read",
+     "ask `1 Replace with the new read · 2 Continue · 3 Start over · 4 Discard · 5 Abort`."),
+    (STEP1, "discard-rest-new-read", "Continue, Start over, Discard and Abort → as for `open` without `new_read`."),
+    (STEP1, "discard-run",
+     "- Discard at an `open` entry → run `python3 scripts/review-doc.py discard --stem <stem> --doc-path "
+     "\"<doc_path>\"` with the entry's `stem` and `doc_path`, and branch on its `status`."),
+    (STEP1, "discard-done",
+     "`discarded` → say in one line that the document was marked discarded, stays in the inbox for the user to "
+     "delete, and is no longer listed; then go on with the next entry."),
+    (STEP1, "discard-stopped",
+     "`stopped` → say in one line by `reason`, then end the run: no further entry, not the new request; nothing was "
+     "marked and the read stays:"),
+    (STEP1, "discard-doc-changed",
+     "- `doc-changed` → the document was edited, or is open in Obsidian with unsaved changes: the user saves it "
+     "(Cmd+S) or closes it first, then runs `/review` again."),
+    (STEP1, "discard-doc-missing", "- `doc-missing` → no review document was found at `doc_path`."),
+    (STEP1, "discard-not-a-review", "- `not-a-review` → the note at `doc_path` is not Tomo's review document."),
+    (STEP1, "discard-kado-failed", "- `kado-failed` → Kado refused or failed the mark; show `error` verbatim."),
     (STEP4, "strict-read", STRICT_READ),
     (STEP8, "strict-8", STRICT_8),
 ] + [(STEP5, f"strict-{n}", s) for n, s in enumerate(STEP5_STRICTS, 1)]
@@ -193,6 +218,27 @@ def test_pin(step, label, phrase):
 def test_pin_labels_are_unique():
     labels = [lab for _s, lab, _p in PINS]
     assert len(labels) == len(set(labels))
+
+
+# ── step 1: Discard (spec 047 walk F-R5-2) ──────────────────────────────────
+
+
+def test_discard_comes_before_abort_and_names_every_stop_reason_of_the_script():
+    text = _section(STEP1)
+    for ask in ("`1 Continue · 2 Start over · 3 Discard · 4 Abort`",
+                "`1 Replace with the new read · 2 Continue · 3 Start over · 4 Discard · 5 Abort`"):
+        assert _count(ask) == 1, ask
+    assert "3 Abort`" not in text.replace("· 3 Discard · 4 Abort`", "")
+    from lib import review_discard as rdisc
+    named = set(re.findall(r"- `([a-z-]+)` → ", text[text.index("- Discard at an `open` entry"):
+                                                       text.index("- `delivered` →")]))
+    assert named == set(rdisc.REASONS)
+
+
+def test_the_discard_call_parses_with_the_scripts_parser():
+    calls = re.findall(r"python3 scripts/review-doc\.py discard([^`\n]*)", _text(SKILL))
+    assert calls == [' --stem <stem> --doc-path "<doc_path>"']
+    parse_call("review-doc.py", "discard" + calls[0])
 
 
 # ── step 4 ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 --- a/skills/periodic-review/SKILL.md
 +++ b/skills/periodic-review/SKILL.md
-@@ -144,9 +144,8 @@
+@@ -149,9 +149,8 @@
  Run `plan` once after each run of step 4; the only other `plan` is the `condense-incomplete` line below. Branch on `status` first:
  - `refused` with `read-stale` → run step 4 with `--fresh`, once per run, counted over `plan`, `check` and `write` together, and continue there; a second `read-stale` → show it and stop.
  - `refused` with `stage-missing` or `stage-invalid` → run step 4 again, once, and continue there; a second refusal → show `problems` verbatim and stop.
@@ -11,7 +11,7 @@
  # STRICT — every `Agent()` call names `subagent_type` with the job's `agent`. Why: a call without it starts a general-purpose agent with every tool and none of the review agent's rules.
  # STRICT — every `Agent()` call passes `run_in_background: false`. Why: a backgrounded agent answers after the run went on, before its file exists.
  
-@@ -186,7 +185,7 @@
+@@ -191,7 +190,7 @@
  Run `check` at most twice after each `plan`. Branch on `status` first:
  - `refused` → the `refused` lines of `plan` above.
  - `stopped` with `nothing-condensed` → say that no week of the period could be condensed and name every entry of `not_condensed` with its `unit` and `days`; stop as for a period with no content: no document is written.

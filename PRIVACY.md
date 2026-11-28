@@ -172,7 +172,7 @@ what to do with them:
   `digests/`, what the previous reviews left open in `carryover.json` and the
   model's proposals in `proposals.json`. Tomo deletes them once the review
   document is written to your inbox, when you abort the review before that,
-  when you drop the review, and before a new read of the period. If a run is
+  when you drop the review or discard it, and before a new read of the period. If a run is
   interrupted before the document is written — the session ends or a step
   fails — what it read stays there until one of those happens: that
   period's next `/review` continues on it, or replaces it with a new read. A
@@ -192,6 +192,8 @@ what to do with them:
   approved, in your wording; a review of a week, month or quarter without a
   note yet adds that new note. They stay in the inbox after you applied them,
   like every other document Tomo delivers — removing them is yours to do.
+  A review you discard stays there too: Tomo only marks it `discarded` in its
+  frontmatter, deletes nothing, and no longer lists it.
 
 Beyond the review's working files, Tomo does not remove any of this; whether and
 when to remove it is **your choice**. Because the transcripts and the working folder can hold your journal

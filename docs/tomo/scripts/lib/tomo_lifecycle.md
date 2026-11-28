@@ -47,3 +47,12 @@ docs/tomo/scripts/lib/review_state.md, "WHY a Complete Delivery Whose Set
 Is Gone Is Finished, Not Failed"). The user's tick alone does not change the frontmatter;
 it is read by `review-doc.py parse` (planned, spec 045 Phase 3) and refused
 as `not-approved` when absent.
+
+`discarded` (spec 047 walk F-R5-2) is the state `review-doc.py discard`
+merges into the block when the user discards an open review at `/review`;
+the file stays (the owner's decision, WHY in
+docs/tomo/scripts/lib/review_discard.md). It is reachable from both states
+because an `open` entry may be an approved document over a partly applied
+set (docs/tomo/scripts/lib/review_state.md), and it is terminal: the
+listing never offers the document again. The schema's review branch and
+this entry carry the same three states.

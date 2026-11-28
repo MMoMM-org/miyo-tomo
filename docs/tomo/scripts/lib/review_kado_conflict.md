@@ -38,3 +38,12 @@ guard (`GUARD_PHRASE`) and for `KadoConcurrencyError`, `unknown` for any
 other. Kado's message can carry the note's path; stdout carries the name
 only (docs/tomo/scripts/review-instructions.md, "WHY the `doc-changed` Stop
 Carries a `reason`").
+
+## WHY `error_of` Lives Here (Spec 047 Walk F-R5-2)
+
+`review-doc.py write` reported a failed write as `{kind, code?}`: the
+exception's class name, plus Kado's code only when it is a closed uppercase
+token. `review-doc.py discard` (through `lib/review_discard.py`) reports a
+failed mark the same way. One function in the module that already reads
+Kado's error code keeps the two outputs identical; a second copy of the
+token check would drift.

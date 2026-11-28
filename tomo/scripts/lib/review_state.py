@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.7.2
+# version: 0.7.3
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -48,7 +48,9 @@ drops an ``applied`` review whose meta carries ``applied_reported`` (the
 caller that reported it writes the flag), lists a document whose stem fails
 ``safe_stem`` under ``skipped_review_docs`` with ``stem-unsafe``, and orders
 by period start under the configured week rule and name formats, inferring a
-missing ``review_kind`` by parsing the period under them. Each entry carries
+missing ``review_kind`` by parsing the period under them. A document whose
+``tomo.state`` is ``DOC_STATE_DISCARDED`` (``review-doc.py discard``) is never
+listed and costs no Kado call. Each entry carries
 ``new_read``: whether ``<meta_root>/<stem>/proposals.json`` exists, a Pass 1
 whose document was never written (``review-doc.py`` deletes the file once it
 writes the document or aborts the read).
@@ -84,6 +86,7 @@ TARGET_MISSING = "target-missing"
 STATES = (OPEN, FAILED_DELIVERY, DELIVERED, APPLIED, MOVE_REFUSED, TARGET_MISSING)
 
 DOC_STATE_APPROVED = "approved"
+DOC_STATE_DISCARDED = "discarded"
 STEM_SUFFIX = "_review"
 APPLIED_REPORTED = "applied_reported"
 STEM_UNSAFE = "stem-unsafe"
@@ -362,8 +365,8 @@ def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, va
                  formats: Optional[Dict[str, str]] = None) -> Tuple[List[OpenReview], List[dict]]:
     """``(reviews ordered by period start, skipped)`` over ``(doc_path, frontmatter)`` pairs, each
     classified through ``stem_state`` with ``vault`` and ``inbox``; ``skipped`` names a document
-    with unreadable frontmatter, no period or an unsafe stem. A withdrawn review and an applied one
-    whose meta says ``applied_reported`` are not listed. ``new_read`` is true when the stem's stage
+    with unreadable frontmatter, no period or an unsafe stem. A discarded document, a withdrawn review
+    and an applied one whose meta says ``applied_reported`` are not listed. ``new_read`` is true when the stem's stage
     under ``meta_root`` holds ``proposals.json``. ``formats`` are the configured name formats per kind,
     merged over the defaults."""
     formats = dict(DEFAULT_FORMATS, **(formats or {}))
@@ -380,6 +383,8 @@ def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, va
         stem = _str(doc.get("review_stem")) or f"{period}{STEM_SUFFIX}"
         if not safe_stem(stem):
             skipped.append({"doc_path": doc_path, "reason": STEM_UNSAFE})
+            continue
+        if doc_state(doc) == DOC_STATE_DISCARDED:
             continue
         kind = doc.get("review_kind")
         if kind not in KINDS:

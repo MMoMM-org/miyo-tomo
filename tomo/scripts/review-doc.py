@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-# review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.11.3
-"""The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
+# review-doc.py — The review document of /review in the inbox: write it, parse it back, replace or discard it.
+# version: 0.11.4
+"""The review document of /review: write (Pass 1), parse (Pass 2), replace (start over), discard (spec 045, PRD F4-F6;
+spec 047 walk F-R5-2).
 
 After the period was read (the stage ``tomo-tmp/review/<stem>/``, loaded
 through ``lib/review_stage.load``, spec 047 T2.4) and the model wrote its proposals
@@ -23,6 +24,11 @@ of truth and Phase 4 reads it fresh. ``replace`` is the confirmed
 start-over: it writes a new document over Tomo's own from the files
 ``write`` kept on ``review-exists``; ``--abort`` discards the stage
 content and ``proposals.json`` instead (also the Pass 1 abort after the read).
+``discard`` marks an open review document ``tomo.state: discarded`` through
+Kado (``lib/review_discard``: one frontmatter read, one merge guarded by its
+``modified``), keeps the file, and then deletes the stage content and
+``proposals.json`` as ``replace --abort`` does; ``lib/review_state`` no longer
+lists the document.
 
 Usage (cwd = instance root):
     python3 scripts/review-doc.py write --stem <period>_review --proposals <json>
@@ -31,6 +37,7 @@ Usage (cwd = instance root):
     python3 scripts/review-doc.py parse --stem <period>_review [--doc-path P]
     python3 scripts/review-doc.py replace --stem <period>_review [--confirm | --abort]
         [--proposals <json>] [--run-id R]
+    python3 scripts/review-doc.py discard --stem <period>_review [--doc-path P]
 
 Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
@@ -56,6 +63,10 @@ Output: one JSON object on stdout, ASCII-escaped.
     replace: status needs-confirm, stem, doc_path   (neither flag: nothing written, no Kado call)
            | --confirm: as write, with status replaced instead of written
            | --abort: status aborted, stem
+    discard: status discarded, stem, doc_path
+           | status stopped, stem, doc_path?, reason doc-missing | not-a-review | doc-changed | kado-failed,
+             conflict? open-unsaved|changed-since-read|unknown (doc-changed only),
+             error? {kind, code?} (kado-failed only: the class name, or modified-missing)
 
 Rules:
     The proposals are validated before any Kado call, the section checks
@@ -92,7 +103,11 @@ Rules:
     as they were, but for a carried move written back on ``proposals-invalid``.
     ``replace --abort`` deletes the stage content and
     ``proposals.json`` and touches neither the document, ``meta.json`` nor
-    ``payloads.json``.
+    ``payloads.json``. ``discard`` takes the path from ``--doc-path`` or the
+    ``doc_path`` of ``meta.json`` (neither: ``doc-missing`` without a Kado
+    call), writes nothing but the one frontmatter merge, deletes no vault
+    file, and clears the stage only once the mark landed; every ``stopped``
+    keeps the stage, ``proposals.json`` and ``meta.json`` as they were.
     ``parse`` reads the document at ``--doc-path`` or at the ``doc_path`` of
     ``meta.json`` through ``lib/review_doc_read`` (shared with
     ``review-instructions.py``) and writes nothing; ``edited`` per Tomo item
@@ -113,7 +128,6 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
-import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -127,6 +141,7 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_digest as rdg  # noqa: E402
+from lib import review_discard as rdisc  # noqa: E402
 from lib import review_growth as rgw  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_habits as rh  # noqa: E402
@@ -135,7 +150,7 @@ from lib import review_new_note as rnn  # noqa: E402
 from lib import review_section_set as rss  # noqa: E402
 from lib import review_sections as rs  # noqa: E402
 from lib import review_stage  # noqa: E402
-from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError, KadoToolError  # noqa: E402
+from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import Period, render_name  # noqa: E402
 from lib.review_doc_read import doc_path_of, read_document  # noqa: E402
@@ -238,17 +253,10 @@ def doc_state(vault: Vault, doc_path: str) -> Tuple[str, Optional[int]]:
     return state, modified
 
 
-ERROR_CODE = re.compile(r"[A-Z][A-Z_]{0,39}")
-
-
 def write_error(exc: KadoError) -> dict:
     """The stopped write's ``error``: the exception's class name, plus Kado's code when it is a closed
     uppercase token (never the message)."""
-    error = {"kind": type(exc).__name__}
-    code = rkc.tool_error_code(exc) if isinstance(exc, KadoToolError) else None
-    if isinstance(code, str) and ERROR_CODE.fullmatch(code):
-        error["code"] = code
-    return error
+    return rkc.error_of(exc)
 
 
 # ---------------------------------------------------------------- write
@@ -459,6 +467,26 @@ def replace_document(args: argparse.Namespace) -> dict:
     return result
 
 
+# ---------------------------------------------------------------- discard
+
+def discard_document(args: argparse.Namespace) -> dict:
+    """The ``discard`` subcommand: mark the open document discarded, keep the file, then clear the stage."""
+    stage = Path(args.tmp) / args.stem
+    doc_path = doc_path_of(read_meta(Path(args.tmp), args.stem), args.doc_path)
+    if doc_path is None:
+        return {"status": "stopped", "stem": args.stem, "reason": rdisc.DOC_MISSING}
+    try:
+        client = KadoClient()
+    except KadoError as exc:
+        return {"status": "stopped", "stem": args.stem, "doc_path": doc_path, "reason": rdisc.KADO_FAILED,
+                "error": rkc.error_of(exc)}
+    stop = rdisc.discard(client, doc_path)
+    if stop is not None:
+        return {"status": "stopped", "stem": args.stem, "doc_path": doc_path, **stop}
+    _drop_stage_content(stage, stage / PROPOSALS_FILE)
+    return {"status": "discarded", "stem": args.stem, "doc_path": doc_path}
+
+
 # ---------------------------------------------------------------- main
 
 def _date_arg(text: str) -> date:
@@ -475,7 +503,7 @@ def _stem_arg(text: str) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="The review document of /review: write it to the inbox.")
+    p = argparse.ArgumentParser(description="The review document of /review: write, parse, replace or discard it.")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
     p.add_argument("--profiles-dir", default=str(DEFAULT_PROFILES_DIR), help="framework profiles directory")
     p.add_argument("--tmp", default=DEFAULT_TMP, help="Where tomo-tmp/review/<stem>/ lives")
@@ -499,6 +527,10 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--proposals", help="The kept proposals.json (default: the stage copy)")
     x.add_argument("--run-id", help="Run id for the new document's tomo: block (default: a fresh one)")
     x.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
+
+    d = sub.add_parser("discard", help="Mark an open review document discarded (the file stays), then clear the stage")
+    d.add_argument("--stem", required=True, type=_stem_arg, help="<period>_review, the tomo-tmp/review/ folder")
+    d.add_argument("--doc-path", help="The document's vault path (default: doc_path of meta.json)")
     return p
 
 
@@ -507,7 +539,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         try:
-            commands = {"write": write_document, "parse": parse_document, "replace": replace_document}
+            commands = {"write": write_document, "parse": parse_document, "replace": replace_document,
+                        "discard": discard_document}
             result = commands[args.command](args)
         except Refused as refused:
             result = {"status": "refused", "stem": args.stem, "problems": [refused.problem], **refused.extra}

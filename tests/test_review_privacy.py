@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.6.1
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -17,7 +17,8 @@ of the target — the delivery stopped at the set MD, resumed without the pick
 meta.json) and then with it — status, a second deliver (set-exists), drop
 after a complete delivery; the month read, a write refused by `review-exists`, `replace`
 without a flag, `--confirm` and `--abort`, a new-note preview, a delivery
-that fails at the set MD, drop after it. One forced exception per script,
+that fails at the set MD, drop after it, and `discard` on a new month read (spec 047 walk
+F-R5-2). One forced exception per script,
 raised while a marker-bearing text is being parsed, must leave only the
 class name on stderr. A list of bad invocations puts a marker into the
 arguments; neither stream may echo it.
@@ -507,6 +508,11 @@ def _month(w: Walk) -> None:
     assert rc == 0 and out["status"] == "withdrawn" and "note" in out["paths"], out
     rc, out = w.run("review-instructions", "status", ["status", "--stem", MONTH_STEM])
     assert rc == 0 and out == {"state": None, "stem": MONTH_STEM}, out
+    # spec 047 walk F-R5-2: discard marks the document, keeps the file, clears the stage of a staged read
+    _month_read(w)
+    rc, out = w.run("review-doc", "discard", ["discard", "--stem", MONTH_STEM])
+    assert rc == 0 and out == {"status": "discarded", "stem": MONTH_STEM, "doc_path": MONTH_DOC}, out
+    assert MONTH_DOC in w.vault.files and not (w.stage(MONTH_STEM) / "proposals.json").exists()
 
 
 DIGEST_STEM = "2026-W13_digest"       # a stage of its own for review-digest.py's other answers

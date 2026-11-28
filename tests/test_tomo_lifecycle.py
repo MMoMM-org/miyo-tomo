@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_tomo_lifecycle.py — Tests for the tomo_lifecycle state-machine module.
 
 Covers T1.1 (F-47 Phase 1): validate_transition, is_terminal, is_pending, and
@@ -163,11 +163,16 @@ def test_state_machine_has_all_doc_types():
 
 
 def test_review_lifecycle_matches_suggestions_shape():
-    """[spec 045 T1.4] review runs pending-approval → approved and nothing else:
-    None → pending-approval is the only initial assignment, approved is terminal,
-    and no transition leads back out of it."""
-    assert STATE_MACHINE["review"]["states"] == ["pending-approval", "approved"]
+    """[spec 045 T1.4] review runs pending-approval → approved: None →
+    pending-approval is the only initial assignment, approved is terminal, and
+    no transition leads back out of it; [spec 047 walk F-R5-2] either state may
+    end in discarded (review-doc discard), which is terminal too."""
+    assert STATE_MACHINE["review"]["states"] == ["pending-approval", "approved", "discarded"]
     assert validate_transition("review", None, "pending-approval") is True
+    assert validate_transition("review", "pending-approval", "discarded") is True     # spec 047 walk F-R5-2
+    assert validate_transition("review", "approved", "discarded") is True
+    assert validate_transition("review", "discarded", "pending-approval") is False
+    assert is_terminal("review", "discarded") is True
     assert validate_transition("review", "pending-approval", "approved") is True
     assert validate_transition("review", None, "approved") is False
     assert validate_transition("review", "approved", "pending-approval") is False

@@ -441,6 +441,21 @@ state (`status`, `deliver`) is unchanged. The file name is a local constant
 because `review-doc.py` (hyphenated, a script) cannot be imported from
 `lib/`; it must stay equal to that script's `PROPOSALS_FILE`.
 
+## WHY a Discarded Document Is Never Listed (Spec 047 Walk F-R5-2)
+
+WHY: `review-doc.py discard` marks an open review document `tomo.state:
+discarded` and keeps the file (the owner's decision; WHY in
+`docs/tomo/scripts/lib/review_discard.md`). `open_reviews` skips a document
+whose `doc_state` is `DOC_STATE_DISCARDED` before `read_meta` and
+`stem_state`, so the mark is all it takes and the entry costs no Kado call.
+It is a named constant beside `DOC_STATE_APPROVED`, so the script that
+writes the mark and the listing that reads it cannot spell it differently.
+The skip lives in the listing, not in `review_state`: `discarded` is not
+one of the `STATES`, and the one-stem reader (`review-instructions.py
+status`) is unchanged. A later `/review` of that period still meets the
+file at the document's name: `write` refuses `review-exists` and the skill
+asks before replacing it.
+
 ## WHY the Stem Falls Back to `<period>_review`
 
 WHY: SDD Data Storage Changes fixes the stem as `<period-name>_review`.

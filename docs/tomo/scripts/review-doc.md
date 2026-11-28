@@ -108,6 +108,34 @@ content (see below) and `proposals.json`; the document, `meta.json` and
 as it was. `--confirm` and `--abort` are
 mutually exclusive on the parser so a mixed call is exit 2, not a guess.
 
+## WHY `discard` Marks the Document, Keeps It, Then Clears the Stage (Spec 047 Walk F-R5-2)
+
+WHY: in the walk an unapproved open review blocked `/review` for every other
+period: step 1 handles every open entry first, and its answers were
+Continue, Start over and Abort. The owner decided to add Discard, which
+marks the document and keeps the file. Recorded as the owner's decision; the
+facts: Tomo deletes nothing in the vault, the user may have edited the
+document, and a frontmatter merge needs no Kado delete permission. The Kado
+half (one read, one merge guarded by its `modified`, the closed reasons) is
+`lib/review_discard.py`; its WHY is `docs/tomo/scripts/lib/review_discard.md`.
+
+The path comes from `--doc-path` (the skill passes the listing's `doc_path`)
+or from `meta.json`, as for `parse`; with neither the answer is
+`doc-missing` before any Kado call. Only once the mark landed does the
+script clear the stage, with the same `_drop_stage_content` as `replace
+--abort`: `review_stage.discard` (the manifest first, so no read can be
+continued) and `proposals.json` (so `new_read` is false), with `meta.json`
+and `payloads.json` kept. Without the manifest `review-read.py` finds no
+stored read and reads the period anew. Every `stopped` keeps the stage as it
+was, so the user's next try finds the same entry, read and proposals. A
+later `/review` of the period meets the kept file at the document's name:
+`write` refuses `review-exists` and the skill asks before replacing it; that
+path is unchanged.
+
+`write_error` now delegates to `review_kado_conflict.error_of`, which
+`discard` shares, so a failed write and a failed mark name the error the
+same way.
+
 ## WHY the Script Does the Kado Calls and the Lib Does Not
 
 `lib/review_doc.py` is pure: it checks and renders. The script owns the

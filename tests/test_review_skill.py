@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.21
+# version: 0.2.22
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -79,7 +79,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.3.3")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.2"), (SKILL, "0.3.4")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -204,9 +204,10 @@ def test_open_reviews_are_handled_before_the_new_request_in_listed_order():
 
 OPEN_REVIEW_STATES = {
     "failed-delivery": "- `failed-delivery` → ask `1 Resume · 2 Drop`. Resume → step 8 with the entry's `stem`. Drop → step 9 with the entry's `stem`.",
-    "open": ("- `open` without `new_read` → ask `1 Continue · 2 Start over · 3 Abort`. Continue → step 6 with the entry's `stem`. "
+    "open": ("- `open` without `new_read` → ask `1 Continue · 2 Start over · 3 Discard · 4 Abort`. Continue → step 6 with the entry's `stem`. "
              "Start over → step 4 with the entry's `period` and `kind` (the `write` there refuses with "
-             "`review-exists` and step 5 asks before replacing). Abort → say in one line that the document stays "
+             "`review-exists` and step 5 asks before replacing). Discard → the Discard line below. Abort → say in one line "
+             "that the document stays "
              "as it is and end the run: no further entry, not the new request."),
     "delivered": ("- `delivered` → say in one line that its instruction set waits for Hashi, or for the user to "
                   "apply it by hand; no second set is delivered."),
@@ -226,11 +227,11 @@ def test_every_listed_state_has_its_offer(state):
 
 OPEN_NEW_READ = ("- `open` with `new_read` → say that a newer read of the period is staged whose document was not "
                  "written, and that replacing the document with it discards the user's edits in it; ask "
-                 "`1 Replace with the new read · 2 Continue · 3 Start over · 4 Abort`.")
+                 "`1 Replace with the new read · 2 Continue · 3 Start over · 4 Discard · 5 Abort`.")
 OPEN_NEW_READ_REPLACE = ("Replace with the new read → run `python3 scripts/review-doc.py replace --stem <stem> "
                          "--confirm` with the entry's `stem` and branch on its `status` by the list of step 5's "
                          "`write`, `replaced` as `written`.")
-OPEN_NEW_READ_REST = "Continue, Start over and Abort → as for `open` without `new_read`."
+OPEN_NEW_READ_REST = "Continue, Start over, Discard and Abort → as for `open` without `new_read`."
 
 
 @pytest.mark.parametrize("sentence", [OPEN_NEW_READ, OPEN_NEW_READ_REPLACE, OPEN_NEW_READ_REST,
@@ -243,7 +244,7 @@ def test_an_open_review_with_a_staged_new_read_is_offered_the_replace(sentence):
     assert _flat(SKILL).count(sentence) == 1, sentence
     text = _section("1. Start")
     assert text.index(OPEN_NEW_READ) < text.index(OPEN_NEW_READ_REPLACE) < text.index(OPEN_NEW_READ_REST)
-    assert _flat(SKILL).count("`1 Continue · 2 Start over · 3 Abort`") == 1
+    assert _flat(SKILL).count("`1 Continue · 2 Start over · 3 Discard · 4 Abort`") == 1
 
 
 def test_an_abort_at_an_open_review_question_ends_the_whole_run():

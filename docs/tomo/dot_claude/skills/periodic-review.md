@@ -43,7 +43,7 @@ the user and calls the dialog straight after a Read, with no visible text, and t
 `claude plugin eval` never offers `AskUserQuestion` either, so the paid evidence can only prove the typed path. Every
 question of this skill is therefore the same message as the content it refers to: the content, then one numbered
 option line as the last line (`1 Deliver · 2 Abort`, `1 Confirm · 2 Correct · 3 Abort`, `1 Resume · 2 Drop`,
-`1 Continue · 2 Start over · 3 Abort`, `1 Replace with the new read · 2 Continue · 3 Start over · 4 Abort`,
+`1 Continue · 2 Start over · 3 Discard · 4 Abort`, `1 Replace with the new read · 2 Continue · 3 Start over · 4 Discard · 5 Abort`,
 `1 Replace · 2 Keep it`, `1 Start over · 2 Abort` — also for the marker
 without a heading above it, see Pass 2 — and for a heading choice the numbered `headings` list with
 "Which number, or 0 Abort?" so every listed number stays valid), and the turn ends.
@@ -81,11 +81,11 @@ never from files the model inspects:
 
 - `failed-delivery` → `1 Resume · 2 Drop`: resume reruns `review-instructions.py deliver` (steps already done are
   skipped, F5-AC10); drop runs `review-instructions.py drop` (see "Why drop Withdraws").
-- `open` without `new_read` → `1 Continue · 2 Start over · 3 Abort`: continue is Pass 2 (see "Why Pass 2 Is parse,
-  Then preview"); start over goes through `review-doc.py replace` (see "Why Start Over Asks Twice"); abort leaves the
-  document as it is.
-- `open` with `new_read` → `1 Replace with the new read · 2 Continue · 3 Start over · 4 Abort` (see "Why an Open
-  Review With a Staged New Read Offers Replace").
+- `open` without `new_read` → `1 Continue · 2 Start over · 3 Discard · 4 Abort`: continue is Pass 2 (see "Why Pass 2
+  Is parse, Then preview"); start over goes through `review-doc.py replace` (see "Why Start Over Asks Twice"); discard
+  runs `review-doc.py discard` (see "Why an Open Review Offers Discard"); abort leaves the document as it is.
+- `open` with `new_read` → `1 Replace with the new read · 2 Continue · 3 Start over · 4 Discard · 5 Abort` (see "Why
+  an Open Review With a Staged New Read Offers Replace").
 - `delivered` → one line: the set waits for Hashi or for the user to apply it by hand; no second set is delivered
   (F6-AC2, the script would refuse it as `set-exists` anyway). A set Hashi applied in full is no longer `delivered`:
   the stem reads `applied`, and a rerun of the period (Start over) writes its new set over it — the skill has no line
@@ -103,7 +103,7 @@ an open review, the open review is the request. Only after the list is handled d
 
 An Abort at any question of an open review ends the whole run (Phase 5 drift round). The rule says "on Abort, run no
 further script", but the first draft's step 1 said "continue with the next entry, then with the new request, after
-each one ends" — read literally, an Abort at `1 Continue · 2 Start over · 3 Abort` ended that entry and the skill went
+each one ends" — read literally, an Abort at an `open` entry's question ended that entry and the skill went
 on to `parse` the next one and to `review-read.py` and `write` for the new request, after the user had said Abort.
 The step now says that an Abort at an entry's question ends the run: no further entry, not the new request. The user
 who wants the next entry handled runs `/review` again; the price is one extra call, the alternative is a vault write
@@ -748,6 +748,31 @@ answer `replace --confirm` gives (`stopped`, `proposals-invalid`, `condense-inco
 are the same recovery a stopped `write` gets in step 5. Continue, Start over and Abort stay what they are for a plain
 `open` entry, so the user can still prefer the edited old document or a fresh read. An `open` entry without
 `new_read` keeps the three options unchanged.
+
+## Why an Open Review Offers Discard (Spec 047 Walk F-R5-2)
+
+WHY: step 1 handles every `open_reviews` entry before the new request, and an
+`open` entry offered Continue (Pass 2, which stops at "not approved" while the
+user has not ticked Approved), Start over (a new read of that period) and
+Abort (end the run). An unapproved review the user no longer wanted therefore
+blocked `/review` for every other period. The owner decided to add Discard,
+which marks the document and keeps the file: Tomo deletes nothing in the
+vault, the user may have edited the document, and the mark needs no Kado
+delete permission (the owner's decision; WHY in
+`docs/tomo/scripts/lib/review_discard.md`).
+
+Discard sits before Abort in both `open` questions, so Abort stays the last
+option everywhere, and for an entry with `new_read` it follows the same line as
+for a plain `open` entry. It runs `review-doc.py discard` with the entry's
+`stem` and its `doc_path`: the listing's path still works when `meta.json` is
+gone. On `discarded` the skill says the document stays in the inbox for the
+user to delete and is no longer listed, then goes on with the next entry; the
+continue rule after it (and its "same `period`" stop) is unchanged. On `stopped`
+nothing was marked and the stage is kept, so the run ends as at an Abort and the
+next `/review` offers the entry again. The `doc-changed` line tells the user to
+save (Cmd+S) or close the document, the wording the deliver stop uses for an
+open note; the other reasons are said as they are, and `kado-failed` shows
+`error` (class name and code only) verbatim.
 
 ## Why Pass 2 Is `parse`, Then `preview`, and Deliver Is a Plain-Text Question (F5-AC1, F5-AC2)
 

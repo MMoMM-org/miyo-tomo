@@ -102,10 +102,10 @@
           }
         },
         {
-          "description": "review — /review inbox document '<period> Review.md' (spec 045 ADR-10); approved when its instruction set is written. The review_* keys live as top-level frontmatter, outside this block.",
+          "description": "review — /review inbox document '<period> Review.md' (spec 045 ADR-10); approved when its instruction set is written, discarded when the user discards it at /review (the file stays; spec 047 walk F-R5-2). The review_* keys live as top-level frontmatter, outside this block.",
           "properties": {
             "doc_type": {"const": "review"},
-            "state": {"enum": ["pending-approval", "approved"]}
+            "state": {"enum": ["pending-approval", "approved", "discarded"]}
           }
         }
       ]

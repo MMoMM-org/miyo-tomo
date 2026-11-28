@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_doc_frontmatter.py — Tests for the doc_frontmatter helper module.
 
 Covers T1.2 (F-47 Phase 1): build_tomo_block, parse_tomo_block,
@@ -333,10 +333,11 @@ def test_rendered_note_rejects_foreign_state(monkeypatch):
 _TOMO_BLOCK_KEYS = {"doc_type", "state", "run_id", "updated_at"}
 
 
-@pytest.mark.parametrize("state", ["pending-approval", "approved"])
+@pytest.mark.parametrize("state", ["pending-approval", "approved", "discarded"])
 def test_review_doc_type_validates_both_states(monkeypatch, state):
-    """[spec 045 T1.4] doc_type=review accepts exactly the suggestions-shaped
-    lifecycle: pending-approval and approved, under strict validation."""
+    """[spec 045 T1.4] doc_type=review accepts the suggestions-shaped lifecycle,
+    pending-approval and approved, plus discarded (spec 047 walk F-R5-2), under
+    strict validation."""
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
     block = build_tomo_block("review", state, "2026-11-11-120000-abc123")
     assert block["doc_type"] == "review"

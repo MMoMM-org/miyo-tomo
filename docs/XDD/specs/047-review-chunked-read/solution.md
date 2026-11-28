@@ -479,6 +479,7 @@ tomo/
         ├── review_carried.py                 # NEW 0.1.0
         ├── review_sources.py                 # NEW 0.1.0 (T5.2 deviation, owner: Sources and resolve_sources split out of review_doc.py, CON-5)
         ├── review_growth.py                  # NEW 0.1.0 (T9.3 F-R1-3, owner 2026-11-26: the script builds the Vault growth group; review_doc.py at its size limit)
+        ├── review_discard.py                 # NEW 0.1.0 (T9.3 F-R5-2, owner: Discard marks an open review document discarded through Kado, the file stays)
         ├── review_read_parts.py              # DELETE (replaced by review_stage.py)
         ├── review_period.py                  # MODIFY 0.5.1 → 0.6.0
         ├── review_doc.py                     # MODIFY 0.5.3 → 0.6.0
@@ -504,6 +505,7 @@ docs/
 ├── tomo/scripts/lib/review_carried.md          # NEW
 ├── tomo/scripts/lib/review_sources.md          # NEW (T5.2 deviation: the split; why one resolver)
 ├── tomo/scripts/lib/review_growth.md           # NEW (T9.3 F-R1-3: why the script builds the group, grouping, links, order)
+├── tomo/scripts/lib/review_discard.md          # NEW (T9.3 F-R5-2: why the document is marked and kept, the reasons, the guard)
 ├── tomo/scripts/lib/review_read_parts.md       # DELETE (history moves to review_stage.md)
 ├── tomo/scripts/lib/review_period.md, review_doc.md, review_sections.md, review_day.md, review_children.md, review_doc_parse.md  # MODIFY
 ├── setup.md                                     # MODIFY (~:293): the three models see note content; previous notes are read
@@ -531,6 +533,7 @@ tests/
 ├── test_review_digest_schemas.py             # NEW (spec 047 T4.1): W14 digest/carryover validate; caps, patterns, enums refused
 ├── test_review_carried.py                    # NEW
 ├── test_review_growth.py                     # NEW (spec 047 T9.3, F-R1-3): the script-built Vault growth group, unit and through write
+├── test_review_doc_discard.py                # NEW (implemented, spec 047 T9.3, F-R5-2): review-doc.py discard: the guarded mark, the stage cleared, every stop keeps it
 ├── test_review_proposals_carried_schema.py   # NEW (spec 047 T5.1): carried + carried_ids validate on group and section items; the pair, enum, id pattern refused; 045/046 fixtures still valid
 ├── test_047_t5_4_carried_write.py            # NEW (spec 047 T5.4): carried items through review-doc.py write: labels, top-line counts, coverage, carry_failed, overflow before over-cap, the new written keys
 ├── test_047_skill_contract.py                # NEW: pinned step 4/5 prose, allowed-tools, STRICTs, agent prompts

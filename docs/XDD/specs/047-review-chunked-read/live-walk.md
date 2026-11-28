@@ -226,4 +226,4 @@ Pass 2 (same session d191014e): `/review 2026-Q1` → `open` → Continue → `p
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | $6.48 / 15.2 min (W04a not condensed); R3c $4.93 / 9.9 min | — | — |
 | Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | $1.03 (R3c session, Pass 1 context carried) | | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |
-| Owner: at least as useful as the spec 046 document | yes/no | quality | | | | — | — |
+| Owner: at least as useful as the spec 046 document | yes/no | quality | | | yes (R3c, owner 2026-11-28) | — | — |

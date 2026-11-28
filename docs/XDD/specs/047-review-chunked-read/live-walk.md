@@ -218,17 +218,27 @@ Fresh session. `start`: the 2026-Q1 review listed `applied`, no question → `re
 
 Pass 2 (same session): Continue → `parse` approved, 55 kept, 0 unticked, 0 deleted, 0 added → `preview` → Deliver → `deliver` mode `new-note`, 0 problems, 0 escaped lines, notice `templater_hint`. $0.33, 0.4 min machine time. Hashi apply (owner): target created, 1 `tomo-review 2026-W14` marker, 1 of 1 box ticked. Stage after write: `meta.json` only; main session read no stage file.
 
+### R5 — resume month 2026-03 (2026-11-28, sessions 78d70d3d + a0194354) — Pass 1 written
+
+Session 1: `start` (W14 `applied`, one line) → `review-read.py` (6 units, 51 s, `continued: false`) → `plan` → the owner ended the session before any agent was dispatched. $0.23.
+
+Session 2: `start` (`open_reviews` empty) → `review-read.py` `continued: true`, same `read_id`, nothing read anew → `plan` → 6 digesters (haiku; all 6, none had passed) + carryover (sonnet) → `check` all passed, carryover passed (2026-02 9 items, 2025-Q4) → proposer (sonnet) → `write` `review-exists` → owner Replace → `replaced`. Counts: 16 section groups, growth 19, habits 12. Stage after write: `meta.json` only; main session read no stage file. $2.53 (main $0.85, digesters $0.63, carryover $0.12, proposer $0.93), 5.8 min machine time (4.1 min owner choice at Replace excluded). R5 total $2.76.
+
+Finding F-R5-1 (→ T9.3, open): on `continued: true` the session did not say that the review continues on the read made at `read_at` (SKILL step 4); no text block at all between the read and the dispatch.
+
+Not covered: the interruption fell before the dispatch, so "dispatches only the jobs not passed" ran with 0 passed units; a partly passed round was not walked live.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |
 |---|---|---|---|---|---|---|---|
-| Days not read because of size | 0 | hard | 0 | 0 | 0 | 0 | |
-| Sample / grep fallbacks | 0 | hard | 0 | 0 | 0 | 0 | |
-| Main-session reads of stage files | 0 | hard | 0 | 0 | 0 | 0 | |
+| Days not read because of size | 0 | hard | 0 | 0 | 0 | 0 | 0 |
+| Sample / grep fallbacks | 0 | hard | 0 | 0 | 0 | 0 | 0 |
+| Main-session reads of stage files | 0 | hard | 0 | 0 | 0 | 0 | 0 |
 | Carried items placed twice / without previous link | 0 / 0 | quality | 0 / 0 (R1d, owner) | | | | |
-| Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | 0 after write | 0 after write | |
+| Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | 0 after write | 0 after write | 0 after write |
 | Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | $1.05 / 2.2 min | — |
-| Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | |
+| Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | $2.76 / 6.8 min (two sessions) |
 | Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | $6.48 / 15.2 min (W04a not condensed); R3c $4.93 / 9.9 min | — | — |
 | Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | $1.03 (R3c session, Pass 1 context carried) | $0.33 (same session as Pass 1) | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |

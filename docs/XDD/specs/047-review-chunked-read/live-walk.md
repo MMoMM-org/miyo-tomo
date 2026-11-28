@@ -228,6 +228,8 @@ Finding F-R5-1 (→ T9.3): on `continued: true` the session did not say that the
 
 Not covered: the interruption fell before the dispatch, so "dispatches only the jobs not passed" ran with 0 passed units; a partly passed round was not walked live.
 
+Finding F-R5-2 (→ T9.3): with the R5 document open (not approved), `/review 2026-02` listed it first and every answer ended the run before the new request (Continue → Pass 2 → not approved; Start over re-reads 2026-03; Abort ends the run). Owner: add Discard, mark the document and keep the file, now as a walk fix. Fixed in 639ebbb9 + 6a08e262 (`review-doc.py` 0.11.4 `discard`, new `lib/review_discard.py` 0.1.0, `review_state.py` 0.7.3 not listing `discarded`, `tomo_lifecycle.py` 0.3.1 and the doc frontmatter schema with `discarded`, `periodic-review` 0.3.4 Discard before Abort, then on with the next entry). Stop reasons `doc-missing`, `doc-changed`, `kado-failed`, plus `not-a-review` (kept by the coordinator: Tomo marks only its own review documents). Spec review PASS after that decision, code review PASS (5 mutations caught, the client-construction stop added). Full suite 12,481 passed, 1 known failure. Open: a read interrupted on a period whose document is open cannot be resumed (Continue parses the old document, Start over reads anew); Discard on an approved document over a partly applied set leaves the set as it is.
+
 ## KPI table
 
 | KPI | Limit | Kind | R1 | R2 | R3 | R4 | R5 |

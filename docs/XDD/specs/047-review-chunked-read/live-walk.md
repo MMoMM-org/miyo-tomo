@@ -202,7 +202,13 @@ Finding F-R3b-3 (→ T9.3): a Pass 1 whose write stopped leaves `proposals.json`
 
 Replace (2026-11-28): the R3b document was written. Owner on Vault growth: 65 candidate items, the creation-day daily link reads as a duplicate note, and `Calendar/301 Daily: 44` counts only the dailies no candidate covered.
 
-Finding F-R3b-4 (→ T9.3, closes #274): owner decision: Calendar folders as counts only, other folders as note links up to 10 notes, else a count; MOC items kept; the digester's growth candidates dropped. Fixed in d65be732 (`review_growth.py` 0.4.0, `review_config.py` 0.3.3 `calendar_base`, `review-doc.py` 0.11.3, `review_digest.py` 0.4.0, `review-digest.py` 0.3.0, `review-digester` 0.2.0, `periodic-review` 0.3.2, digest schema without `growth`). Spec review PASS, code review PASS (5 mutations caught). Full suite 12,442 passed, 1 known failure. Open: `weeks.json` still counts the growth files in the unit byte budget, and a day with only a created note still takes part (a digester run with nothing to condense for it). New quarter Pass 1 pending.
+Finding F-R3b-4 (→ T9.3, closes #274): owner decision: Calendar folders as counts only, other folders as note links up to 10 notes, else a count; MOC items kept; the digester's growth candidates dropped. Fixed in d65be732 (`review_growth.py` 0.4.0, `review_config.py` 0.3.3 `calendar_base`, `review-doc.py` 0.11.3, `review_digest.py` 0.4.0, `review-digest.py` 0.3.0, `review-digester` 0.2.0, `periodic-review` 0.3.2, digest schema without `growth`). Spec review PASS, code review PASS (5 mutations caught). Full suite 12,442 passed, 1 known failure. Open: `weeks.json` still counts the growth files in the unit byte budget, and a day with only a created note still takes part (a digester run with nothing to condense for it).
+
+### R3c — quarter 2026-Q1 after F-R3b-3 and F-R3b-4 (2026-11-28, session d191014e) — Pass 1 written
+
+`/review 2026-Q1` listed the R3b document `open` (`new_read: false`); owner chose Start over → `review-read.py --fresh` (15 units, 121 s, moved to the background at the 120 s Bash timeout and finished there) → `plan` → 15 digesters (haiku) + carryover (sonnet) in one round → `check`: 14 of 15 passed, W05 `retry` (3 `source-outside-unit`) → one re-dispatch → second `check` all 15 passed, carryover passed → proposer (sonnet) → `write` `review-exists` → owner Replace → `replace --confirm` `replaced`, 3 Kado calls. W04a condensed. Counts: 14 section groups, done 6, open 5, themes 0, habits 12, growth 29 (R3b 65): 11 Calendar count items, 1 other folder over 10 notes as a count, 15 items with note links (folders ≤ 10 notes, MOCs). Previous: 2025-Q4 found, 14 carried. Stage after write: `meta.json` only; main session read no stage file. Owner: Pass 1 looks good.
+
+Cost $4.93 (main sonnet 35 turns $1.75, proposer $1.06, 16 digester runs $2.03, carryover $0.08); active time 9.9 min machine (11:39:12 → 11:50:45 minus 1.7 min owner choice at Replace). Observations: the main session posted one status line per agent notification (16 lines, a miscount 17 → 16 corrected mid-run), which is most of its 35 turns; `review-read.py` on the quarter now runs right at the Bash timeout.
 
 ## KPI table
 
@@ -215,7 +221,7 @@ Finding F-R3b-4 (→ T9.3, closes #274): owner decision: Calendar folders as cou
 | Content files left after write, abort, drop | 0 | quality | 0 after write | 0 after write | 0 after write | | |
 | Weekly Pass 1 cost | ≤ $0.80 | guidance | $2.40 (R1d; R1c $2.84, R1b $2.80, R1a $1.25 failed) | — | — | | — |
 | Monthly Pass 1 cost / time | ≤ $2.00 / 7 min | guidance | — | $6.27 / 8.3 min | — | — | |
-| Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | $6.48 / 15.2 min (W04a not condensed) | — | — |
+| Quarterly Pass 1 cost / time | ≤ $5.00 / 20 min | guidance | — | — | $6.48 / 15.2 min (W04a not condensed); R3c $4.93 / 9.9 min | — | — |
 | Pass 2 cost | ≤ $0.85 | guidance | $0.34 (R1d) | $0.52 | | | |
 | Cost, time, peak context per step (main, digesters, carryover, proposer) | recorded | F8-AC1 | R1a above | | | | |
 | Owner: at least as useful as the spec 046 document | yes/no | quality | | | | — | — |
